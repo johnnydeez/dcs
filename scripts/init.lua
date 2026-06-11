@@ -4,7 +4,7 @@
 --
 -- Requires MissionScripting.lua to be de-sanitized (lfs must be available).
 
-local SCRIPT_DIR = lfs.writedir() .. "Scripts\\a2a_dynamic_syria\\"
+local SCRIPT_DIR = lfs.writedir() .. "Scripts\\a2g_dynamic_syria\\"
 
 local function load(relativePath)
     local fullPath = SCRIPT_DIR .. relativePath
@@ -30,6 +30,8 @@ Log.info("============================================")
 -- Log.dumpAirbases()
 -- Uncomment the next line to dump all group names for debugging.
 Log.dumpGroups()
+-- Activates debug groups A-D and logs unit type strings; remove after type strings are confirmed.
+Log.dumpLateGroupUnits({"A", "B", "C", "D"})
 
 if not load("lib\\spawner.lua")             then return end
 if not load("modules\\coalition_setup.lua") then return end

@@ -16,7 +16,7 @@ Mission starts with a randomized layout of Red and Blue bases across the Syria m
 
 ---
 
-## Current Status — Session 5 Complete
+## Current Status — Session 6 Complete
 
 At mission start, the script:
 1. Randomizes which contested clusters go Red vs Blue
@@ -27,9 +27,9 @@ At mission start, the script:
 6. Activates fixed SA-2 / SA-6 SAM sites based on territory and probability
 7. Dynamically spawns roaming SA-9 / SA-13 units at Red bases and in Red territory
 8. Prints a SAM summary on screen (type, site name, GPS coordinates) for 180 seconds
-9. Spawns one supply convoy traveling between two Red airbases
-10. Draws a labeled green circle (27km radius) on the F10 map at the convoy's estimated 35-minute position
-11. Prints a convoy summary on screen (route, heading, GPS) for 180 seconds
+9. Spawns one supply convoy, one mechanized convoy, and one armor convoy — each on a different route between Red airbases
+10. Draws a labeled green circle (27km radius) on the F10 map at each convoy's estimated 35-minute position
+11. Prints a combined convoy summary on screen (route, heading, GPS per convoy) for 180 seconds
 
 **Spawn slots:** DCS Dynamic Spawn (enabled per-airbase in the Mission Editor) correctly shows/hides player slots based on `setCoalition()`. No scripting required.
 
@@ -37,13 +37,15 @@ At mission start, the script:
 
 **SAM sites:** Fixed SA-2/SA-6 sites pre-placed in ME as late-activation groups. Roaming SA-9/SA-13 dynamically spawned via `coalition.addGroup()`. All active SAMs print GPS coords on screen at mission start.
 
+**Convoys:** Three types spawn each session with randomized skill (Average/Good/High per convoy). Routes are capped at 175 km; if no base is within range the nearest is used. Island bases (Gecitkale, Ercan) only route to other Cyprus bases — no cross-water routes.
+
 ---
 
 ## Script Architecture
 
 ### File Locations
 - **Git repo:** `C:\Users\johnk\Git\dcs\scripts\`
-- **DCS runtime:** `C:\Users\johnk\Saved Games\DCS\Scripts\a2a_dynamic_syria\`
+- **DCS runtime:** `C:\Users\johnk\Saved Games\DCS\Scripts\a2g_dynamic_syria\`
 - Files must be manually copied from repo to DCS after edits (or use PowerShell Copy-Item)
 
 ### File Structure
@@ -64,12 +66,13 @@ scripts/
 - `CoalitionSetup.assign()` → returns `assignments` (list of `{name, side}`), `clusterSides` (cluster id → coalition.side)
 - `DefenseSetup.spawn(assignments)` → spawns ground defenses at all Red bases
 - `SamSetup.spawn(clusterSides, assignments)` → activates/spawns all SAM systems
+- `ConvoySetup.spawn(clusterSides, assignments)` → spawns supply, mechanized, and armor convoys
 
 ### Mission Editor Trigger
 - **Type:** ONCE
 - **Condition:** TIME MORE, 1 second
 - **Action:** DO SCRIPT
-- **Text:** `dofile(lfs.writedir() .. "Scripts\\a2a_dynamic_syria\\init.lua")`
+- **Text:** `dofile(lfs.writedir() .. "Scripts\\a2g_dynamic_syria\\init.lua")`
 
 **Critical:** Trigger type must be ONCE, NOT "4 MISSION START". MISSION START type with any condition never fires — the condition is checked at t=0, fails, and the trigger is permanently discarded.
 
@@ -94,7 +97,7 @@ scripts/
 | Southern Cyprus | CYPRUS_SOUTH | Always Blue | Akrotiri, Larnaca, Paphos, Kingsfield, Lakatamia |
 | At Tanf | AT_TANF | Always Blue | At Tanf |
 | Russian Core (Latakia) | RED_CORE | Always Red | Bassel Al-Assad, Hama, Taftanaz, Minakh, Wujah Al Hajar |
-| NATO Northern Arc | TURKEY | Contested | Incirlik, Adana Sakirpasa, Hatay, Gaziantep, Gazipasa, Sanliurfa, Pinarbashi, Gecitkale |
+| NATO Northern Arc | TURKEY | Contested | Incirlik, Adana Sakirpasa, Hatay, Gaziantep, Gazipasa, Sanliurfa, Pinarbashi, Gecitkale, Ercan |
 | Israel & Jordan | BLUE_SOUTH | Contested | Ramat David, Ben Gurion, Haifa, Tel Nof, Hatzor, Kiryat Shmona, Megiddo, Palmachim, Herzliya, King Abdullah II, Muwaffaq Salti, Marka, Prince Hassan, King Hussein Air College, Ruwayshid |
 | Damascus Basin | DAMASCUS | Contested | Damascus, Mezzeh, Al-Dumayr, Marj as Sultan N/S, Khalkhalah, Marj Ruhayyil, Tha'lah *(Ghabagheb — name unconfirmed)* |
 | Aleppo Region | ALEPPO | Contested | Aleppo, Kuweires, Jirah, Abu al-Duhur |
@@ -132,7 +135,7 @@ Dynamically spawned each session via `coalition.addGroup()`.
 
 - At-airbase ring: 500–2000m from threshold
 - Open terrain ring: 15,000–40,000m from a random Red airbase anchor
-- Unit type strings unconfirmed — check log for Leopard-2 replacements (`woCar: Unit X is unknown`)
+- Unit type strings confirmed: `Strela-1 9P31` (SA-9), `Strela-10M3` (SA-13)
 
 ### Screen Output
 Active SAMs are printed on screen for 60 seconds at mission start with GPS coordinates in DMS format.
@@ -179,9 +182,21 @@ Active SAMs are printed on screen for 60 seconds at mission start with GPS coord
 
 ### Convoy Unit Type Strings
 - Confirmed: `ATZ-5`, `ATZ-10` (fuel trucks), `Ural-375 PBU` (command vehicle)
+- Confirmed: `BTR-70`, `BTR-80`, `T-55`, `T-72B`, `BMP-2`, `BMP-3`, `ZSU-23-4 Shilka`
+- `BTR-60PB` does NOT exist — silently spawns Leopard-2; correct DCS string unknown, omit for now
+- Confirmed CH mod strings: `CHAP_T64BV` (T-64BV Type 2017), `CHAP_MATV` (M-ATV)
 - `ATZ-5 civil` does NOT exist — silently spawns Leopard-2
 - ME label "Ural-4320 MCC" maps to DCS type `Ural-375 PBU` — naming is inconsistent
-- Use the Debug_Names late-activation group trick to verify unknown strings: place unit in ME, activate at runtime, call `unit:getTypeName()` and log it
+- Use `Log.dumpLateGroupUnits({"A","B",...})` to activate debug groups and log `getTypeName()` for each unit
+
+### Convoy Routing
+- Routes capped at 175 km (`MAX_ROUTE_DIST`) — beyond that DCS road AI fails to navigate reliably
+- `ISLAND_BASES` table in convoy_setup.lua lists bases that cannot road-route to the mainland (Gecitkale, Ercan); convoys only route within the same landmass
+- Southern Cyprus bases (CYPRUS_SOUTH cluster) are fixed Blue and never need island handling
+- `goto` is NOT supported in DCS's Lua environment — use `if/else` blocks for early-exit logic in loops
+
+### Lua in DCS
+- `goto` / `::label::` syntax is not supported — use nested `if/else` instead
 
 ### DCS Bearing Calculation
 - In DCS, `Airbase:getPoint()` returns Vec3 where `.x` = North-South axis, `.z` = East-West axis
@@ -207,12 +222,12 @@ Active SAMs are printed on screen for 60 seconds at mission start with GPS coord
 - [x] SA-9 and SA-13 roaming SAMs with probabilistic spawning
 - [x] Expand cluster coverage to all Syria map airbases
 - [x] Spawn supply convoy traveling between Red airbases with F10 map circle and screen summary
-- [ ] Confirm SA-9 (`Strela-1 9P31`) and SA-13 (`Strela-10M3`) unit type strings in DCS
-- [ ] Confirm `KAMAZ Truck` and `GAZ-3308` unit type strings (no woCar errors seen yet)
+- [x] Implement mechanized-convoy and armor-convoy types
+- [ ] Confirm `KAMAZ Truck` and `GAZ-3308` unit type strings (no woCar errors seen but not in debug groups yet)
 - [ ] Confirm correct DCS name for Ghabagheb airbase (currently commented out of DAMASCUS cluster)
 - [ ] Fix `world.getAirbases()` dump — returns empty at mission start, may need timer delay
 - [ ] Add more SA-2/SA-6 fixed sites (up to 8 planned)
-- [ ] Implement mechanized-convoy and armor-convoy types
+- [ ] Remove `Log.dumpLateGroupUnits` call from init.lua and debug groups A/B/C/D from ME once no longer needed
 - [ ] F10 menu for mission info / admin commands
 - [ ] Randomized individual strike missions
 - [ ] Investigate why airfield icons don't change color in singleplayer
@@ -224,3 +239,4 @@ Active SAMs are printed on screen for 60 seconds at mission start with GPS coord
 - [Scripting Architecture](research_scripting_architecture.md) — Lua environments, frameworks, file organization, F10 menu API
 - [Airbase API](research_airbase_api.md) — setCoalition, autoCapture, airbase methods, workarounds
 - [Syria Airbases](research_syria_airbases.md) — complete airbase inventory with coordinates and cluster suggestions
+- [Runway Lengths](research_runway_lengths.md) — F-16 viability by base (2,500m+ / marginal / too short)
