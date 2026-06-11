@@ -16,17 +16,20 @@ Mission starts with a randomized layout of Red and Blue bases across the Syria m
 
 ---
 
-## Current Status — Session 4 Complete
+## Current Status — Session 5 Complete
 
 At mission start, the script:
 1. Randomizes which contested clusters go Red vs Blue
 2. Calls `Airbase:setCoalition()` on every base in each cluster
-3. Draws colored circles on the F10 map (blue = Blue territory, red = Red territory)
-4. Prints a territory summary on screen for 60 seconds
+3. Draws colored circles on the F10 map (blue = Blue territory, red = Red territory) — 10km radius
+4. Prints a territory summary on screen for 180 seconds
 5. Spawns randomized ground defenses at every Red base
 6. Activates fixed SA-2 / SA-6 SAM sites based on territory and probability
 7. Dynamically spawns roaming SA-9 / SA-13 units at Red bases and in Red territory
-8. Prints a SAM summary on screen (type, site name, GPS coordinates) for 60 seconds
+8. Prints a SAM summary on screen (type, site name, GPS coordinates) for 180 seconds
+9. Spawns one supply convoy traveling between two Red airbases
+10. Draws a labeled green circle (27km radius) on the F10 map at the convoy's estimated 35-minute position
+11. Prints a convoy summary on screen (route, heading, GPS) for 180 seconds
 
 **Spawn slots:** DCS Dynamic Spawn (enabled per-airbase in the Mission Editor) correctly shows/hides player slots based on `setCoalition()`. No scripting required.
 
@@ -174,6 +177,17 @@ Active SAMs are printed on screen for 60 seconds at mission start with GPS coord
 - Activate at runtime with `Group.getByName("name"):activate()`
 - Group must exist in the mission file — `Group.getByName()` returns nil if name doesn't match exactly
 
+### Convoy Unit Type Strings
+- Confirmed: `ATZ-5`, `ATZ-10` (fuel trucks), `Ural-375 PBU` (command vehicle)
+- `ATZ-5 civil` does NOT exist — silently spawns Leopard-2
+- ME label "Ural-4320 MCC" maps to DCS type `Ural-375 PBU` — naming is inconsistent
+- Use the Debug_Names late-activation group trick to verify unknown strings: place unit in ME, activate at runtime, call `unit:getTypeName()` and log it
+
+### DCS Bearing Calculation
+- In DCS, `Airbase:getPoint()` returns Vec3 where `.x` = North-South axis, `.z` = East-West axis
+- Compass bearing formula: `math.atan2(east_diff, north_diff)` = `math.atan2(b.z - a.z, b.x - a.x)`
+- Using `atan2(north, east)` instead gives wrong results (e.g., "N" when heading "E")
+
 ### Coordinate Conversion
 - `coord.LOtoLL(vec3)` converts a DCS Vec3 to decimal lat/lon
 - `Group:getUnit(1):getPoint()` returns a Vec3 suitable for passing to `coord.LOtoLL()`
@@ -192,10 +206,13 @@ Active SAMs are printed on screen for 60 seconds at mission start with GPS coord
 - [x] SA-2 and SA-6 fixed sites with cluster-based territory check
 - [x] SA-9 and SA-13 roaming SAMs with probabilistic spawning
 - [x] Expand cluster coverage to all Syria map airbases
+- [x] Spawn supply convoy traveling between Red airbases with F10 map circle and screen summary
 - [ ] Confirm SA-9 (`Strela-1 9P31`) and SA-13 (`Strela-10M3`) unit type strings in DCS
+- [ ] Confirm `KAMAZ Truck` and `GAZ-3308` unit type strings (no woCar errors seen yet)
 - [ ] Confirm correct DCS name for Ghabagheb airbase (currently commented out of DAMASCUS cluster)
 - [ ] Fix `world.getAirbases()` dump — returns empty at mission start, may need timer delay
 - [ ] Add more SA-2/SA-6 fixed sites (up to 8 planned)
+- [ ] Implement mechanized-convoy and armor-convoy types
 - [ ] F10 menu for mission info / admin commands
 - [ ] Randomized individual strike missions
 - [ ] Investigate why airfield icons don't change color in singleplayer

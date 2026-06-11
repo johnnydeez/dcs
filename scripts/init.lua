@@ -35,10 +35,12 @@ if not load("lib\\spawner.lua")             then return end
 if not load("modules\\coalition_setup.lua") then return end
 if not load("modules\\defense_setup.lua")   then return end
 if not load("modules\\sam_setup.lua")       then return end
+if not load("modules\\convoy_setup.lua")    then return end
 
 -- ── Run startup sequence ─────────────────────────────────────
 local assignments, clusterSides = CoalitionSetup.assign()
 DefenseSetup.spawn(assignments)
 SamSetup.spawn(clusterSides, assignments)
+ConvoySetup.spawn(clusterSides, assignments)
 
 Log.info("Init complete.")
