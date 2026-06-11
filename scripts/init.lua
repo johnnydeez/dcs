@@ -31,12 +31,14 @@ Log.info("============================================")
 -- Uncomment the next line to dump all group names for debugging.
 Log.dumpGroups()
 
-if not load("lib\\spawner.lua")           then return end
+if not load("lib\\spawner.lua")             then return end
 if not load("modules\\coalition_setup.lua") then return end
 if not load("modules\\defense_setup.lua")   then return end
+if not load("modules\\sam_setup.lua")       then return end
 
 -- ── Run startup sequence ─────────────────────────────────────
-local assignments = CoalitionSetup.assign()
+local assignments, clusterSides = CoalitionSetup.assign()
 DefenseSetup.spawn(assignments)
+SamSetup.spawn(clusterSides, assignments)
 
 Log.info("Init complete.")

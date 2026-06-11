@@ -44,6 +44,16 @@ local CLUSTERS = {
             "Hama",
             "Taftanaz",
             "Minakh",
+            "Wujah Al Hajar",
+        },
+    },
+
+    {
+        id    = "AT_TANF",
+        name  = "At Tanf (US Outpost)",
+        fixed = coalition.side.BLUE,
+        bases = {
+            "At Tanf",
         },
     },
 
@@ -59,6 +69,9 @@ local CLUSTERS = {
             "Hatay",
             "Gaziantep",
             "Gazipasa",
+            "Sanliurfa",
+            "Pinarbashi",
+            "Gecitkale",
         },
     },
     {
@@ -71,9 +84,16 @@ local CLUSTERS = {
             "Haifa",
             "Tel Nof",
             "Hatzor",
+            "Kiryat Shmona",
+            "Megiddo",
+            "Palmachim",
+            "Herzliya",
             "King Abdullah II",
             "Muwaffaq Salti",
             "Marka",
+            "Prince Hassan",
+            "King Hussein Air College",
+            "Ruwayshid",
         },
     },
     {
@@ -89,6 +109,7 @@ local CLUSTERS = {
             "Khalkhalah",
             "Marj Ruhayyil",
             "Tha'lah",
+            -- "Ghabagheb",  -- name unconfirmed, re-add once dumpAirbases confirms spelling
         },
     },
     {
@@ -122,6 +143,19 @@ local CLUSTERS = {
             "Beirut-Rafic Hariri",
             "Rayak",
             "Rene Mouawad",
+            "An Nasiriyah",
+        },
+    },
+
+    {
+        id    = "EUPHRATES",
+        name  = "Euphrates / Northeast Syria",
+        fixed = nil,
+        bases = {
+            "Kharab Ishk",
+            "Tal Siman",
+            "Tabqa",
+            "Deir ez-Zor",
         },
     },
 }
@@ -214,8 +248,9 @@ function CoalitionSetup.assign()
     for i = 1, steps do math.random() end
     Log.debug("RNG advanced " .. steps .. " steps (t=" .. t .. ")")
 
-    local results     = { blue = {}, red = {} }
-    local assignments = {}
+    local results      = { blue = {}, red = {} }
+    local assignments  = {}
+    local clusterSides = {}  -- cluster.id → coalition.side, used by sam_setup
 
     for _, cluster in ipairs(CLUSTERS) do
         local side
@@ -228,6 +263,7 @@ function CoalitionSetup.assign()
         end
 
         applyCluster(cluster, side)
+        clusterSides[cluster.id] = side
 
         local label = (side == coalition.side.BLUE) and results.blue or results.red
         table.insert(label, cluster.name)
@@ -249,5 +285,5 @@ function CoalitionSetup.assign()
     Log.info(summary)
     Log.info("--- Coalition Assignment Complete ---")
 
-    return assignments
+    return assignments, clusterSides
 end

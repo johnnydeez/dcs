@@ -47,13 +47,24 @@ end
 function Log.dumpAirbases()
     Log.info("=== AIRBASE DUMP START ===")
     local all = world.getAirbases()
-    local cats = { [0] = "AIRDROME", [1] = "HELIPAD", [2] = "SHIP" }
-    local sides = { [0] = "NEUTRAL", [1] = "RED", [2] = "BLUE" }
-    for _, ab in pairs(all) do
+    if not all then
+        Log.warn("world.getAirbases() returned nil")
+        Log.info("=== AIRBASE DUMP END ===")
+        return
+    end
+    local cats  = { [0] = "AIRDROME", [1] = "HELIPAD", [2] = "SHIP" }
+    local sides = { [0] = "NEUTRAL",  [1] = "RED",     [2] = "BLUE" }
+    local count = 0
+    -- DCS returns a numerically-indexed table; ipairs is correct here
+    for _, ab in ipairs(all) do
+        count = count + 1
         local cat  = ab:getDesc().category
         local coa  = ab:getCoalition()
         local name = ab:getName()
         Log.info(string.format("  %-40s  cat=%-8s  coa=%s", name, cats[cat] or "?", sides[coa] or "?"))
+    end
+    if count == 0 then
+        Log.warn("world.getAirbases() returned empty table — try calling later via timer")
     end
     Log.info("=== AIRBASE DUMP END ===")
 end
