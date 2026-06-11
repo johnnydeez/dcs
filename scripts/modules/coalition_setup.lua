@@ -215,8 +215,7 @@ local function setBase(name, side)
     local lineCol  = (side == coalition.side.BLUE) and BLUE_LINE or RED_LINE
     local fillCol  = (side == coalition.side.BLUE) and BLUE_FILL or RED_FILL
 
-    -- Radius 5000m (~2.7 nm) — large enough to be obvious at map zoom
-    trigger.action.circleToAll(-1, _markId, pos, 5000, lineCol, fillCol, 1, true, "")
+    trigger.action.circleToAll(-1, _markId, pos, 10000, lineCol, fillCol, 1, true, "")
     _markId = _markId + 1
 
     return true
@@ -281,7 +280,7 @@ function CoalitionSetup.assign()
     for _, n in ipairs(results.red)  do table.insert(lines, "  - " .. n) end
     local summary = table.concat(lines, "\n")
 
-    trigger.action.outText(summary, 60)
+    trigger.action.outText(summary, 180)
     Log.info(summary)
     Log.info("--- Coalition Assignment Complete ---")
 

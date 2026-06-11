@@ -196,7 +196,7 @@ function SamSetup.spawn(clusterSides, assignments)
             table.insert(lines, "    " .. entry.ll)
         end
     end
-    trigger.action.outText(table.concat(lines, "\n"), 60)
+    trigger.action.outText(table.concat(lines, "\n"), 180)
 
     Log.info("--- SAM Site Activation Complete ---")
 end
