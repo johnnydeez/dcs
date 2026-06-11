@@ -72,6 +72,7 @@ local CLUSTERS = {
             "Sanliurfa",
             "Pinarbashi",
             "Gecitkale",
+            "Ercan",
         },
     },
     {

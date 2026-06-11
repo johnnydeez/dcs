@@ -42,6 +42,26 @@ function Log.dumpGroups()
     Log.info("=== GROUP DUMP END ===")
 end
 
+-- Activates each named late-activation group and logs every unit's type string.
+-- Run once to verify type strings for units placed in ME debug groups.
+function Log.dumpLateGroupUnits(names)
+    Log.info("=== LATE GROUP UNIT DUMP START ===")
+    for _, name in ipairs(names) do
+        local grp = Group.getByName(name)
+        if grp then
+            grp:activate()
+            local units = grp:getUnits()
+            Log.info(string.format("  Group '%s' (%d units):", name, #(units or {})))
+            for _, u in ipairs(units or {}) do
+                Log.info(string.format("    unit '%s'  type='%s'", u:getName(), u:getTypeName()))
+            end
+        else
+            Log.warn("dumpLateGroupUnits: group '" .. name .. "' not found — check ME group name")
+        end
+    end
+    Log.info("=== LATE GROUP UNIT DUMP END ===")
+end
+
 -- Dumps every airbase name the map knows about to the log.
 -- Run this once on a fresh mission to verify/correct airbase name strings.
 function Log.dumpAirbases()
