@@ -31,13 +31,15 @@ Log.info("============================================")
 -- Uncomment the next line to dump all group names for debugging.
 Log.dumpGroups()
 -- Activates debug groups A-D and logs unit type strings; remove after type strings are confirmed.
-Log.dumpLateGroupUnits({"A", "B", "C", "D"})
+Log.dumpLateGroupUnits({"A", "B", "C", "D", "E"})
 
 if not load("lib\\spawner.lua")             then return end
 if not load("modules\\coalition_setup.lua") then return end
 if not load("modules\\defense_setup.lua")   then return end
 if not load("modules\\sam_setup.lua")       then return end
 if not load("modules\\convoy_setup.lua")    then return end
+if not load("modules\\cas_mission.lua")     then return end
+if not load("modules\\sd_mission.lua")      then return end
 if not load("modules\\mission_setup.lua")   then return end
 
 -- ── Run startup sequence ─────────────────────────────────────

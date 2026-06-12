@@ -16,7 +16,7 @@ Mission starts with a randomized layout of Red and Blue bases across the Syria m
 
 ---
 
-## Current Status — Session 6 Complete
+## Current Status — Session 7 Complete
 
 At mission start, the script:
 1. Randomizes which contested clusters go Red vs Blue
@@ -30,6 +30,7 @@ At mission start, the script:
 9. Spawns one supply convoy, one mechanized convoy, and one armor convoy — each on a different route between Red airbases
 10. Draws a labeled green circle (27km radius) on the F10 map at each convoy's estimated 35-minute position
 11. Prints a combined convoy summary on screen (route, heading, GPS per convoy) for 180 seconds
+12. Generates 3 S&D strike missions (one per threat level: low/med/high), draws orange circles on F10 map, prints GPS and mission summary on screen for 180 seconds
 
 **Spawn slots:** DCS Dynamic Spawn (enabled per-airbase in the Mission Editor) correctly shows/hides player slots based on `setCoalition()`. No scripting required.
 
@@ -38,6 +39,46 @@ At mission start, the script:
 **SAM sites:** Fixed SA-2/SA-6 sites pre-placed in ME as late-activation groups. Roaming SA-9/SA-13 dynamically spawned via `coalition.addGroup()`. All active SAMs print GPS coords on screen at mission start.
 
 **Convoys:** Three types spawn each session with randomized skill (Average/Good/High per convoy). Routes are capped at 175 km; if no base is within range the nearest is used. Island bases (Gecitkale, Ercan) only route to other Cyprus bases — no cross-water routes.
+
+**Strike missions:** Three S&D missions generated each session — one per threat level (low/med/high), order shuffled. Each mission picks a random valid location type. Currently only the ballistic missile target type is implemented. Each missile site: 1–5 Scud-B TELs (200m spread) + support infantry/vehicles (300m spread) + air defense group offset 400–900m from site center.
+
+---
+
+## Strike Mission Design
+
+### Two Mission Paths
+
+**Search & Destroy (S&D)** — fully dynamic, all units spawned via `coalition.addGroup()`. No friendlies.
+- Parameters: `location_type`, `target_type`, `threat_level` (low/med/high)
+- Each mission module declares `VALID_LOCATIONS` — the location types valid for that target
+
+**CAS (Close Air Support)** — requires pre-built ME late-activation groups for both targets and friendlies. Stubbed, not yet implemented.
+- Parameters: `location_type`, `target_type`, `threat_level`, friendlies present
+
+### S&D Location Types
+| Type | Description |
+|---|---|
+| `airbase` | 800–2500m outside a Red airbase perimeter, off-road |
+| `country` | Open terrain 15–60 km from a Red base anchor, no road snap |
+| `town` | At a named Syrian town coordinate (not valid for missile missions) |
+| `road` | Road-snapped point 15–60 km from a Red base (not valid for missile missions) |
+
+### S&D Target Types — Status
+
+| Target | Status | Valid Locations | Units |
+|---|---|---|---|
+| Ballistic missile | ✅ Done | `airbase`, `country` | 1–5 Scud-B TELs + infantry/BTR-80 support + per-threat air defense |
+| Troops | 🔲 Next | `airbase`, `town`, `road` | Infantry cluster + vehicles, no TELs |
+| VIP | 🔲 Next | `road`, `country` | Single high-value command vehicle + small escort |
+
+### S&D Air Defense Loadouts (per mission, spawned near target)
+| Threat | Units |
+|---|---|
+| Low | 1–2 ZU-23 (`Ural-375 ZU-23`) + 1–2 MANPADS (`SA-18 Igla manpad`) |
+| Med | 1 SA-9 (`Strela-1 9P31`) + 1 ZU-23 |
+| High | 1 SA-13 (`Strela-10M3`) + 1–2 Shilka (`ZSU-23-4 Shilka`) |
+
+Air defense group spawns 400–900m from site center (150m internal spread).
 
 ---
 
@@ -59,6 +100,10 @@ scripts/
         coalition_setup.lua         ← cluster definitions + CoalitionSetup.assign()
         defense_setup.lua           ← ground unit definitions + DefenseSetup.spawn()
         sam_setup.lua               ← SAM activation + spawning (SA-2/6/9/13)
+        convoy_setup.lua            ← supply/mechanized/armor convoy spawning
+        mission_setup.lua           ← thin orchestrator: calls SdMission + CasMission
+        sd_mission.lua              ← S&D missions (ballistic missile implemented; troops/VIP next)
+        cas_mission.lua             ← CAS missions (stub only, not yet implemented)
     slotblock.lua                   ← hook script (inactive, kept for reference)
 ```
 
@@ -67,6 +112,9 @@ scripts/
 - `DefenseSetup.spawn(assignments)` → spawns ground defenses at all Red bases
 - `SamSetup.spawn(clusterSides, assignments)` → activates/spawns all SAM systems
 - `ConvoySetup.spawn(clusterSides, assignments)` → spawns supply, mechanized, and armor convoys
+- `MissionSetup.generate(assignments)` → orchestrates all mission types
+- `SdMission.generate(assignments)` → spawns S&D missions (one per threat level)
+- `CasMission.generate(assignments)` → stub, no-op
 
 ### Mission Editor Trigger
 - **Type:** ONCE
@@ -223,13 +271,18 @@ Active SAMs are printed on screen for 60 seconds at mission start with GPS coord
 - [x] Expand cluster coverage to all Syria map airbases
 - [x] Spawn supply convoy traveling between Red airbases with F10 map circle and screen summary
 - [x] Implement mechanized-convoy and armor-convoy types
+- [x] S&D ballistic missile mission — Scud-B TELs, support group, per-threat air defense, F10 markers
 - [ ] Confirm `KAMAZ Truck` and `GAZ-3308` unit type strings (no woCar errors seen but not in debug groups yet)
 - [ ] Confirm correct DCS name for Ghabagheb airbase (currently commented out of DAMASCUS cluster)
 - [ ] Fix `world.getAirbases()` dump — returns empty at mission start, may need timer delay
 - [ ] Add more SA-2/SA-6 fixed sites (up to 8 planned)
 - [ ] Remove `Log.dumpLateGroupUnits` call from init.lua and debug groups A/B/C/D from ME once no longer needed
+- [ ] S&D: troops mission — infantry cluster + vehicles at airbase/town/road location
+- [ ] S&D: VIP mission — single command vehicle + small escort at road/country location
+- [ ] S&D: randomizer to mix target types across the 3 per-session missions (currently all missile)
+- [ ] CAS: design pre-built ME group naming convention for targets and friendlies
+- [ ] CAS: implement fuel depot / ammo dump target type
 - [ ] F10 menu for mission info / admin commands
-- [ ] Randomized individual strike missions
 - [ ] Investigate why airfield icons don't change color in singleplayer
 
 ---
