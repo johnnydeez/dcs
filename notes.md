@@ -16,7 +16,7 @@ Mission starts with a randomized layout of Red and Blue bases across the Syria m
 
 ---
 
-## Current Status — Session 7 Complete
+## Current Status — Session 8 Complete
 
 At mission start, the script:
 1. Randomizes which contested clusters go Red vs Blue
@@ -30,7 +30,8 @@ At mission start, the script:
 9. Spawns one supply convoy, one mechanized convoy, and one armor convoy — each on a different route between Red airbases
 10. Draws a labeled green circle (27km radius) on the F10 map at each convoy's estimated 35-minute position
 11. Prints a combined convoy summary on screen (route, heading, GPS per convoy) for 180 seconds
-12. Generates 3 S&D strike missions (one per threat level: low/med/high), draws orange circles on F10 map, prints GPS and mission summary on screen for 180 seconds
+12. Generates 3 S&D strike missions (one per threat level: low/med/high), draws orange circles on F10 map, prints GPS + target + launch time on screen for 60 seconds
+13. Arms each missile site with a randomized launch timer; at expiry each surviving Scud TEL fires at a randomly selected Blue airbase (staggered 4 seconds apart)
 
 **Spawn slots:** DCS Dynamic Spawn (enabled per-airbase in the Mission Editor) correctly shows/hides player slots based on `setCoalition()`. No scripting required.
 
@@ -40,7 +41,7 @@ At mission start, the script:
 
 **Convoys:** Three types spawn each session with randomized skill (Average/Good/High per convoy). Routes are capped at 175 km; if no base is within range the nearest is used. Island bases (Gecitkale, Ercan) only route to other Cyprus bases — no cross-water routes.
 
-**Strike missions:** Three S&D missions generated each session — one per threat level (low/med/high), order shuffled. Each mission picks a random valid location type. Currently only the ballistic missile target type is implemented. Each missile site: 1–5 Scud-B TELs (200m spread) + support infantry/vehicles (300m spread) + air defense group offset 400–900m from site center.
+**Strike missions:** Three S&D missions generated each session — one per threat level (low/med/high), order shuffled. Each mission picks a random valid location type. Currently only the ballistic missile target type is implemented. Each missile site: 1–5 Scud-B TELs (each its own 1-unit group, 200m spread) + support infantry/vehicles (300m spread) + air defense group offset 400–900m from site center. Site positions are retried up to 10 times to avoid spawning in water. Launch timers currently set to 2–3 min for testing.
 
 ---
 
@@ -95,7 +96,7 @@ scripts/
     init.lua                        ← entry point, loaded by mission trigger
     lib/
         logger.lua                  ← global Log table (Log.info/warn/error/debug)
-        spawner.lua                 ← position helpers + coalition.addGroup wrapper
+        spawner.lua                 ← position helpers, coalition.addGroup wrapper, fireGroups, isOnLand
     modules/
         coalition_setup.lua         ← cluster definitions + CoalitionSetup.assign()
         defense_setup.lua           ← ground unit definitions + DefenseSetup.spawn()
@@ -135,6 +136,7 @@ scripts/
 - **Map visualization:** `trigger.action.circleToAll()` with 5000m radius circles
 - **SAM fixed sites:** Pre-placed in ME as late-activation groups, activated by script — gives precise real-world placement
 - **SAM roaming units:** Dynamically spawned via `coalition.addGroup()` — SA-9/SA-13 are mobile, random placement fits
+- **Scud TEL spawning:** One DCS group per TEL (not one group with N units) — required to get each launcher to fire independently via its group controller
 
 ---
 
@@ -220,7 +222,7 @@ Active SAMs are printed on screen for 60 seconds at mission start with GPS coord
 - Use `coalition.addGroup(countryId, Group.Category.GROUND, groupData)` to spawn ground units dynamically
 - `land.getClosestPointOnRoads("roads", x, y)` returns two values `rx, ry` — NOT a table (indexing it causes a script error)
 - Wrong unit type names are silently replaced with Leopard-2; check dcs.log for `woCar: Unit X is unknown`
-- Confirmed correct type strings: `Soldier AK`, `Soldier RPG`, `BTR-80`, `SA-18 Igla manpad`, `Ural-375 ZU-23`, `Ural-4320-31`
+- Confirmed correct type strings: `Soldier AK`, `Soldier RPG`, `BTR-80`, `SA-18 Igla manpad`, `Ural-375 ZU-23`, `Ural-4320-31`, `KAMAZ Truck`
 - DCS replaces unknown unit types with Leopard-2 (not a crash, easy to miss without checking the log)
 
 ### Late-Activation Groups
@@ -260,6 +262,23 @@ Active SAMs are printed on screen for 60 seconds at mission start with GPS coord
 - Currently returns empty at T+0.3s on Syria map (timing issue suspected); dump not yet useful for name verification
 - Workaround: check airbase name mismatches from WARN log lines at mission start
 
+### Ballistic Missile (Scud-B) Firing
+- `unit:getController():setTask({id="FireAtPoint",...})` does NOT work reliably for Scud-B — only one unit in the group responds regardless of how many are in it
+- **Fix:** spawn each TEL as its own 1-unit group; command each group controller independently
+- `group:getController():setTask({id="FireAtPoint", params={point={x=north,y=east}, expendQty=1, expendQtyEnabled=true}})` works correctly per group
+- Stagger fire orders by scheduling each group's command via `timer.scheduleFunction` with a cumulative delay (e.g. 4s apart)
+- Always look up the group by name at fire time (`Group.getByName(name)`) rather than storing unit/group references at spawn time — references from 2+ minutes earlier can behave unexpectedly
+
+### Surface Type Check
+- `land.getSurfaceType({x=north, y=east})` returns `land.SurfaceType.LAND`, `SHALLOW_WATER`, `WATER`, `ROAD`, or `RUNWAY`
+- Use to reject water positions for mission spawns; retry up to N times before accepting the last candidate
+- Only applied to S&D/CAS mission spawning — convoy/defense/SAM spawning is anchored close enough to airbases that water is not a practical issue
+
+### DCS Timer and Screen Messages
+- `timer.getAbsTime()` returns seconds since midnight of the mission day — use for displaying human-readable game clock times (format with `% 86400` then convert to HH:MM:SS)
+- `outText` called every second with a short duration creates a live countdown display but will stomp on other active `outText` messages — use a static one-time `outText` instead and show the computed launch time in game clock format
+- `timer.scheduleFunction(fn, arg, t)` requires `t` to be strictly in the future; scheduling at exactly `timer.getTime()` (delay=0) may be silently dropped — use a minimum offset of 2+ seconds
+
 ---
 
 ## Open Questions / Next Steps
@@ -272,7 +291,11 @@ Active SAMs are printed on screen for 60 seconds at mission start with GPS coord
 - [x] Spawn supply convoy traveling between Red airbases with F10 map circle and screen summary
 - [x] Implement mechanized-convoy and armor-convoy types
 - [x] S&D ballistic missile mission — Scud-B TELs, support group, per-threat air defense, F10 markers
-- [ ] Confirm `KAMAZ Truck` and `GAZ-3308` unit type strings (no woCar errors seen but not in debug groups yet)
+- [x] Scud-B TELs fire at a random Blue base on a randomized launch timer; staggered salvo, survivors only
+- [x] Confirm `KAMAZ Truck` unit type string — confirmed working
+- [ ] Confirm `Scud_B` type string — appears correct (missiles fire), not yet explicitly verified via getTypeName()
+- [ ] Confirm `GAZ-3308` unit type string (no woCar errors seen but not in debug groups yet)
+- [ ] Increase Scud launch timers from 2–3 min (testing) to 10–25 min for real play
 - [ ] Confirm correct DCS name for Ghabagheb airbase (currently commented out of DAMASCUS cluster)
 - [ ] Fix `world.getAirbases()` dump — returns empty at mission start, may need timer delay
 - [ ] Add more SA-2/SA-6 fixed sites (up to 8 planned)

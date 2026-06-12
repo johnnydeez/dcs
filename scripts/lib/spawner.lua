@@ -97,6 +97,57 @@ function Spawner.formatLL(vec3)
     return string.format("%s%d°%02d'%02d\"  %s%d°%02d'%02d\"", latH, latD, latM, latS, lonH, lonD, lonM, lonS)
 end
 
+-- Returns true if pos {x, y, alt} is on land (not water or shallow water).
+function Spawner.isOnLand(pos)
+    local st = land.getSurfaceType({ x = pos.x, y = pos.y })
+    return st == land.SurfaceType.LAND
+        or st == land.SurfaceType.ROAD
+        or st == land.SurfaceType.RUNWAY
+end
+
+-- Returns true if the terrain within radius metres of pos is flat enough for unit spawning.
+-- Samples 8 evenly-spaced perimeter points plus the center; rejects if max-min height > maxDelta.
+function Spawner.isFlatEnough(pos, radius, maxDelta)
+    radius   = radius   or 150
+    maxDelta = maxDelta or 25
+    local minH = land.getHeight({ x = pos.x, y = pos.y })
+    local maxH = minH
+    for i = 0, 7 do
+        local a  = i * math.pi / 4
+        local sx = pos.x + radius * math.cos(a)
+        local sy = pos.y + radius * math.sin(a)
+        local h  = land.getHeight({ x = sx, y = sy })
+        if h < minH then minH = h end
+        if h > maxH then maxH = h end
+    end
+    return (maxH - minH) <= maxDelta
+end
+
+-- Issues FireAtPoint to a list of group names via each group's controller, staggered by staggerSecs.
+-- Groups that no longer exist at fire time are silently skipped (destroyed).
+-- targetVec3: Vec3 {x=north, y=alt, z=east}
+function Spawner.fireGroups(groupNames, targetVec3, staggerSecs)
+    local firePoint = { x = targetVec3.x, y = targetVec3.z }
+    local now   = timer.getTime()
+    local delay = 2  -- minimum offset so first schedule is always in the future
+    for _, name in ipairs(groupNames) do
+        local gn = name
+        timer.scheduleFunction(function(_, _t)
+            local grp = Group.getByName(gn)
+            if grp then
+                grp:getController():setTask({
+                    id = "FireAtPoint",
+                    params = { point = firePoint, expendQty = 1, expendQtyEnabled = true }
+                })
+                Log.info("Spawner.fireGroups: '" .. gn .. "' ordered to fire")
+            else
+                Log.info("Spawner.fireGroups: '" .. gn .. "' not found (destroyed)")
+            end
+        end, nil, now + delay)
+        delay = delay + staggerSecs
+    end
+end
+
 -- Activates a late-activation group placed in the Mission Editor.
 function Spawner.activateGroup(groupName)
     local grp = Group.getByName(groupName)
