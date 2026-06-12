@@ -19,6 +19,7 @@ local SAM_SITES = {
     { sa2 = "RED_Sanliurfa_SA2",     sa6 = "RED_Sanliurfa_SA6",     region = "TURKEY"   },
     { sa2 = "RED_BasselAlAssad_SA2", sa6 = "RED_BasselAlAssad_SA6", region = "RED_CORE" },
     { sa2 = "RED_Damascus_SA2",      sa6 = "RED_Damascus_SA6",      region = "DAMASCUS" },
+    { sa2 = "RED_Aleppo_SA2",        sa6 = "RED_Aleppo_SA6",        region = "ALEPPO"   },
 }
 
 -- ============================================================
@@ -180,7 +181,7 @@ function SamSetup.spawn(clusterSides, assignments)
             table.insert(lines, "    " .. entry.ll)
         end
     end
-    trigger.action.outText(table.concat(lines, "\n"), 180)
+    trigger.action.outText(table.concat(lines, "\n"), 300)
 
     Log.info("--- SAM Site Activation Complete ---")
 end
