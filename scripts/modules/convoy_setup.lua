@@ -209,7 +209,7 @@ function ConvoySetup.spawn(clusterSides, assignments)
 
     if #redBases < 2 then
         Log.warn("ConvoySetup: need at least 2 Red airbases — skipping all convoys")
-        trigger.action.outText("=== CONVOYS ===\n  (insufficient Red territory — convoys skipped)", 180)
+        trigger.action.outText("=== CONVOYS ===\n  (insufficient Red territory — convoys skipped)", 300)
         return
     end
 
@@ -298,6 +298,6 @@ function ConvoySetup.spawn(clusterSides, assignments)
         end
     end
 
-    trigger.action.outText(table.concat(lines, "\n"), 180)
+    trigger.action.outText(table.concat(lines, "\n"), 300)
     Log.info("--- Convoy Spawn Complete ---")
 end
