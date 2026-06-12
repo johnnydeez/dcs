@@ -81,6 +81,22 @@ function Spawner.spawnGroundGroup(countryId, pos, unitDefs, options)
     return grp
 end
 
+-- Converts a Vec3 to a DMS coordinate string, e.g. "N34°45'12\"  E036°26'08\"".
+function Spawner.formatLL(vec3)
+    local lat, lon = coord.LOtoLL(vec3)
+    local function dms(deg)
+        local d = math.floor(math.abs(deg))
+        local m = math.floor((math.abs(deg) - d) * 60)
+        local s = math.floor(((math.abs(deg) - d) * 60 - m) * 60)
+        return d, m, s
+    end
+    local latD, latM, latS = dms(lat)
+    local lonD, lonM, lonS = dms(lon)
+    local latH = lat >= 0 and "N" or "S"
+    local lonH = lon >= 0 and "E" or "W"
+    return string.format("%s%d°%02d'%02d\"  %s%d°%02d'%02d\"", latH, latD, latM, latS, lonH, lonD, lonM, lonS)
+end
+
 -- Activates a late-activation group placed in the Mission Editor.
 function Spawner.activateGroup(groupName)
     local grp = Group.getByName(groupName)

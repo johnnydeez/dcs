@@ -273,16 +273,12 @@ function CoalitionSetup.assign()
         end
     end
 
-    -- ── Mission-start summary (visible on screen for 60 s) ───
     local lines = { "=== MISSION START ===" }
     table.insert(lines, "BLUE territory:")
     for _, n in ipairs(results.blue) do table.insert(lines, "  + " .. n) end
     table.insert(lines, "RED territory:")
     for _, n in ipairs(results.red)  do table.insert(lines, "  - " .. n) end
-    local summary = table.concat(lines, "\n")
-
-    trigger.action.outText(summary, 180)
-    Log.info(summary)
+    Log.info(table.concat(lines, "\n"))
     Log.info("--- Coalition Assignment Complete ---")
 
     return assignments, clusterSides

@@ -56,22 +56,6 @@ local function activateGroup(name)
     return true
 end
 
--- Converts a DCS Vec3 to a formatted "N35°07'24"  E036°29'12"" string.
-local function formatLL(vec3)
-    local lat, lon = coord.LOtoLL(vec3)
-    local function dms(deg)
-        local d = math.floor(math.abs(deg))
-        local m = math.floor((math.abs(deg) - d) * 60)
-        local s = math.floor(((math.abs(deg) - d) * 60 - m) * 60)
-        return d, m, s
-    end
-    local latD, latM, latS = dms(lat)
-    local lonD, lonM, lonS = dms(lon)
-    local latH = lat >= 0 and "N" or "S"
-    local lonH = lon >= 0 and "E" or "W"
-    return string.format("%s%d°%02d'%02d\"  %s%d°%02d'%02d\"", latH, latD, latM, latS, lonH, lonD, lonM, lonS)
-end
-
 -- Returns the position of unit 1 in a named group, or nil.
 local function groupPos(name)
     local grp = Group.getByName(name)
@@ -114,7 +98,7 @@ local function spawnRoaming(redBaseNames, activated)
 
                 if grp then
                     local loc = atBase and ("airbase: " .. baseName) or ("field near " .. baseName)
-                    local ll  = formatLL(grp:getUnit(1):getPoint())
+                    local ll  = Spawner.formatLL(grp:getUnit(1):getPoint())
                     Log.info(string.format("  Spawned %s (%s)  %s", grpName, loc, ll))
                     table.insert(activated, { label = def.name .. "  " .. loc, ll = ll })
                 end
@@ -158,7 +142,7 @@ function SamSetup.spawn(clusterSides, assignments)
     if #redSites > 0 and math.random(100) <= 10 then
         sa2Site = redSites[math.random(#redSites)]
         if activateGroup(sa2Site.sa2) then
-            local ll  = formatLL(groupPos(sa2Site.sa2))
+            local ll  = Spawner.formatLL(groupPos(sa2Site.sa2))
             Log.info("  Activated SA-2: " .. sa2Site.sa2 .. "  " .. ll)
             table.insert(activated, { label = "SA-2  " .. sa2Site.sa2, ll = ll })
         end
@@ -172,7 +156,7 @@ function SamSetup.spawn(clusterSides, assignments)
             Log.debug("  SA-6 skipped at SA-2 site: " .. site.sa6)
         elseif math.random(100) <= 15 then
             if activateGroup(site.sa6) then
-                local ll = formatLL(groupPos(site.sa6))
+                local ll = Spawner.formatLL(groupPos(site.sa6))
                 Log.info("  Activated SA-6: " .. site.sa6 .. "  " .. ll)
                 table.insert(activated, { label = "SA-6  " .. site.sa6, ll = ll })
             end

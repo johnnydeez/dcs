@@ -56,6 +56,7 @@ local SKILLS = { "Average", "Good", "High" }
 local ISLAND_BASES = {
     ["Gecitkale"] = true,
     ["Ercan"]     = true,
+    ["Gazipasa"]  = true,  -- not an island, but excluded due to convoy routing issues (units get stuck)
 }
 
 -- ============================================================
@@ -64,21 +65,6 @@ local ISLAND_BASES = {
 
 local function randomSkill()
     return SKILLS[math.random(#SKILLS)]
-end
-
-local function formatLL(vec3)
-    local lat, lon = coord.LOtoLL(vec3)
-    local function dms(deg)
-        local d = math.floor(math.abs(deg))
-        local m = math.floor((math.abs(deg) - d) * 60)
-        local s = math.floor(((math.abs(deg) - d) * 60 - m) * 60)
-        return d, m, s
-    end
-    local latD, latM, latS = dms(lat)
-    local lonD, lonM, lonS = dms(lon)
-    local latH = lat >= 0 and "N" or "S"
-    local lonH = lon >= 0 and "E" or "W"
-    return string.format("%s%d°%02d'%02d\"  %s%d°%02d'%02d\"", latH, latD, latM, latS, lonH, lonD, lonM, lonS)
 end
 
 -- Returns bearing in degrees (0=N, 90=E, clockwise) from 2D pos a to b.
@@ -295,7 +281,7 @@ function ConvoySetup.spawn(clusterSides, assignments)
                     trigger.action.markToAll(_markId, cfg.label, circleCenter, true, "")
                     _markId = _markId + 1
 
-                    local ll     = formatLL(grp:getUnit(1):getPoint())
+                    local ll     = Spawner.formatLL(grp:getUnit(1):getPoint())
                     local brg    = bearingDeg(startBase.pos2d, endBase.pos2d)
                     local dir    = bearingToDir(brg)
                     local distMi = math.floor(maxD / 1609.34 + 0.5)
