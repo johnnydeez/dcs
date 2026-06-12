@@ -46,7 +46,8 @@ local THREAT_DEFS = {
 -- "airbase"  → site hidden 800–2500m outside a Red airbase perimeter
 -- "country"  → open terrain 15–60 km from a Red base anchor, no road snap
 -- Other mission types (troops, VIP, CAS) will declare their own valid lists.
-local VALID_LOCATIONS = { "airbase", "country" }
+-- 3:1 country:airbase weighting — missile sites cluster near airfields without this
+local VALID_LOCATIONS = { "country", "country", "country", "airbase" }
 
 -- ── Helpers ──────────────────────────────────────────────────────
 
@@ -75,6 +76,27 @@ local function buildThreatDefs(threatLevel)
     return defs
 end
 
+-- Returns a random Blue base name and its Vec3, or nil, nil if none available.
+local function pickBlueTarget(assignments)
+    local pool = {}
+    for _, a in ipairs(assignments) do
+        if a.side == coalition.side.BLUE then
+            table.insert(pool, a.name)
+        end
+    end
+    if #pool == 0 then
+        Log.warn("SdMission.pickBlueTarget: no Blue bases in assignments")
+        return nil, nil
+    end
+    local name = pick(pool)
+    local ab = Airbase.getByName(name)
+    if not ab then
+        Log.warn("SdMission.pickBlueTarget: Airbase.getByName failed for '" .. name .. "'")
+        return nil, nil
+    end
+    return name, ab:getPoint()
+end
+
 -- Returns label (string) and site Vec3, or nil on failure.
 local function resolveSite(ltype, assignments)
     local pool = {}
@@ -96,15 +118,25 @@ local function resolveSite(ltype, assignments)
     end
     local abVec3 = ab:getPoint()
 
+    local minD, maxD
     if ltype == "airbase" then
-        -- Site hidden 800–2500m outside the runway perimeter, off-road.
-        local p = Spawner.nearPos(abVec3, 800, 2500, false)
-        return "outskirts of " .. baseName, posToVec3(p)
+        minD, maxD = 800, 2500
+    else
+        minD, maxD = 15000, 60000
     end
 
-    -- country: open terrain 15–60 km from a Red base anchor, no road snap.
-    local p = Spawner.nearPos(abVec3, 15000, 60000, false)
-    return "countryside near " .. baseName, posToVec3(p)
+    local p
+    for attempt = 1, 10 do
+        p = Spawner.nearPos(abVec3, minD, maxD, false)
+        if Spawner.isOnLand(p) and Spawner.isFlatEnough(p) then break end
+        if attempt == 10 then
+            Log.warn("SdMission.resolveSite: all retries failed land/flat check near " .. baseName)
+        end
+    end
+
+    local locationLabel = ltype == "airbase" and ("outskirts of " .. baseName)
+                                              or  ("countryside near " .. baseName)
+    return locationLabel, posToVec3(p)
 end
 
 -- ── Spawn one S&D missile mission ────────────────────────────────
@@ -118,16 +150,24 @@ local function spawnOneMission(idx, ltype, threat, assignments)
 
     local sitePos = vec3ToPos(siteVec3)   -- {x,y,alt} for spawnGroundGroup
 
-    -- 1. TEL group: 1–5 Scud-B launchers clustered together.
-    local telCount = math.random(1, 5)
-    local telDefs  = {}
+    -- 1. TEL groups: one group per launcher so each group controller fires independently.
+    local telCount      = math.random(1, 5)
+    local telGroupNames = {}
     for i = 1, telCount do
-        table.insert(telDefs, { type = SCUD_TYPE })
+        local gName  = "SD_M" .. idx .. "_tel_" .. i
+        local telPos
+        for attempt = 1, 10 do
+            telPos = Spawner.nearPos(siteVec3, 0, TEL_SPREAD, false)
+            if Spawner.isFlatEnough(telPos, 75, 20) then break end
+            if attempt == 10 then
+                Log.warn("SdMission: M" .. idx .. " TEL " .. i .. " could not find flat ground, using best candidate")
+            end
+        end
+        Spawner.spawnGroundGroup(country.id.CJTF_RED, telPos, {{ type = SCUD_TYPE }}, {
+            name = gName,
+        })
+        table.insert(telGroupNames, gName)
     end
-    Spawner.spawnGroundGroup(country.id.CJTF_RED, sitePos, telDefs, {
-        name   = "SD_M" .. idx .. "_tels",
-        spread = TEL_SPREAD,
-    })
 
     -- 2. Support group: infantry and vehicles guarding the site.
     local supDefs = {}
@@ -147,7 +187,10 @@ local function spawnOneMission(idx, ltype, threat, assignments)
         spread = AIRDEF_SPREAD,
     })
 
-    -- 4. F10 circle and label.
+    -- 4. Blue target base for the launch order.
+    local targetName, targetVec3 = pickBlueTarget(assignments)
+
+    -- 5. F10 circle and label.
     trigger.action.circleToAll(-1, _markId, siteVec3, MISSION_RADIUS, MISSION_LINE, MISSION_FILL, 1, true, "")
     _markId = _markId + 1
     trigger.action.markToAll(_markId,
@@ -156,13 +199,24 @@ local function spawnOneMission(idx, ltype, threat, assignments)
     _markId = _markId + 1
 
     return {
-        idx      = idx,
-        ltype    = ltype,
-        label    = label,
-        threat   = threat,
-        telCount = telCount,
-        pos      = siteVec3,
+        idx          = idx,
+        ltype        = ltype,
+        label        = label,
+        threat       = threat,
+        telCount     = telCount,
+        pos          = siteVec3,
+        telGroupNames = telGroupNames,
+        targetName   = targetName,
+        targetVec3   = targetVec3,
     }
+end
+
+-- ── Helpers ──────────────────────────────────────────────────────
+
+-- Formats an absolute DCS mission time (seconds since midnight) as HH:MM:SS.
+local function formatAbsTime(t)
+    local s = math.floor(t) % 86400
+    return string.format("%02d:%02d:%02d", math.floor(s / 3600), math.floor((s % 3600) / 60), s % 60)
 end
 
 -- ── Public API ────────────────────────────────────────────────────
@@ -183,21 +237,39 @@ function SdMission.generate(assignments)
         local m     = spawnOneMission(i, ltype, threat, assignments)
         if m then
             table.insert(missions, m)
-            Log.info(string.format("  M%d: %s / threat=%s / %d TELs @ %s",
-                m.idx, m.label, m.threat, m.telCount, Spawner.formatLL(m.pos)))
+            Log.info(string.format("  M%d: %s / threat=%s / %d TELs @ %s → %s",
+                m.idx, m.label, m.threat, m.telCount,
+                Spawner.formatLL(m.pos), m.targetName or "no target"))
         end
     end
 
-    -- Screen summary.
+    -- Schedule fire timers and build static screen summary.
     local lines = { "=== STRIKE MISSIONS (S&D) ===" }
     for _, m in ipairs(missions) do
-        table.insert(lines, string.format(
-            "M%d: Ballistic Missile Site — %s  [Air: %s | %d launcher%s]",
-            m.idx, m.label, m.threat:upper(), m.telCount,
-            m.telCount > 1 and "s" or ""))
-        table.insert(lines, "   GPS: " .. Spawner.formatLL(m.pos))
+        local launchers = m.telCount == 1 and "1 launcher" or (m.telCount .. " launchers")
+        if m.targetName and m.targetVec3 then
+            local duration   = math.random(120, 180)  -- 2–3 min for testing; increase later
+            local launchTime = formatAbsTime(timer.getAbsTime() + duration)
+            local gNames = m.telGroupNames
+            local tVec3  = m.targetVec3
+            timer.scheduleFunction(function(_, _t)
+                Log.info("SdMission: M" .. m.idx .. " launch — " .. #gNames .. " TEL(s) → " .. m.targetName)
+                Spawner.fireGroups(gNames, tVec3, 4)
+            end, nil, timer.getTime() + duration)
+            Log.info(string.format("  M%d: launch in %ds at %s → %s", m.idx, duration, launchTime, m.targetName))
+            table.insert(lines, string.format(
+                "\nM%d [%s] Missile Site — %s\n   GPS: %s\n   Target: %s | Launch: %s | %s",
+                m.idx, m.threat:upper(), m.label,
+                Spawner.formatLL(m.pos), m.targetName, launchTime, launchers))
+        else
+            Log.warn("SdMission: M" .. m.idx .. " has no Blue target, skipping fire timer")
+            table.insert(lines, string.format(
+                "\nM%d [%s] Missile Site — %s\n   GPS: %s\n   %s | No target assigned",
+                m.idx, m.threat:upper(), m.label,
+                Spawner.formatLL(m.pos), launchers))
+        end
     end
-    trigger.action.outText(table.concat(lines, "\n"), 180)
+    trigger.action.outText(table.concat(lines, "\n"), 60)
 
     Log.info("--- S&D Mission Generation Complete ---")
 end
