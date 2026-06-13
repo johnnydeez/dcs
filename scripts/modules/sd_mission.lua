@@ -377,7 +377,7 @@ function SdMission.generate(assignments, missionsMenu)
         if m.mtype == "missile" then
             local launchers = m.telCount == 1 and "1 launcher" or (m.telCount .. " launchers")
             if m.targetName and m.targetVec3 then
-                local duration   = math.random(120, 180)  -- 2–3 min for testing; increase later
+                local duration   = math.random(600, 7200)  -- 10–120 min
                 local launchTime = formatAbsTime(timer.getAbsTime() + duration)
                 local gNames = m.telGroupNames
                 local tVec3  = m.targetVec3

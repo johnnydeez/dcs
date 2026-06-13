@@ -41,11 +41,13 @@ if not load("modules\\convoy_setup.lua")    then return end
 if not load("modules\\cas_mission.lua")     then return end
 if not load("modules\\sd_mission.lua")      then return end
 if not load("modules\\mission_setup.lua")   then return end
+if not load("modules\\cost_config.lua")     then return end
+if not load("modules\\cost_logic.lua")      then return end
+if not load("modules\\cost_ui.lua")         then return end
 
 -- ── Run startup sequence ─────────────────────────────────────
 local assignments, clusterSides = CoalitionSetup.assign()
 DefenseSetup.spawn(assignments)
-SamSetup.spawn(clusterSides, assignments)
 
 local samMenu      = missionCommands.addSubMenuForCoalition(coalition.side.BLUE, "SAM Threats")
 local missionsMenu = missionCommands.addSubMenuForCoalition(coalition.side.BLUE, "Missions")
