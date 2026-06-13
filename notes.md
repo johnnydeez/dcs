@@ -16,7 +16,7 @@ Mission starts with a randomized layout of Red and Blue bases across the Syria m
 
 ---
 
-## Current Status — Session 9 Complete
+## Current Status — Session 10 Complete
 
 At mission start, the script:
 1. Randomizes which contested clusters go Red vs Blue
@@ -31,8 +31,10 @@ At mission start, the script:
 10. Draws a labeled green circle (27km radius) on the F10 map at each convoy's estimated 35-minute position
 11. Prints a combined convoy summary on screen for 300 seconds
 12. Generates 2 S&D strike missions per session — one ballistic missile (M1) and one VIP (M2), each with a randomly assigned threat level. Draws orange circles on F10 map, prints info on screen for 300 seconds
-13. Arms each missile site with a randomized launch timer; at expiry each surviving Scud TEL fires at a randomly selected Blue airbase (staggered 4 seconds apart)
+13. Arms each missile site with a randomized launch timer (10–120 minutes); at expiry each surviving Scud TEL fires at a randomly selected Blue airbase (staggered 4 seconds apart)
 14. Populates two F10 menu submenus: **SAM Threats** (one entry per active SAM) and **Missions** (convoys + strike missions); each entry shows a 60-second info readout on click
+15. Tracks per-player mission cost score throughout the session — munitions charged on `S_EVENT_SHOT`, aircraft losses charged on DEAD/CRASH/EJECTION (waived if pilot lands at a Blue airbase), kill credits attributed via HIT→DEAD chain
+16. Displays score via **Show Mission Score** F10 command (per player group) and auto-broadcasts every 5 minutes
 
 **Spawn slots:** DCS Dynamic Spawn (enabled per-airbase in the Mission Editor) correctly shows/hides player slots based on `setCoalition()`. No scripting required.
 
@@ -115,6 +117,9 @@ scripts/
         mission_setup.lua           ← thin orchestrator: calls SdMission + CasMission
         sd_mission.lua              ← S&D missions (ballistic missile + VIP implemented; troops next)
         cas_mission.lua             ← CAS missions (stub only, not yet implemented)
+        cost_config.lua             ← cost tracker: aircraft/munition costs + enemy kill values
+        cost_logic.lua              ← cost tracker: DCS event handler, per-player spent/earned state
+        cost_ui.lua                 ← cost tracker: score display, F10 menu, 5-min auto-broadcast
     slotblock.lua                   ← hook script (inactive, kept for reference)
 ```
 
@@ -126,6 +131,10 @@ scripts/
 - `MissionSetup.generate(assignments, missionsMenu)` → orchestrates all mission types
 - `SdMission.generate(assignments, missionsMenu)` → spawns S&D missions; adds entries to missionsMenu
 - `CasMission.generate(assignments, missionsMenu)` → stub, no-op
+- `CostTracker.playerScores` → per-player `{ spent, earned, net }` tables (read by cost_ui)
+- `CostTracker.getPlayerSummary(name)` → formatted single-player score string
+- `CostTracker.getTeamTotals()` → `totalSpent, totalEarned, totalNet, formattedString`
+- cost_ui self-initializes via `timer.scheduleFunction` at load time; no explicit call needed from init.lua
 
 ### Mission Editor Trigger
 - **Type:** ONCE
@@ -296,6 +305,13 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - Stagger fire orders by scheduling each group's command via `timer.scheduleFunction` with a cumulative delay (e.g. 4s apart)
 - Always look up the group by name at fire time (`Group.getByName(name)`) rather than storing unit/group references at spawn time — references from 2+ minutes earlier can behave unexpectedly
 
+### DCS Event System — S_EVENT_DEAD
+- `S_EVENT_DEAD` fires for **weapons** (missiles, bombs hitting the ground) as well as units and statics — always check `Object.Category.UNIT` before calling any Unit-specific method
+- `event.initiator` for a weapon's DEAD event is a Weapon object; Weapon does not have `getID()`, `getGroup()`, `getTypeName()`, etc. — calling them throws "attempt to call method 'getID' (a nil value)"
+- **Fix:** add `if deadUnit:getCategory() ~= Object.Category.UNIT then return end` immediately after the nil check at the top of the DEAD handler
+- `getGroup()` can also return nil when DEAD fires for a unit (the group is already gone by the time the event fires) — guard before chaining `:getID()`
+- At mission init, `getPlayerName()` can briefly return a player name for phantom slot-initialization units; add `unit:isExist()` check before charging costs or sending messages
+
 ### Surface Type Check
 - `land.getSurfaceType({x=north, y=east})` returns `land.SurfaceType.LAND`, `SHALLOW_WATER`, `WATER`, `ROAD`, or `RUNWAY`
 - Use to reject water positions for mission spawns; retry up to N times before accepting the last candidate
@@ -305,6 +321,10 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - `timer.getAbsTime()` returns seconds since midnight of the mission day — use for displaying human-readable game clock times (format with `% 86400` then convert to HH:MM:SS)
 - `outText` called every second with a short duration creates a live countdown display but will stomp on other active `outText` messages — use a static one-time `outText` instead and show the computed launch time in game clock format
 - `timer.scheduleFunction(fn, arg, t)` requires `t` to be strictly in the future; scheduling at exactly `timer.getTime()` (delay=0) may be silently dropped — use a minimum offset of 2+ seconds
+
+### init.lua Load Order
+- Each module with side effects (SAM spawning, convoy spawning, etc.) must be called **once** — calling `SamSetup.spawn()` twice (once without the menu handle, once with) double-spawns all SAM groups silently
+- Modules that self-initialize via `timer.scheduleFunction` at load time (e.g. cost_ui) need no explicit call in the startup sequence — loading the file is enough
 
 ### F10 Radio Menu
 - `missionCommands.addSubMenuForCoalition(coa, title, parentMenu)` — creates a submenu; returns a handle used as parent for child items. Pass `nil` as parent for top-level.
@@ -333,7 +353,7 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - [ ] Confirm `Scud_B` type string — appears correct (missiles fire), not yet explicitly verified via getTypeName()
 - [ ] Confirm `GAZ-3308` unit type string (no woCar errors seen but not in debug groups yet)
 - [ ] Confirm Mi-8MT static type string — currently `"Mi-8MT"`, unverified; Group.getByName() can't find statics so needs alternate verification method
-- [ ] Increase Scud launch timers from 2–3 min (testing) to 10–25 min for real play
+- [x] Increase Scud launch timers from 2–3 min (testing) to 10–25 min for real play — set to 10–120 min
 - [ ] Confirm correct DCS name for Ghabagheb airbase (currently commented out of DAMASCUS cluster)
 - [ ] Fix `world.getAirbases()` dump — returns empty at mission start, may need timer delay
 - [ ] Add more SA-2/SA-6 fixed sites (up to 8 planned)
