@@ -16,7 +16,7 @@ Mission starts with a randomized layout of Red and Blue bases across the Syria m
 
 ---
 
-## Current Status — Session 8 Complete
+## Current Status — Session 9 Complete
 
 At mission start, the script:
 1. Randomizes which contested clusters go Red vs Blue
@@ -26,22 +26,23 @@ At mission start, the script:
 5. Spawns randomized ground defenses at every Red base
 6. Activates fixed SA-2 / SA-6 SAM sites based on territory and probability
 7. Dynamically spawns roaming SA-9 / SA-13 units at Red bases and in Red territory
-8. Prints a SAM summary on screen (type, site name, GPS coordinates) for 180 seconds
+8. Prints a SAM summary on screen for 300 seconds — GPS shown for SA-2/SA-6 fixed sites; location description only for SA-9/SA-13 roaming units
 9. Spawns one supply convoy, one mechanized convoy, and one armor convoy — each on a different route between Red airbases
 10. Draws a labeled green circle (27km radius) on the F10 map at each convoy's estimated 35-minute position
-11. Prints a combined convoy summary on screen (route, heading, GPS per convoy) for 180 seconds
-12. Generates 3 S&D strike missions (one per threat level: low/med/high), draws orange circles on F10 map, prints GPS + target + launch time on screen for 60 seconds
+11. Prints a combined convoy summary on screen for 300 seconds
+12. Generates 2 S&D strike missions per session — one ballistic missile (M1) and one VIP (M2), each with a randomly assigned threat level. Draws orange circles on F10 map, prints info on screen for 300 seconds
 13. Arms each missile site with a randomized launch timer; at expiry each surviving Scud TEL fires at a randomly selected Blue airbase (staggered 4 seconds apart)
+14. Populates two F10 menu submenus: **SAM Threats** (one entry per active SAM) and **Missions** (convoys + strike missions); each entry shows a 60-second info readout on click
 
 **Spawn slots:** DCS Dynamic Spawn (enabled per-airbase in the Mission Editor) correctly shows/hides player slots based on `setCoalition()`. No scripting required.
 
 **Ground defenses:** Each Red base gets randomized counts of AK infantry, RPG infantry, SA-18 Igla MANPADS, BTR-80, Ural trucks, and ZU-23 AAA. Each unit spawns at an independent random position 800–2000m from the airbase threshold.
 
-**SAM sites:** Fixed SA-2/SA-6 sites pre-placed in ME as late-activation groups. Roaming SA-9/SA-13 dynamically spawned via `coalition.addGroup()`. All active SAMs print GPS coords on screen at mission start.
+**SAM sites:** Fixed SA-2/SA-6 sites pre-placed in ME as late-activation groups. Roaming SA-9/SA-13 dynamically spawned via `coalition.addGroup()`. Active SAMs print to screen for 300s; GPS shown for fixed sites only.
 
 **Convoys:** Three types spawn each session with randomized skill (Average/Good/High per convoy). Routes are capped at 175 km; if no base is within range the nearest is used. Island bases (Gecitkale, Ercan) only route to other Cyprus bases — no cross-water routes.
 
-**Strike missions:** Three S&D missions generated each session — one per threat level (low/med/high), order shuffled. Each mission picks a random valid location type. Currently only the ballistic missile target type is implemented. Each missile site: 1–5 Scud-B TELs (each its own 1-unit group, 200m spread) + support infantry/vehicles (300m spread) + air defense group offset 400–900m from site center. Site positions are retried up to 10 times to avoid spawning in water. Launch timers currently set to 2–3 min for testing.
+**Strike missions:** 2 S&D missions per session — M1 (ballistic missile) and M2 (VIP), each assigned a random threat level from the shuffled pool. Spawn locations checked for land and terrain flatness before placement. Missile sites weighted 3:1 country:airbase. VIP sites use `{ country, country, road, airbase }` distribution with tighter flatness requirements.
 
 ---
 
@@ -61,16 +62,16 @@ At mission start, the script:
 |---|---|
 | `airbase` | 800–2500m outside a Red airbase perimeter, off-road |
 | `country` | Open terrain 15–60 km from a Red base anchor, no road snap |
-| `town` | At a named Syrian town coordinate (not valid for missile missions) |
-| `road` | Road-snapped point 15–60 km from a Red base (not valid for missile missions) |
+| `town` | At a named Syrian town coordinate (not valid for missile or VIP missions) |
+| `road` | Road-snapped point 15–60 km from a Red base |
 
 ### S&D Target Types — Status
 
 | Target | Status | Valid Locations | Units |
 |---|---|---|---|
 | Ballistic missile | ✅ Done | `airbase`, `country` | 1–5 Scud-B TELs + infantry/BTR-80 support + per-threat air defense |
+| VIP | ✅ Done | `airbase`, `country`, `road` | 5–8 infantry (AK/AKM), BTR-80, 2 Ural trucks, Mi-8MT static helo (type unconfirmed) + per-threat air defense |
 | Troops | 🔲 Next | `airbase`, `town`, `road` | Infantry cluster + vehicles, no TELs |
-| VIP | 🔲 Next | `road`, `country` | Single high-value command vehicle + small escort |
 
 ### S&D Air Defense Loadouts (per mission, spawned near target)
 | Threat | Units |
@@ -80,6 +81,15 @@ At mission start, the script:
 | High | 1 SA-13 (`Strela-10M3`) + 1–2 Shilka (`ZSU-23-4 Shilka`) |
 
 Air defense group spawns 400–900m from site center (150m internal spread).
+
+### Terrain Flatness Check
+All S&D mission spawn points are validated for flat terrain using `Spawner.isFlatEnough(pos, radius, maxDelta)` — samples 8 perimeter points + center, rejects if max-min height > maxDelta.
+
+| Context | Radius | Max delta | Notes |
+|---|---|---|---|
+| Missile site anchor | 150m | 25m | `resolveSite` retry loop |
+| Per-TEL position | 75m | 20m | Each TEL retried independently; needed because TEL spread (200m) exceeds site check radius |
+| VIP site anchor | 100m | 15m | Tighter — must be viable helo LZ; VIP spread (30m) is within radius so no per-unit check needed |
 
 ---
 
@@ -96,14 +106,14 @@ scripts/
     init.lua                        ← entry point, loaded by mission trigger
     lib/
         logger.lua                  ← global Log table (Log.info/warn/error/debug)
-        spawner.lua                 ← position helpers, coalition.addGroup wrapper, fireGroups, isOnLand
+        spawner.lua                 ← position helpers, coalition.addGroup wrapper, fireGroups, isOnLand, isFlatEnough
     modules/
         coalition_setup.lua         ← cluster definitions + CoalitionSetup.assign()
         defense_setup.lua           ← ground unit definitions + DefenseSetup.spawn()
         sam_setup.lua               ← SAM activation + spawning (SA-2/6/9/13)
         convoy_setup.lua            ← supply/mechanized/armor convoy spawning
         mission_setup.lua           ← thin orchestrator: calls SdMission + CasMission
-        sd_mission.lua              ← S&D missions (ballistic missile implemented; troops/VIP next)
+        sd_mission.lua              ← S&D missions (ballistic missile + VIP implemented; troops next)
         cas_mission.lua             ← CAS missions (stub only, not yet implemented)
     slotblock.lua                   ← hook script (inactive, kept for reference)
 ```
@@ -111,11 +121,11 @@ scripts/
 ### Module API
 - `CoalitionSetup.assign()` → returns `assignments` (list of `{name, side}`), `clusterSides` (cluster id → coalition.side)
 - `DefenseSetup.spawn(assignments)` → spawns ground defenses at all Red bases
-- `SamSetup.spawn(clusterSides, assignments)` → activates/spawns all SAM systems
-- `ConvoySetup.spawn(clusterSides, assignments)` → spawns supply, mechanized, and armor convoys
-- `MissionSetup.generate(assignments)` → orchestrates all mission types
-- `SdMission.generate(assignments)` → spawns S&D missions (one per threat level)
-- `CasMission.generate(assignments)` → stub, no-op
+- `SamSetup.spawn(clusterSides, assignments, samMenu)` → activates/spawns all SAM systems; adds entries to samMenu
+- `ConvoySetup.spawn(clusterSides, assignments, missionsMenu)` → spawns convoys; adds entries to missionsMenu
+- `MissionSetup.generate(assignments, missionsMenu)` → orchestrates all mission types
+- `SdMission.generate(assignments, missionsMenu)` → spawns S&D missions; adds entries to missionsMenu
+- `CasMission.generate(assignments, missionsMenu)` → stub, no-op
 
 ### Mission Editor Trigger
 - **Type:** ONCE
@@ -137,6 +147,7 @@ scripts/
 - **SAM fixed sites:** Pre-placed in ME as late-activation groups, activated by script — gives precise real-world placement
 - **SAM roaming units:** Dynamically spawned via `coalition.addGroup()` — SA-9/SA-13 are mobile, random placement fits
 - **Scud TEL spawning:** One DCS group per TEL (not one group with N units) — required to get each launcher to fire independently via its group controller
+- **VIP helo:** Spawned as static object via `coalition.addStaticObject()` — stays on the ground, not flyable AI
 
 ---
 
@@ -167,6 +178,7 @@ Pre-placed in ME as late-activation groups. Groups named `RED_<Location>_SA2` / 
 | RED_Sanliurfa | TURKEY (contested) |
 | RED_BasselAlAssad | RED_CORE (always Red) |
 | RED_Damascus | DAMASCUS (contested) |
+| RED_Aleppo | ALEPPO (contested) |
 
 Up to 8 sites planned total.
 
@@ -187,8 +199,11 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - Open terrain ring: 15,000–40,000m from a random Red airbase anchor
 - Unit type strings confirmed: `Strela-1 9P31` (SA-9), `Strela-10M3` (SA-13)
 
-### Screen Output
-Active SAMs are printed on screen for 60 seconds at mission start with GPS coordinates in DMS format.
+### Screen Output / F10 Menu
+- Active SAMs print to screen for 300 seconds at mission start
+- SA-2/SA-6 fixed sites: label + GPS coordinates
+- SA-9/SA-13 roaming: label + location description (e.g. "field near Hama") — no GPS
+- F10 **SAM Threats** submenu: one entry per active SAM; click shows same info for 60 seconds
 
 ---
 
@@ -222,8 +237,20 @@ Active SAMs are printed on screen for 60 seconds at mission start with GPS coord
 - Use `coalition.addGroup(countryId, Group.Category.GROUND, groupData)` to spawn ground units dynamically
 - `land.getClosestPointOnRoads("roads", x, y)` returns two values `rx, ry` — NOT a table (indexing it causes a script error)
 - Wrong unit type names are silently replaced with Leopard-2; check dcs.log for `woCar: Unit X is unknown`
-- Confirmed correct type strings: `Soldier AK`, `Soldier RPG`, `BTR-80`, `SA-18 Igla manpad`, `Ural-375 ZU-23`, `Ural-4320-31`, `KAMAZ Truck`
+- Confirmed correct type strings: `Soldier AK`, `Soldier RPG`, `BTR-80`, `SA-18 Igla manpad`, `Ural-375 ZU-23`, `Ural-4320-31`, `KAMAZ Truck`, `Infantry AK Ins` (AKM insurgent)
 - DCS replaces unknown unit types with Leopard-2 (not a crash, easy to miss without checking the log)
+
+### Static Object Spawning
+- Use `coalition.addStaticObject(countryId, { name, type, x, y, heading })` to place non-moving objects
+- **`Group.getByName()` cannot find static objects** — they are not groups. `dumpLateGroupUnits` will always report "not found" for a static placed in ME
+- To verify a static object's type string, you need a different approach (e.g. place it as a unit in a debug group, check type, then switch to static in ME)
+- Mi-8MT static type string is currently `"Mi-8MT"` — **unconfirmed**, watch for woCar errors
+
+### Terrain Flatness Check
+- `land.getHeight({x, y})` returns ground elevation in metres (does NOT include trees/vegetation)
+- Sample the center + 8 evenly-spaced perimeter points; reject if max-min height exceeds threshold
+- DCS has **no vegetation/forest API** — trees are part of the terrain render layer, not queryable objects
+- On Syria, most dense forest is in the western mountain ranges at higher elevations; an elevation cap (~550m) could serve as a rough proxy for avoiding forest spawns (not yet implemented)
 
 ### Late-Activation Groups
 - Place group in ME, right-click → set to Late Activation
@@ -279,6 +306,12 @@ Active SAMs are printed on screen for 60 seconds at mission start with GPS coord
 - `outText` called every second with a short duration creates a live countdown display but will stomp on other active `outText` messages — use a static one-time `outText` instead and show the computed launch time in game clock format
 - `timer.scheduleFunction(fn, arg, t)` requires `t` to be strictly in the future; scheduling at exactly `timer.getTime()` (delay=0) may be silently dropped — use a minimum offset of 2+ seconds
 
+### F10 Radio Menu
+- `missionCommands.addSubMenuForCoalition(coa, title, parentMenu)` — creates a submenu; returns a handle used as parent for child items. Pass `nil` as parent for top-level.
+- `missionCommands.addCommandForCoalition(coa, title, parentMenu, fn, args)` — adds a clickable item; `fn(args)` is called when selected
+- Create the menu handle once (e.g. in `init.lua`) and pass it as a parameter to modules that need to add entries — avoids duplicate top-level menus if two modules both call `addSubMenuForCoalition` with the same title
+- Menu is per-coalition; Blue players only see Blue menus
+
 ---
 
 ## Open Questions / Next Steps
@@ -293,19 +326,23 @@ Active SAMs are printed on screen for 60 seconds at mission start with GPS coord
 - [x] S&D ballistic missile mission — Scud-B TELs, support group, per-threat air defense, F10 markers
 - [x] Scud-B TELs fire at a random Blue base on a randomized launch timer; staggered salvo, survivors only
 - [x] Confirm `KAMAZ Truck` unit type string — confirmed working
+- [x] Confirm AKM insurgent type string — confirmed `"Infantry AK Ins"`
+- [x] S&D VIP mission — infantry + vehicles + static helo, tight cluster, per-threat air defense
+- [x] F10 menu for mission info — SAM Threats + Missions submenus implemented
+- [x] Terrain flatness check for S&D spawn positions
 - [ ] Confirm `Scud_B` type string — appears correct (missiles fire), not yet explicitly verified via getTypeName()
 - [ ] Confirm `GAZ-3308` unit type string (no woCar errors seen but not in debug groups yet)
+- [ ] Confirm Mi-8MT static type string — currently `"Mi-8MT"`, unverified; Group.getByName() can't find statics so needs alternate verification method
 - [ ] Increase Scud launch timers from 2–3 min (testing) to 10–25 min for real play
 - [ ] Confirm correct DCS name for Ghabagheb airbase (currently commented out of DAMASCUS cluster)
 - [ ] Fix `world.getAirbases()` dump — returns empty at mission start, may need timer delay
 - [ ] Add more SA-2/SA-6 fixed sites (up to 8 planned)
-- [ ] Remove `Log.dumpLateGroupUnits` call from init.lua and debug groups A/B/C/D from ME once no longer needed
+- [ ] Remove `Log.dumpLateGroupUnits` call from init.lua and debug groups from ME once type strings confirmed
 - [ ] S&D: troops mission — infantry cluster + vehicles at airbase/town/road location
-- [ ] S&D: VIP mission — single command vehicle + small escort at road/country location
-- [ ] S&D: randomizer to mix target types across the 3 per-session missions (currently all missile)
+- [ ] S&D: randomizer to mix target types when more than 2 mission types are implemented
+- [ ] VIP mission: forest/tree avoidance — no DCS vegetation API; elevation cap (~550m) as Syria-specific proxy considered, tabled for future visit
 - [ ] CAS: design pre-built ME group naming convention for targets and friendlies
 - [ ] CAS: implement fuel depot / ammo dump target type
-- [ ] F10 menu for mission info / admin commands
 - [ ] Investigate why airfield icons don't change color in singleplayer
 
 ---

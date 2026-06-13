@@ -192,7 +192,7 @@ end
 
 -- clusterSides : cluster.id → coalition.side  (from CoalitionSetup.assign())
 -- assignments  : list of { name, side }        (from CoalitionSetup.assign())
-function ConvoySetup.spawn(clusterSides, assignments)
+function ConvoySetup.spawn(clusterSides, assignments, missionsMenu)
     Log.info("--- Convoy Spawn Start ---")
 
     -- Collect all Red airbases with their 2D positions
@@ -288,6 +288,12 @@ function ConvoySetup.spawn(clusterSides, assignments)
                     table.insert(lines, string.format("  %s  (%d vehicles)", cfg.label, #unitDefs))
                     table.insert(lines, string.format("    %s → %s  |  Hdg %s  (~%d mi)", startBase.name, endBase.name, dir, distMi))
                     table.insert(lines, "    GPS: " .. ll)
+                    if missionsMenu then
+                        local infoStr = string.format("%s  (%d vehicles)\n   %s → %s  |  Hdg %s  (~%d mi)\n   GPS: %s",
+                            cfg.label, #unitDefs, startBase.name, endBase.name, dir, distMi, ll)
+                        missionCommands.addCommandForCoalition(coalition.side.BLUE, cfg.label, missionsMenu,
+                            function(text) trigger.action.outText(text, 60) end, infoStr)
+                    end
                 else
                     table.insert(lines, "  " .. cfg.label .. ": spawn failed — check dcs.log")
                 end
