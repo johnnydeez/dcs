@@ -3,7 +3,7 @@
 
 MissionSetup = {}
 
-function MissionSetup.generate(assignments)
-    SdMission.generate(assignments)
-    -- CasMission.generate(assignments)  -- not yet implemented
+function MissionSetup.generate(assignments, missionsMenu)
+    SdMission.generate(assignments, missionsMenu)
+    -- CasMission.generate(assignments, missionsMenu)  -- not yet implemented
 end

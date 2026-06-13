@@ -339,7 +339,7 @@ end
 
 -- ── Public API ────────────────────────────────────────────────────
 
-function SdMission.generate(assignments)
+function SdMission.generate(assignments, missionsMenu)
     Log.info("--- S&D Mission Generation Start ---")
 
     -- One mission per threat level; shuffle order so map presentation varies.
@@ -368,9 +368,12 @@ function SdMission.generate(assignments)
             m2.threat, Spawner.formatLL(m2.pos)))
     end
 
-    -- Schedule fire timers (missile only) and build screen summary.
-    local lines = { "=== STRIKE MISSIONS (S&D) ===" }
+    -- Schedule fire timers (missile only) and build screen summary + F10 menu entries.
+    local lines     = { "=== STRIKE MISSIONS (S&D) ===" }
+    local menuInfos = {}  -- { title, info } pairs for F10 menu callbacks
+
     for _, m in ipairs(missions) do
+        local infoStr
         if m.mtype == "missile" then
             local launchers = m.telCount == 1 and "1 launcher" or (m.telCount .. " launchers")
             if m.targetName and m.targetVec3 then
@@ -383,25 +386,43 @@ function SdMission.generate(assignments)
                     Spawner.fireGroups(gNames, tVec3, 4)
                 end, nil, timer.getTime() + duration)
                 Log.info(string.format("  M%d: launch in %ds at %s → %s", m.idx, duration, launchTime, m.targetName))
-                table.insert(lines, string.format(
-                    "\nM%d [%s] Missile Site — %s\n   GPS: %s\n   Target: %s | Launch: %s | %s",
+                infoStr = string.format(
+                    "M%d [%s] Missile Site — %s\n   GPS: %s\n   Target: %s | Launch: %s | %s",
                     m.idx, m.threat:upper(), m.label,
-                    Spawner.formatLL(m.pos), m.targetName, launchTime, launchers))
+                    Spawner.formatLL(m.pos), m.targetName, launchTime, launchers)
             else
                 Log.warn("SdMission: M" .. m.idx .. " has no Blue target, skipping fire timer")
-                table.insert(lines, string.format(
-                    "\nM%d [%s] Missile Site — %s\n   GPS: %s\n   %s | No target assigned",
+                infoStr = string.format(
+                    "M%d [%s] Missile Site — %s\n   GPS: %s\n   %s | No target assigned",
                     m.idx, m.threat:upper(), m.label,
-                    Spawner.formatLL(m.pos), launchers))
+                    Spawner.formatLL(m.pos), launchers)
             end
         elseif m.mtype == "vip" then
-            table.insert(lines, string.format(
-                "\nM%d [%s] VIP Target — %s\n   GPS: %s",
+            infoStr = string.format(
+                "M%d [%s] VIP Target — %s\n   GPS: %s",
                 m.idx, m.threat:upper(), m.label,
-                Spawner.formatLL(m.pos)))
+                Spawner.formatLL(m.pos))
+        end
+
+        if infoStr then
+            table.insert(lines, "\n" .. infoStr)
+            local menuTitle = string.format("M%d [%s] %s",
+                m.idx, m.threat:upper(),
+                m.mtype == "vip" and "VIP Target" or "Missile Site")
+            table.insert(menuInfos, { title = menuTitle, info = infoStr })
         end
     end
+
     trigger.action.outText(table.concat(lines, "\n"), 300)
+
+    -- F10 menu: one entry per mission added directly to the shared Missions menu.
+    if missionsMenu then
+        for _, entry in ipairs(menuInfos) do
+            missionCommands.addCommandForCoalition(coalition.side.BLUE, entry.title, missionsMenu,
+                function(text) trigger.action.outText(text, 60) end,
+                entry.info)
+        end
+    end
 
     Log.info("--- S&D Mission Generation Complete ---")
 end

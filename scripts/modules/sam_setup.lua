@@ -114,7 +114,7 @@ end
 
 -- clusterSides : cluster.id → coalition.side  (from CoalitionSetup.assign())
 -- assignments  : list of { name, side }        (from CoalitionSetup.assign())
-function SamSetup.spawn(clusterSides, assignments)
+function SamSetup.spawn(clusterSides, assignments, samMenu)
     Log.info("--- SAM Site Activation Start ---")
 
     -- Build Red airbase list for roaming SAM anchoring
@@ -145,7 +145,7 @@ function SamSetup.spawn(clusterSides, assignments)
         if activateGroup(sa2Site.sa2) then
             local ll  = Spawner.formatLL(groupPos(sa2Site.sa2))
             Log.info("  Activated SA-2: " .. sa2Site.sa2 .. "  " .. ll)
-            table.insert(activated, { label = "SA-2  " .. sa2Site.sa2, ll = ll })
+            table.insert(activated, { label = "SA-2  " .. sa2Site.sa2, ll = ll, gps = true })
         end
     else
         Log.info("  SA-2: did not spawn this session")
@@ -159,7 +159,7 @@ function SamSetup.spawn(clusterSides, assignments)
             if activateGroup(site.sa6) then
                 local ll = Spawner.formatLL(groupPos(site.sa6))
                 Log.info("  Activated SA-6: " .. site.sa6 .. "  " .. ll)
-                table.insert(activated, { label = "SA-6  " .. site.sa6, ll = ll })
+                table.insert(activated, { label = "SA-6  " .. site.sa6, ll = ll, gps = true })
             end
         else
             Log.debug("  SA-6 rolled off: " .. site.sa6)
@@ -178,10 +178,24 @@ function SamSetup.spawn(clusterSides, assignments)
     else
         for _, entry in ipairs(activated) do
             table.insert(lines, "  " .. entry.label)
-            table.insert(lines, "    " .. entry.ll)
+            if entry.gps then
+                table.insert(lines, "    " .. entry.ll)
+            end
         end
     end
     trigger.action.outText(table.concat(lines, "\n"), 300)
+
+    -- F10 menu: one entry per active SAM under the SAM Threats submenu.
+    if samMenu then
+        for _, entry in ipairs(activated) do
+            local infoStr = entry.label
+            if entry.gps then
+                infoStr = entry.label .. "\n   GPS: " .. entry.ll
+            end
+            missionCommands.addCommandForCoalition(coalition.side.BLUE, entry.label, samMenu,
+                function(text) trigger.action.outText(text, 60) end, infoStr)
+        end
+    end
 
     Log.info("--- SAM Site Activation Complete ---")
 end

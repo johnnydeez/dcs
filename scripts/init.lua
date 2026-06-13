@@ -46,7 +46,11 @@ if not load("modules\\mission_setup.lua")   then return end
 local assignments, clusterSides = CoalitionSetup.assign()
 DefenseSetup.spawn(assignments)
 SamSetup.spawn(clusterSides, assignments)
-ConvoySetup.spawn(clusterSides, assignments)
-MissionSetup.generate(assignments)
+
+local samMenu      = missionCommands.addSubMenuForCoalition(coalition.side.BLUE, "SAM Threats")
+local missionsMenu = missionCommands.addSubMenuForCoalition(coalition.side.BLUE, "Missions")
+SamSetup.spawn(clusterSides, assignments, samMenu)
+ConvoySetup.spawn(clusterSides, assignments, missionsMenu)
+MissionSetup.generate(assignments, missionsMenu)
 
 Log.info("Init complete.")
