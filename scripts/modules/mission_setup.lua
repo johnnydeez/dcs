@@ -5,5 +5,6 @@ MissionSetup = {}
 
 function MissionSetup.generate(assignments, missionsMenu)
     SdMission.generate(assignments, missionsMenu)
-    -- CasMission.generate(assignments, missionsMenu)  -- not yet implemented
+    local casMenu = missionCommands.addSubMenuForCoalition(coalition.side.BLUE, "CAS", missionsMenu)
+    CasMission.generate(assignments, casMenu)
 end
