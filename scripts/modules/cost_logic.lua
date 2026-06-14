@@ -19,7 +19,7 @@ CostTracker = {}
 
 -- Per-player running totals.
 -- Key   = player name string (as returned by unit:getPlayerName())
--- Value = { spent, earned, net }
+-- Value = { spent, destroyed, net }
 CostTracker.playerScores = {}
 
 -- Tracks which unit IDs have safely landed at a blue airfield.
@@ -44,6 +44,7 @@ CostTracker.lastHitBy = {}
 -- Returns the player name for a unit, or nil if AI / invalid.
 local function getPlayerName(unit)
     if not unit or not unit:isExist() then return nil end
+    if unit:getCategory() ~= Object.Category.UNIT then return nil end
     return unit:getPlayerName()  -- nil for AI units
 end
 
@@ -82,7 +83,7 @@ local function ensurePlayer(playerName)
     if not CostTracker.playerScores[playerName] then
         CostTracker.playerScores[playerName] = {
             spent  = 0,
-            earned = 0,
+            destroyed = 0,
             net    = 0,
         }
     end
@@ -94,20 +95,20 @@ local function addSpent(playerName, amount)
     ensurePlayer(playerName)
     local s = CostTracker.playerScores[playerName]
     s.spent  = s.spent + amount
-    s.net    = s.earned - s.spent
-    env.info(string.format("[CostTracker] %s SPENT %.3fM | spent=%.3f earned=%.3f net=%.3f",
-        playerName, amount, s.spent, s.earned, s.net))
+    s.net    = s.destroyed - s.spent
+    env.info(string.format("[CostTracker] %s SPENT %.3fM | spent=%.3f destroyed=%.3f net=%.3f",
+        playerName, amount, s.spent, s.destroyed, s.net))
 end
 
--- Adds to 'earned' (enemy kills). Value should be positive.
-local function addEarned(playerName, amount)
+-- Adds to 'destroyed' (enemy kills). Value should be positive.
+local function addDestroyed(playerName, amount)
     if not playerName or amount <= 0 then return end
     ensurePlayer(playerName)
     local s = CostTracker.playerScores[playerName]
-    s.earned = s.earned + amount
-    s.net    = s.earned - s.spent
-    env.info(string.format("[CostTracker] %s EARNED %.3fM | spent=%.3f earned=%.3f net=%.3f",
-        playerName, amount, s.spent, s.earned, s.net))
+    s.destroyed = s.destroyed + amount
+    s.net    = s.destroyed - s.spent
+    env.info(string.format("[CostTracker] %s DESTROYED %.3fM | spent=%.3f destroyed=%.3f net=%.3f",
+        playerName, amount, s.spent, s.destroyed, s.net))
 end
 
 -- ============================================================
@@ -139,46 +140,50 @@ function CostEventHandler:onEvent(event)
         if not playerName then return end
 
         local target = event.target
-        if target and target:isExist() then
-            CostTracker.lastHitBy[target:getID()] = playerName
-        end
+        if not target or not target:isExist() then return end
+        local cat = target:getCategory()
+        if cat ~= Object.Category.UNIT and cat ~= Object.Category.STATIC then return end
+        CostTracker.lastHitBy[target:getID()] = playerName
 
-    -- ── DEAD: unit destroyed ─────────────────────────────────
+    -- ── DEAD: unit or static destroyed ───────────────────────
     elseif event.id == world.event.S_EVENT_DEAD then
         local deadUnit = event.initiator
         if not deadUnit then return end
-        -- S_EVENT_DEAD fires for weapons (missiles, bombs) too; skip non-unit objects
-        if deadUnit:getCategory() ~= Object.Category.UNIT then return end
+        local cat = deadUnit:getCategory()
+        -- S_EVENT_DEAD fires for weapons (missiles, bombs) too; skip those
+        if cat ~= Object.Category.UNIT and cat ~= Object.Category.STATIC then return end
 
         local deadID   = deadUnit:getID()
         local deadType = deadUnit:getTypeName()
 
-        -- Case 1: A player's aircraft was destroyed
+        -- Case 1: A player's aircraft was destroyed (units only — statics have no pilot)
         -- isExist() guard filters spurious DEAD events fired during player slot init
-        local playerName = getPlayerName(deadUnit)
-        if playerName and deadUnit:isExist() then
-            if not CostTracker.safeUnits[deadID] then
-                local cost = getAircraftCost(deadType)
-                addSpent(playerName, cost)
-                -- getGroup() can return nil when DEAD fires; fall back to coalition message
-                local grp = deadUnit:getGroup()
-                local msg = string.format("Aircraft lost: -%.2fM charged to %s", cost, playerName)
-                if grp then
-                    trigger.action.outTextForGroup(grp:getID(), msg, 8, false)
-                else
-                    trigger.action.outTextForCoalition(coalition.side.BLUE, msg, 8, false)
+        if cat == Object.Category.UNIT then
+            local playerName = getPlayerName(deadUnit)
+            if playerName and deadUnit:isExist() then
+                if not CostTracker.safeUnits[deadID] then
+                    local cost = getAircraftCost(deadType)
+                    addSpent(playerName, cost)
+                    -- getGroup() can return nil when DEAD fires; fall back to coalition message
+                    local grp = deadUnit:getGroup()
+                    local msg = string.format("Aircraft lost: -%.2fM charged to %s", cost, playerName)
+                    if grp then
+                        trigger.action.outTextForGroup(grp:getID(), msg, 8, false)
+                    else
+                        trigger.action.outTextForCoalition(coalition.side.BLUE, msg, 8, false)
+                    end
                 end
+                CostTracker.safeUnits[deadID]   = nil
+                CostTracker.ejectedUnits[deadID] = nil
             end
-            CostTracker.safeUnits[deadID]   = nil
-            CostTracker.ejectedUnits[deadID] = nil
         end
 
-        -- Case 2: An enemy unit was destroyed — credit the killer
+        -- Case 2: An enemy unit or static was destroyed — credit the killer
         if isEnemyUnit(deadUnit) then
             local killer = CostTracker.lastHitBy[deadID]
             if killer then
                 local value = getKillValue(deadType)
-                addEarned(killer, value)
+                addDestroyed(killer, value)
                 CostTracker.lastHitBy[deadID] = nil
             end
         end
@@ -288,23 +293,23 @@ function CostTracker.getPlayerSummary(playerName)
     end
     local sign = s.net >= 0 and "+" or ""
     return string.format(
-        "  %-20s  Spent: %.2fM  |  Earned: %.2fM  |  Net: %s%.2fM",
-        playerName, s.spent, s.earned, sign, s.net)
+        "  %-20s  Spent: %.2fM  |  Destroyed: %.2fM  |  Net: %s%.2fM",
+        playerName, s.spent, s.destroyed, sign, s.net)
 end
 
 function CostTracker.getTeamTotals()
     local totalSpent  = 0
-    local totalEarned = 0
+    local totalDestroyed = 0
     for _, s in pairs(CostTracker.playerScores) do
         totalSpent  = totalSpent  + s.spent
-        totalEarned = totalEarned + s.earned
+        totalDestroyed = totalDestroyed + s.destroyed
     end
-    local totalNet = totalEarned - totalSpent
+    local totalNet = totalDestroyed - totalSpent
     local sign     = totalNet >= 0 and "+" or ""
-    return totalSpent, totalEarned, totalNet,
+    return totalSpent, totalDestroyed, totalNet,
         string.format(
-            "  TEAM TOTAL  Spent: %.2fM  |  Earned: %.2fM  |  Net: %s%.2fM",
-            totalSpent, totalEarned, sign, totalNet)
+            "  TEAM TOTAL  Spent: %.2fM  |  Destroyed: %.2fM  |  Net: %s%.2fM",
+            totalSpent, totalDestroyed, sign, totalNet)
 end
 
 -- ============================================================

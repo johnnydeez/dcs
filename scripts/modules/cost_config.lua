@@ -151,6 +151,8 @@ COST_CONFIG.killValue = {
     ["Strela-1 9P31"]       = 5,   -- SA-9 Gaskin (spawned by sam_setup)
     ["SA-3 S-125 TR"]       = 8,   -- SA-3 track radar
     ["5p73 s-125 ln"]       = 7,   -- SA-3 launcher
+    ["SNR_75V tr"]          = 10,  -- SA-2 Fan Song tracking radar (type string unconfirmed)
+    ["S_75M_Volhov"]        = 7,   -- SA-2 S-75 launcher (type string unconfirmed)
     ["SA-18 Igla manpad"]   = 1.0, -- MANPADS (defense_setup / sd_mission air defense)
     ["Ural-375 ZU-23"]      = 0.8, -- ZU-23 AAA gun truck
 
