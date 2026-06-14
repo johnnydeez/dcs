@@ -149,8 +149,9 @@ function CostEventHandler:onEvent(event)
     elseif event.id == world.event.S_EVENT_DEAD then
         local deadUnit = event.initiator
         if not deadUnit then return end
+        -- Weapon objects (missiles, bombs) lack getCategory entirely; skip them
+        if type(deadUnit.getCategory) ~= "function" then return end
         local cat = deadUnit:getCategory()
-        -- S_EVENT_DEAD fires for weapons (missiles, bombs) too; skip those
         if cat ~= Object.Category.UNIT and cat ~= Object.Category.STATIC then return end
 
         local deadID   = deadUnit:getID()

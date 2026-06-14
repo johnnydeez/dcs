@@ -16,7 +16,7 @@ Mission starts with a randomized layout of Red and Blue bases across the Syria m
 
 ---
 
-## Current Status — Session 10 Complete
+## Current Status — Session 11 In Progress
 
 At mission start, the script:
 1. Randomizes which contested clusters go Red vs Blue
@@ -35,6 +35,7 @@ At mission start, the script:
 14. Populates two F10 menu submenus: **SAM Threats** (one entry per active SAM) and **Missions** (convoys + strike missions); each entry shows a 60-second info readout on click
 15. Tracks per-player mission cost score throughout the session — munitions charged on `S_EVENT_SHOT`, aircraft losses charged on DEAD/CRASH/EJECTION (waived if pilot lands at a Blue airbase), kill credits attributed via HIT→DEAD chain
 16. Displays score via **Show Mission Score** F10 command (per player group) and auto-broadcasts every 5 minutes
+17. Implements CAS missions via `cas_mission.lua` — first mission: **Defend Kovanli** (Kovanlı, Oğuzeli/Gaziantep). Blue late-activation groups (infantry, Bradleys, APCs, Scorpions) defend against dynamically spawned Red attackers in 1–3 groups from random bearings, force level weak/adequate/strong/overwhelming scaled against Blue defender counts, arrival time 35–120 min. Air defense threat randomized independently (low/med/high). F10 menu: **Missions > CAS > Defend Kovanli [THREAT]**
 
 **Spawn slots:** DCS Dynamic Spawn (enabled per-airbase in the Mission Editor) correctly shows/hides player slots based on `setCoalition()`. No scripting required.
 
@@ -95,6 +96,63 @@ All S&D mission spawn points are validated for flat terrain using `Spawner.isFla
 
 ---
 
+## CAS Mission Design
+
+### Mission Types
+| Type | Description |
+|---|---|
+| `blue_defending` | Blue late-activation groups hold a fixed location; Red attackers spawn dynamically and advance |
+| `red_defending` | Red holds a fixed position (late-activation or dynamic); Blue forces (if any) activate; players strike |
+
+### Mission Definition Fields
+Each entry in the `MISSIONS` table in `cas_mission.lua`:
+- `name` — internal identifier, used as group name prefix (e.g. `CAS_KOVANLI_DEFENSE_red_1`)
+- `label` — F10 display name (e.g. `"Defend Kovanli"`)
+- `mtype` — `"blue_defending"` or `"red_defending"`
+- `pos` — hardcoded Vec3 via `ll(lat, lon)` helper; town/site center for F10 circle and attack waypoint
+- `blue.groups` / `red.groups` — ME late-activation group names; activated at mission start
+- `blue.spawn_defs` + `blue.spawn_pos` / `red.spawn_defs` + `red.spawn_pos` — dynamic spawn fallback (optional)
+- `defenders` — Blue force composition for Red scaling (`{infantry, light_armor, heavy_armor}`); required for `blue_defending`
+- `airdef_anchor` — Red air defense spawn anchor for `red_defending` missions; not used for `blue_defending` (placed dynamically)
+
+### Red Attacker Spawning (blue_defending)
+- **Force level** (weak/adequate/strong/overwhelming): rolled independently per session; multipliers applied against `defenders` table to compute Red unit counts
+- **Group count** (1–3): rolled independently of force level
+- **Approach bearings**: evenly spaced with random overall rotation, so groups converge from different directions
+- **Individual groups**: each unit is its own DCS group so they pathfind independently — prevents the column-marching behaviour that occurs when units share a group controller. ±15° bearing jitter + ±15% distance jitter per unit creates natural spread across the approach cone.
+- **Spawn distance**: `attackMins × 60 × 3.1 m/s` — 3.1 m/s matches observed DCS infantry speed (~7 mph); `attackMins` = 30–120 min
+- **Vehicles lead**: armor/APCs spawn at 85% of infantry spawn distance so they arrive first and lead the assault
+- **Orbit behavior**: each unit's route ends in 3 loops of 12 waypoints around a 185m (~0.10 nm) ring centered on the town. Units engage defenders while orbiting rather than parking at a single point. Constants: `ORBIT_RADIUS = 185`, `ORBIT_STEPS = 12`, `ORBIT_LOOPS = 3`.
+- **Arrival display**: shown in F10 info and screen text as game-clock time (`attackMins × 60 − 10 min` correction applied; vehicles move at ~11 mph regardless of route speed setting so they arrive ~10 min before the raw formula)
+- **Air defense**: each AD unit is its own group; spawned within 500m of an anchor 1–2nm behind the assault force, then routes to a support position 1.5–2.5km from town on the approach bearing — within SA-13 (5km) and ZU-23 (2.5km) range of the final fight
+
+### Red Force Level Multipliers
+Multipliers are applied against the mission's `defenders` table values. Ranges randomized per session.
+| Level | Infantry mult | Light armor mult | Heavy armor mult |
+|---|---|---|---|
+| weak | 0.45–0.75 | 0.45–0.75 | 0 |
+| adequate | 1.05–1.65 | 0.9–1.35 | 0.15–0.45 |
+| strong | 2.1–3.0 | 1.65–2.4 | 0.75–1.35 |
+| overwhelming | 3.75–5.25 | 3.0–4.5 | 1.5–2.7 |
+
+*(1.5× the original values — 2× was too strong; 1.0× was too weak)*
+
+Attacking is harder than defending in DCS, so even "adequate" must slightly exceed Blue counts to be a real threat.
+
+### Red Unit Pools
+| Category | Types |
+|---|---|
+| Infantry | `Soldier AK` (×2 weight), `Infantry AK Ins`, `Soldier RPG` |
+| Light armor | `BTR-70`, `BTR-80` (×2 weight), `BMP-1`, `BRDM-2` |
+| Heavy armor | `T-55` (×2 weight), `T-72B` |
+
+### CAS Mission Inventory
+| Mission | Type | Location | Blue Groups | Status |
+|---|---|---|---|---|
+| Defend Kovanli | blue_defending | Kovanlı, Oğuzeli/Gaziantep (N36°48.672' E37°41.904') | Infantry×30, Bradley×3, AAVAPC7×5, Scorpion×2 | ✅ Implemented |
+
+---
+
 ## Script Architecture
 
 ### File Locations
@@ -116,7 +174,7 @@ scripts/
         convoy_setup.lua            ← supply/mechanized/armor convoy spawning
         mission_setup.lua           ← thin orchestrator: calls SdMission + CasMission
         sd_mission.lua              ← S&D missions (ballistic missile + VIP implemented; troops next)
-        cas_mission.lua             ← CAS missions (stub only, not yet implemented)
+        cas_mission.lua             ← CAS missions (blue_defending / red_defending; fixed locations, mixed late-activation + dynamic spawns)
         cost_config.lua             ← cost tracker: aircraft/munition costs + enemy kill values
         cost_logic.lua              ← cost tracker: DCS event handler, per-player spent/earned state
         cost_ui.lua                 ← cost tracker: score display, F10 menu, 5-min auto-broadcast
@@ -130,7 +188,7 @@ scripts/
 - `ConvoySetup.spawn(clusterSides, assignments, missionsMenu)` → spawns convoys; adds entries to missionsMenu
 - `MissionSetup.generate(assignments, missionsMenu)` → orchestrates all mission types
 - `SdMission.generate(assignments, missionsMenu)` → spawns S&D missions; adds entries to missionsMenu
-- `CasMission.generate(assignments, missionsMenu)` → stub, no-op
+- `CasMission.generate(assignments, casMenu)` → activates Blue groups, spawns Red attackers + air defense, draws F10 circles, adds entries to casMenu (Missions > CAS submenu)
 - `CostTracker.playerScores` → per-player `{ spent, earned, net }` tables (read by cost_ui)
 - `CostTracker.getPlayerSummary(name)` → formatted single-player score string
 - `CostTracker.getTeamTotals()` → `totalSpent, totalEarned, totalNet, formattedString`
@@ -246,7 +304,7 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - Use `coalition.addGroup(countryId, Group.Category.GROUND, groupData)` to spawn ground units dynamically
 - `land.getClosestPointOnRoads("roads", x, y)` returns two values `rx, ry` — NOT a table (indexing it causes a script error)
 - Wrong unit type names are silently replaced with Leopard-2; check dcs.log for `woCar: Unit X is unknown`
-- Confirmed correct type strings: `Soldier AK`, `Soldier RPG`, `BTR-80`, `SA-18 Igla manpad`, `Ural-375 ZU-23`, `Ural-4320-31`, `KAMAZ Truck`, `Infantry AK Ins` (AKM insurgent)
+- Confirmed correct type strings: `Soldier AK`, `Soldier RPG`, `BTR-80`, `SA-18 Igla manpad`, `Ural-375 ZU-23`, `Ural-4320-31`, `KAMAZ Truck`, `Infantry AK Ins` (AKM insurgent), `BMP-1`
 - DCS replaces unknown unit types with Leopard-2 (not a crash, easy to miss without checking the log)
 
 ### Static Object Spawning
@@ -308,9 +366,23 @@ Dynamically spawned each session via `coalition.addGroup()`.
 ### DCS Event System — S_EVENT_DEAD
 - `S_EVENT_DEAD` fires for **weapons** (missiles, bombs hitting the ground) as well as units and statics — always check `Object.Category.UNIT` before calling any Unit-specific method
 - `event.initiator` for a weapon's DEAD event is a Weapon object; Weapon does not have `getID()`, `getGroup()`, `getTypeName()`, etc. — calling them throws "attempt to call method 'getID' (a nil value)"
-- **Fix:** add `if deadUnit:getCategory() ~= Object.Category.UNIT then return end` immediately after the nil check at the top of the DEAD handler
+- **Fix:** add `if type(deadUnit.getCategory) ~= "function" then return end` immediately after the nil check — Weapon objects don't have `getCategory` as a method at all, so calling it throws rather than returning a filterable category value
 - `getGroup()` can also return nil when DEAD fires for a unit (the group is already gone by the time the event fires) — guard before chaining `:getID()`
 - At mission init, `getPlayerName()` can briefly return a player name for phantom slot-initialization units; add `unit:isExist()` check before charging costs or sending messages
+
+### Ground Unit AI Speed
+- DCS ground AI ignores the `speed` field in route waypoints when it falls below the unit's minimum AI speed
+- Observed speeds: vehicles ~11 mph (~4.9 m/s), infantry ~7 mph (~3.1 m/s)
+- Setting `speed = 3.1` in waypoints successfully slows vehicles in some cases but not always — infantry speed (3.1 m/s) is the reliable baseline for timing estimates
+- Use `GROUND_SPEED_MPS = 3.1` for spawn distance formula; subtract ~10 min from arrival estimates to account for vehicles running ahead of that pace
+- `INFANTRY_TYPES` set in `cas_mission.lua` is used to detect non-infantry units and spawn them 15% closer (armor-leads-infantry formation)
+
+### Moving Ground Units (Routes)
+- `coalition.addGroup()` groupData accepts a `route` field with a `points` array to give ground units waypoints
+- Route point format: `{ x=north, y=east, alt=height, type="Turning Point", action="Off Road", speed=m/s, ETA=0, ETA_locked=false }`
+- With a route, `task = "Ground Nothing"` is sufficient — units follow waypoints and engage enemies automatically
+- `Spawner.spawnGroundGroup` now accepts `options.route` and `options.task` and passes them through to `coalition.addGroup`
+- Route point coordinates use the same `x=north, y=east` convention as the `pos` format (not Vec3); for Vec3 `{x,y,z}`: route point `x = vec3.x`, `y = vec3.z`
 
 ### Surface Type Check
 - `land.getSurfaceType({x=north, y=east})` returns `land.SurfaceType.LAND`, `SHALLOW_WATER`, `WATER`, `ROAD`, or `RUNWAY`
@@ -361,8 +433,12 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - [ ] S&D: troops mission — infantry cluster + vehicles at airbase/town/road location
 - [ ] S&D: randomizer to mix target types when more than 2 mission types are implemented
 - [ ] VIP mission: forest/tree avoidance — no DCS vegetation API; elevation cap (~550m) as Syria-specific proxy considered, tabled for future visit
-- [ ] CAS: design pre-built ME group naming convention for targets and friendlies
-- [ ] CAS: implement fuel depot / ammo dump target type
+- [x] CAS: design pre-built ME group naming convention — `BLUE_CAS_<Mission>_<Type>` / `CAS_<NAME>_red_N` for dynamic
+- [x] CAS: implement first mission (Defend Kovanli) — blue_defending type, 4 force levels, 1–3 groups, 35–120 min arrival
+- [x] CAS: confirm Red attack groups move toward town — confirmed; units orbit at 185m ring rather than stopping at center
+- [x] CAS: confirm `BRDM-2` type string — confirmed `"BRDM-2"` (ColdWarAssetsPack replaces model at startup but type string unchanged; added to LIGHT_ARMOR_POOL)
+- [ ] CAS: implement red_defending mission type
+- [ ] CAS: add more missions to the MISSIONS table
 - [ ] Investigate why airfield icons don't change color in singleplayer
 
 ---

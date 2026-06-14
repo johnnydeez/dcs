@@ -66,10 +66,11 @@ function Spawner.spawnGroundGroup(countryId, pos, unitDefs, options)
 
     local grp = coalition.addGroup(countryId, Group.Category.GROUND, {
         name  = groupName,
-        task  = "Ground Nothing",
+        task  = options.task or "Ground Nothing",
         x     = pos.x,
         y     = pos.y,
         units = units,
+        route = options.route,
     })
 
     if grp then
