@@ -29,8 +29,8 @@ local function buildScoreString()
         local indicator = s.net >= 0 and "+" or "-"
 
         table.insert(lines, string.format(
-            "[%s] %-18s\n   Spent: %.2fM  Earned: %.2fM\n   Net:   %s%.2fM",
-            indicator, playerName, s.spent, s.earned, sign, s.net
+            "[%s] %-18s\n   Spent: %.2fM  Destroyed: %.2fM\n   Net:   %s%.2fM",
+            indicator, playerName, s.spent, s.destroyed, sign, s.net
         ))
         table.insert(lines, "----------------------------------")
         hasAny = true
@@ -41,12 +41,12 @@ local function buildScoreString()
         table.insert(lines, "----------------------------------")
     end
 
-    local totalSpent, totalEarned, totalNet, _ = CostTracker.getTeamTotals()
+    local totalSpent, totalDestroyed, totalNet, _ = CostTracker.getTeamTotals()
     local teamSign      = totalNet >= 0 and "+" or ""
     local teamIndicator = totalNet >= 0 and "+" or "-"
     table.insert(lines, string.format(
-        "[%s] TEAM TOTAL\n   Spent: %.2fM  Earned: %.2fM\n   Net:   %s%.2fM",
-        teamIndicator, totalSpent, totalEarned, teamSign, totalNet
+        "[%s] TEAM TOTAL\n   Spent: %.2fM  Destroyed: %.2fM\n   Net:   %s%.2fM",
+        teamIndicator, totalSpent, totalDestroyed, teamSign, totalNet
     ))
     table.insert(lines, "==================================")
 
@@ -58,25 +58,8 @@ end
 -- ============================================================
 
 local function broadcastScore()
-    local msg      = buildScoreString()
-    local duration = COST_CONFIG.display.displayDuration
-
-    -- Per-player delivery via slot lookup
-    for _, playerName in ipairs(net.get_player_list()) do
-        local unitId = net.get_slot(playerName)
-        if unitId then
-            local unit = Unit.getById(unitId)  -- getById takes numeric ID; getByName takes string name
-            if unit and unit:isExist() then
-                local group = unit:getGroup()
-                if group then
-                    trigger.action.outTextForGroup(group:getID(), msg, duration, false)
-                end
-            end
-        end
-    end
-
-    -- Coalition-wide fallback in case slot lookup returns nothing
-    trigger.action.outTextForCoalition(coalition.side.BLUE, msg, duration, false)
+    local msg = buildScoreString()
+    trigger.action.outTextForCoalition(coalition.side.BLUE, msg, COST_CONFIG.display.displayDuration, false)
 end
 
 -- ============================================================
