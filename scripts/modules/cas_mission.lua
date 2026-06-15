@@ -27,7 +27,10 @@ local MISSION_RADIUS   = 3000
 local MISSION_LINE     = { 1, 0.75, 0, 1    }   -- amber, distinct from S&D orange / convoy green
 local MISSION_FILL     = { 1, 0.75, 0, 0.15 }
 local _markId          = 3100
-local GROUND_SPEED_MPS = 3.1   -- ~7 mph; matches observed DCS infantry speed; vehicles set to same
+local GROUND_SPEED_MPS = 5.0   -- 5 m/s; observed DCS ground unit AI speed
+local CONTACT_DIST     = 2400  -- ~1.5 miles; approx range at which tanks first engage defenders
+local FRONTAGE         = 2000  -- metres; width of each group's attack line
+local FAN_OUT_DIST     = 3700  -- ~2 nm; re-spread waypoint after terrain choke points
 local ORBIT_RADIUS     = 185   -- ~0.10 nm; orbit ring around the defended position
 local ORBIT_STEPS      = 12    -- waypoints per full loop
 local ORBIT_LOOPS      = 3     -- number of full orbits before stopping
@@ -65,23 +68,23 @@ local THREAT_DEFS = {
 local FORCE_LEVELS = {
     weak = {
         infantry    = { 0.45, 0.75 },
-        light_armor = { 0.45, 0.75 },
+        light_armor = { 0.68, 1.13 },
         heavy_armor = { 0.0,  0.0  },
     },
     adequate = {
         infantry    = { 1.05, 1.65 },
-        light_armor = { 0.9,  1.35 },
-        heavy_armor = { 0.15, 0.45 },
+        light_armor = { 1.35, 2.03 },
+        heavy_armor = { 0.23, 0.68 },
     },
     strong = {
         infantry    = { 2.1,  3.0  },
-        light_armor = { 1.65, 2.4  },
-        heavy_armor = { 0.75, 1.35 },
+        light_armor = { 2.48, 3.6  },
+        heavy_armor = { 1.13, 2.03 },
     },
     overwhelming = {
         infantry    = { 3.75, 5.25 },
-        light_armor = { 3.0,  4.5  },
-        heavy_armor = { 1.5,  2.7  },
+        light_armor = { 4.5,  6.75 },
+        heavy_armor = { 2.25, 4.05 },
     },
 }
 
@@ -114,6 +117,13 @@ local MISSIONS = {
             light_armor = 5,    -- AAV-7 APCs
             heavy_armor = 5,    -- 3 Bradley IFVs + 2 Scorpion light tanks
         },
+
+        smoke_zone   = "BLUE_CAS_Kovanli_GreenSmoke",
+        battle_smoke = true,
+
+        -- Exclude southerly spawns: wall on the southern border.
+        -- math.pi = due south; math.pi/3 = ±60° exclusion (covers SE through SW).
+        spawn_arc_exclude = { math.pi, math.pi / 3 },
     },
 }
 
@@ -143,6 +153,54 @@ local function buildAirDefDefs(threat)
     return defs
 end
 
+local function spawnBattleSmoke(townPos)
+    local count = math.random(3, 7)
+    for i = 1, count do
+        local angle = math.random() * 2 * math.pi
+        local dist  = randBetween(300, 1500)
+        local nx    = townPos.x + dist * math.cos(angle)
+        local ez    = townPos.z + dist * math.sin(angle)
+        local alt   = land.getHeight({ x = nx, y = ez })
+        local pos   = { x = nx, y = alt, z = ez }
+        local name   = string.format("cas_bsmoke_%d_%d", i, math.random(9999))
+        local preset = math.random(2) == 1 and 1 or 2
+        trigger.action.effectSmokeBig(pos, preset, 0.9, name)
+    end
+    Log.info(string.format("CasMission: spawned %d battle fire/smoke effects", count))
+end
+
+local function loopSmoke(zoneName, _)
+    local zone = trigger.misc.getZone(zoneName)
+    if zone then
+        local p   = zone.point
+        local alt = land.getHeight({ x = p.x, y = p.z })
+        trigger.action.smoke({ x = p.x, y = alt, z = p.z }, trigger.smokeColor.Green)
+        timer.scheduleFunction(loopSmoke, zoneName, timer.getTime() + 270)
+    end
+end
+
+local function startSmoke(zoneName)
+    local zone = trigger.misc.getZone(zoneName)
+    if zone then
+        local p   = zone.point
+        local alt = land.getHeight({ x = p.x, y = p.z })
+        trigger.action.smoke({ x = p.x, y = alt, z = p.z }, trigger.smokeColor.Green)
+        timer.scheduleFunction(loopSmoke, zoneName, timer.getTime() + 270)
+        Log.info("CasMission: started green smoke at zone '" .. zoneName .. "'")
+    else
+        Log.warn("CasMission: smoke zone not found '" .. zoneName .. "'")
+    end
+end
+
+-- Returns true if bearing falls within the exclusion arc {center, halfWidth} (radians).
+local function bearingExcluded(b, excl)
+    if not excl then return false end
+    local diff = b - excl[1]
+    while diff >  math.pi do diff = diff - 2 * math.pi end
+    while diff < -math.pi do diff = diff + 2 * math.pi end
+    return math.abs(diff) < excl[2]
+end
+
 local function activateGroups(groups)
     if not groups then return end
     for _, name in ipairs(groups) do
@@ -166,14 +224,17 @@ local function spawnSide(sideDef, countryId, missionName, sideLabel)
     end
 end
 
--- Route: spawn position → ORBIT_LOOPS loops around the town at ORBIT_RADIUS.
--- entryBearing is the unit's approach angle from town center so the ring entry is smooth.
+-- Route: spawn → fan-out waypoint on the 2nm ring → ORBIT_LOOPS loops around town.
+-- fanOutPos: pre-computed {x=north, y=east} on the 2nm ring; each unit has its own
+-- position spread laterally across the ring so they arrive on a wide front.
+-- entryBearing: direction from town to fanOutPos, used to start the orbit smoothly.
 -- spawnPos: {x=north, y=east, alt}; townVec3: Vec3 {x=north, y=alt, z=east}.
-local function buildOrbitRoute(spawnPos, townVec3, entryBearing)
+local function buildOrbitRoute(spawnPos, townVec3, entryBearing, fanOutPos)
     local cx = townVec3.x
     local cy = townVec3.z
     local points = {
-        { x=spawnPos.x, y=spawnPos.y, alt=spawnPos.alt, type="Turning Point", action="Off Road", speed=GROUND_SPEED_MPS, ETA=0, ETA_locked=false },
+        { x=spawnPos.x,  y=spawnPos.y,  alt=spawnPos.alt,                              type="Turning Point", action="Off Road", speed=GROUND_SPEED_MPS, ETA=0, ETA_locked=false },
+        { x=fanOutPos.x, y=fanOutPos.y, alt=land.getHeight({x=fanOutPos.x, y=fanOutPos.y}), type="Turning Point", action="Off Road", speed=GROUND_SPEED_MPS, ETA=0, ETA_locked=false },
     }
     for i = 0, ORBIT_STEPS * ORBIT_LOOPS - 1 do
         local a  = entryBearing + i * (2 * math.pi / ORBIT_STEPS)
@@ -226,40 +287,65 @@ local function spawnRedAttackers(def, threat)
     local forceLevel = forceLevelPool[math.random(#forceLevelPool)]
 
     local groupCount = math.random(1, 3)
-    local attackMins = math.random(30, 120)
-    local spawnDist  = attackMins * 60 * GROUND_SPEED_MPS   -- metres from town
+    local attackMins = math.random(30, 45)
+    local spawnDist  = attackMins * 60 * GROUND_SPEED_MPS + CONTACT_DIST   -- metres from town
 
-    local budgets    = computeGroupBudgets(def.defenders, forceLevel, groupCount)
-    local totalUnits = 0
+    local budgets       = computeGroupBudgets(def.defenders, forceLevel, groupCount)
+    local totalUnits    = 0
+    local groupBearings = {}
 
     -- Groups approach from evenly-spaced bearings with a random overall rotation.
-    local bearingOffset = math.random() * 2 * math.pi
+    -- Retry until no group bearing falls inside the mission's exclusion arc (if any).
+    local bearingOffset
+    for _ = 1, 30 do
+        bearingOffset = math.random() * 2 * math.pi
+        local ok = true
+        for i = 1, groupCount do
+            local b = bearingOffset + (i - 1) * (2 * math.pi / groupCount)
+            if bearingExcluded(b, def.spawn_arc_exclude) then ok = false; break end
+        end
+        if ok then break end
+    end
 
     for i = 1, groupCount do
         local bearing  = bearingOffset + (i - 1) * (2 * math.pi / groupCount)
         local unitDefs = buildUnitDefs(budgets[i])
 
-        -- Each unit is its own DCS group so they pathfind independently instead of
-        -- marching in a single column. ±15° bearing jitter + ±15% distance jitter
-        -- gives natural spread across the approach cone.
+        -- Line-of-departure: units spread evenly along a line perpendicular to the
+        -- approach bearing at spawn distance. Each advances straight toward town from
+        -- its own lateral position, keeping the front spread until the orbit ring.
+        local n        = #unitDefs
+        local perpBear = bearing + math.pi / 2
+        local cx       = def.pos.x + spawnDist * math.cos(bearing)
+        local cy       = def.pos.z + spawnDist * math.sin(bearing)
+
         for j, udef in ipairs(unitDefs) do
-            local unitBearing = bearing + (math.random() - 0.5) * math.rad(30)
-            local unitDist    = spawnDist * randBetween(0.85, 1.15)
-            if not INFANTRY_TYPES[udef.type] then
-                unitDist = unitDist * 0.85   -- vehicles lead; spawn ~15% closer to objective
-            end
-            local sx = def.pos.x + unitDist * math.cos(unitBearing)
-            local sy = def.pos.z + unitDist * math.sin(unitBearing)
-            local uPos = { x = sx, y = sy, alt = land.getHeight({x = sx, y = sy}) }
+            local t             = n > 1 and (j - 1) / (n - 1) - 0.5 or 0  -- -0.5 to 0.5
+            local lateralOffset = t * FRONTAGE
+            local depthJitter   = spawnDist * randBetween(-0.07, 0.07)
+            local sx = cx + lateralOffset * math.cos(perpBear) + depthJitter * math.cos(bearing)
+            local sy = cy + lateralOffset * math.sin(perpBear) + depthJitter * math.sin(bearing)
+
+            -- Fan-out waypoint: same lateral spread as spawn, placed on the 2nm ring.
+            -- Small depth jitter per unit so they don't line up on a perfectly flat front.
+            local fanDist  = FAN_OUT_DIST * randBetween(0.93, 1.07)
+            local fwx      = def.pos.x + fanDist * math.cos(bearing) + lateralOffset * math.cos(perpBear)
+            local fwy      = def.pos.z + fanDist * math.sin(bearing) + lateralOffset * math.sin(perpBear)
+            local fanOutPos    = { x = fwx, y = fwy }
+            local entryBearing = math.atan2(fwy - def.pos.z, fwx - def.pos.x)
+
+            local uPos = { x = sx, y = sy, alt = land.getHeight({ x = sx, y = sy }) }
             Spawner.spawnGroundGroup(country.id.CJTF_RED, uPos, { udef }, {
                 name  = "CAS_" .. def.name .. "_red_" .. i .. "_" .. j,
-                route = buildOrbitRoute(uPos, def.pos, unitBearing),
+                route = buildOrbitRoute(uPos, def.pos, entryBearing, fanOutPos),
             })
         end
 
         totalUnits = totalUnits + #unitDefs
-        Log.info(string.format("CasMission: Red group %d/%d @ bearing %.0f°, dist=%.0fm, %d units (force=%s)",
-            i, groupCount, math.deg(bearing) % 360, spawnDist, #unitDefs, forceLevel))
+        local hdg = math.floor(math.deg(bearing) % 360 + 0.5)
+        table.insert(groupBearings, hdg)
+        Log.info(string.format("CasMission: Red group %d/%d @ bearing %03d°, dist=%.0fm, %d units (force=%s)",
+            i, groupCount, hdg, spawnDist, #unitDefs, forceLevel))
     end
 
     -- Air defense: spawns 1–2 nm behind the assault force, then routes to a support
@@ -297,11 +383,12 @@ local function spawnRedAttackers(def, threat)
     end
 
     return {
-        groupCount  = groupCount,
-        forceLevel  = forceLevel,
-        attackMins  = attackMins,
-        totalUnits  = totalUnits,
-        arrivalTime = timer.getAbsTime() + math.max(30, attackMins * 60 - 10 * 60),
+        groupCount    = groupCount,
+        forceLevel    = forceLevel,
+        attackMins    = attackMins,
+        totalUnits    = totalUnits,
+        arrivalTime   = timer.getAbsTime() + attackMins * 60,
+        groupBearings = groupBearings,
     }
 end
 
@@ -322,6 +409,13 @@ local function spawnOneMission(def, threat)
             name   = "CAS_" .. def.name .. "_airdef",
             spread = 150,
         })
+    end
+
+    if def.smoke_zone then
+        startSmoke(def.smoke_zone)
+    end
+    if def.battle_smoke then
+        spawnBattleSmoke(def.pos)
     end
 
     trigger.action.circleToAll(-1, _markId, def.pos, MISSION_RADIUS, MISSION_LINE, MISSION_FILL, 1, true, "")
@@ -363,11 +457,16 @@ function CasMission.generate(assignments, casMenu)
             local infoStr
             if result.redInfo then
                 local ri = result.redInfo
+                local hdgStrs = {}
+                for _, h in ipairs(ri.groupBearings) do
+                    table.insert(hdgStrs, string.format("%03d°", h))
+                end
                 infoStr = string.format(
-                    "CAS: %s [%s]\n   DEFEND — Blue force under attack\n   GPS: %s\n   Attackers: %d units in %d group%s\n   Est. arrival: %s",
+                    "CAS: %s [%s]\n   DEFEND — Blue force under attack\n   GPS: %s\n   Attackers: %d units in %d group%s\n   Attack radials: %s\n   Est. first contact: %s",
                     result.label, result.threat:upper(),
                     Spawner.formatLL(result.pos),
                     ri.totalUnits, ri.groupCount, ri.groupCount > 1 and "s" or "",
+                    table.concat(hdgStrs, ", "),
                     formatAbsTime(ri.arrivalTime))
             else
                 infoStr = string.format(

@@ -33,9 +33,9 @@ At mission start, the script:
 12. Generates 2 S&D strike missions per session — one ballistic missile (M1) and one VIP (M2), each with a randomly assigned threat level. Draws orange circles on F10 map, prints info on screen for 300 seconds
 13. Arms each missile site with a randomized launch timer (10–120 minutes); at expiry each surviving Scud TEL fires at a randomly selected Blue airbase (staggered 4 seconds apart)
 14. Populates two F10 menu submenus: **SAM Threats** (one entry per active SAM) and **Missions** (convoys + strike missions); each entry shows a 60-second info readout on click
-15. Tracks per-player mission cost score throughout the session — munitions charged on `S_EVENT_SHOT`, aircraft losses charged on DEAD/CRASH/EJECTION (waived if pilot lands at a Blue airbase), kill credits attributed via HIT→DEAD chain
-16. Displays score via **Show Mission Score** F10 command (per player group) and auto-broadcasts every 5 minutes
-17. Implements CAS missions via `cas_mission.lua` — first mission: **Defend Kovanli** (Kovanlı, Oğuzeli/Gaziantep). Blue late-activation groups (infantry, Bradleys, APCs, Scorpions) defend against dynamically spawned Red attackers in 1–3 groups from random bearings, force level weak/adequate/strong/overwhelming scaled against Blue defender counts, arrival time 35–120 min. Air defense threat randomized independently (low/med/high). F10 menu: **Missions > CAS > Defend Kovanli [THREAT]**
+15. Tracks per-player mission cost score throughout the session — munitions charged on `S_EVENT_SHOT`, aircraft losses charged on DEAD/CRASH/EJECTION (waived if pilot lands at a Blue airbase), kill credits attributed via `S_EVENT_KILL` (primary) with HIT→DEAD chain as fallback for multi-hit kills and statics
+16. Displays score via **Show Mission Score** F10 command (per player group), auto-broadcasts every 5 minutes, and shows a brief on-screen `[Kill +X.XXM]` flash on each confirmed kill
+17. Implements CAS missions via `cas_mission.lua` — first mission: **Defend Kovanli** (Kovanlı, Oğuzeli/Gaziantep). Blue late-activation groups (infantry, Bradleys, APCs, Scorpions) defend against dynamically spawned Red attackers in 1–3 groups, force level weak/adequate/strong/overwhelming, attack time 30–45 min. Units spawn on a 2,000m line-of-departure perpendicular to approach, with a fan-out waypoint at ~2nm to re-spread after terrain choke points. Bearing exclusion prevents south spawns. Attack radials, force level, and estimated first contact time shown in F10 info. Green smoke loops at a trigger zone; 3–7 `effectSmokeBig` fire effects scattered around town for atmosphere. Air defense threat randomized independently. F10 menu: **Missions > CAS > Defend Kovanli [THREAT]**
 
 **Spawn slots:** DCS Dynamic Spawn (enabled per-airbase in the Mission Editor) correctly shows/hides player slots based on `setCoalition()`. No scripting required.
 
@@ -114,28 +114,33 @@ Each entry in the `MISSIONS` table in `cas_mission.lua`:
 - `blue.spawn_defs` + `blue.spawn_pos` / `red.spawn_defs` + `red.spawn_pos` — dynamic spawn fallback (optional)
 - `defenders` — Blue force composition for Red scaling (`{infantry, light_armor, heavy_armor}`); required for `blue_defending`
 - `airdef_anchor` — Red air defense spawn anchor for `red_defending` missions; not used for `blue_defending` (placed dynamically)
+- `smoke_zone` — (optional) trigger zone name; looping green smoke emitted there every 270s as a friendly position marker
+- `battle_smoke` — (optional) boolean; spawns 3–7 `effectSmokeBig` fire effects scattered 300–1,500m around town center to simulate previous combat
+- `spawn_arc_exclude` — (optional) `{center_bearing, half_width}` in radians; group approach bearings that fall within this arc are rejected and re-rolled. center is a DCS math angle (0=N, π/2=E, π=S, −π/2=W).
 
 ### Red Attacker Spawning (blue_defending)
 - **Force level** (weak/adequate/strong/overwhelming): rolled independently per session; multipliers applied against `defenders` table to compute Red unit counts
 - **Group count** (1–3): rolled independently of force level
-- **Approach bearings**: evenly spaced with random overall rotation, so groups converge from different directions
-- **Individual groups**: each unit is its own DCS group so they pathfind independently — prevents the column-marching behaviour that occurs when units share a group controller. ±15° bearing jitter + ±15% distance jitter per unit creates natural spread across the approach cone.
-- **Spawn distance**: `attackMins × 60 × 3.1 m/s` — 3.1 m/s matches observed DCS infantry speed (~7 mph); `attackMins` = 30–120 min
-- **Vehicles lead**: armor/APCs spawn at 85% of infantry spawn distance so they arrive first and lead the assault
-- **Orbit behavior**: each unit's route ends in 3 loops of 12 waypoints around a 185m (~0.10 nm) ring centered on the town. Units engage defenders while orbiting rather than parking at a single point. Constants: `ORBIT_RADIUS = 185`, `ORBIT_STEPS = 12`, `ORBIT_LOOPS = 3`.
-- **Arrival display**: shown in F10 info and screen text as game-clock time (`attackMins × 60 − 10 min` correction applied; vehicles move at ~11 mph regardless of route speed setting so they arrive ~10 min before the raw formula)
+- **Approach bearings**: evenly spaced with random overall rotation; re-rolled up to 30 times if any bearing falls inside the mission's `spawn_arc_exclude` arc
+- **Line of departure**: units within each group spawn evenly spread across a `FRONTAGE = 2,000m` line perpendicular to the group's approach bearing. Each unit gets a ±7% depth jitter so the line isn't perfectly flat.
+- **Spawn distance**: `attackMins × 60 × GROUND_SPEED_MPS + CONTACT_DIST` — `GROUND_SPEED_MPS = 5.0` (observed DCS ground AI speed in m/s regardless of waypoint speed setting); `CONTACT_DIST = 2,400m` (~1.5 miles, approximate tank engagement range); `attackMins` = 30–45 min
+- **Fan-out waypoint**: each unit's route includes an intermediate waypoint at ~2nm (`FAN_OUT_DIST = 3,700m`, ±7% depth jitter per unit) from town, placed at the unit's assigned lateral position. Re-spreads units to a 2,000m front after terrain choke points force them into columns.
+- **Route per unit**: spawn → fan-out waypoint → orbit ring
+- **Orbit behavior**: each unit's route ends in 3 loops of 12 waypoints around a 185m (~0.10 nm) ring centered on the town. Units engage defenders while orbiting. Constants: `ORBIT_RADIUS = 185`, `ORBIT_STEPS = 12`, `ORBIT_LOOPS = 3`.
+- **Arrival display**: `attackMins` directly represents minutes until first contact (tanks engaging at ~1.5 miles out); no correction factor needed. Shown as game-clock time in F10 info as "Est. first contact".
+- **Attack radials**: F10 info shows the compass heading (000°–360°) from town to each group's spawn position, one per group. Pilots use these to orient their attack.
 - **Air defense**: each AD unit is its own group; spawned within 500m of an anchor 1–2nm behind the assault force, then routes to a support position 1.5–2.5km from town on the approach bearing — within SA-13 (5km) and ZU-23 (2.5km) range of the final fight
 
 ### Red Force Level Multipliers
 Multipliers are applied against the mission's `defenders` table values. Ranges randomized per session.
 | Level | Infantry mult | Light armor mult | Heavy armor mult |
 |---|---|---|---|
-| weak | 0.45–0.75 | 0.45–0.75 | 0 |
-| adequate | 1.05–1.65 | 0.9–1.35 | 0.15–0.45 |
-| strong | 2.1–3.0 | 1.65–2.4 | 0.75–1.35 |
-| overwhelming | 3.75–5.25 | 3.0–4.5 | 1.5–2.7 |
+| weak | 0.45–0.75 | 0.68–1.13 | 0 |
+| adequate | 1.05–1.65 | 1.35–2.03 | 0.23–0.68 |
+| strong | 2.1–3.0 | 2.48–3.6 | 1.13–2.03 |
+| overwhelming | 3.75–5.25 | 4.5–6.75 | 2.25–4.05 |
 
-*(1.5× the original values — 2× was too strong; 1.0× was too weak)*
+*(vehicle multipliers increased 50% from prior values — original values produced too few vehicles in practice)*
 
 Attacking is harder than defending in DCS, so even "adequate" must slightly exceed Blue counts to be a real threat.
 
@@ -149,7 +154,7 @@ Attacking is harder than defending in DCS, so even "adequate" must slightly exce
 ### CAS Mission Inventory
 | Mission | Type | Location | Blue Groups | Status |
 |---|---|---|---|---|
-| Defend Kovanli | blue_defending | Kovanlı, Oğuzeli/Gaziantep (N36°48.672' E37°41.904') | Infantry×30, Bradley×3, AAVAPC7×5, Scorpion×2 | ✅ Implemented |
+| Defend Kovanli | blue_defending | Kovanlı, Oğuzeli/Gaziantep (N36°48.672' E37°41.904') | Infantry×30, Bradley×3, AAVAPC7×5, Scorpion×2 | ✅ Implemented — smoke_zone, battle_smoke, spawn_arc_exclude (no south) |
 
 ---
 
@@ -369,6 +374,22 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - **Fix:** add `if type(deadUnit.getCategory) ~= "function" then return end` immediately after the nil check — Weapon objects don't have `getCategory` as a method at all, so calling it throws rather than returning a filterable category value
 - `getGroup()` can also return nil when DEAD fires for a unit (the group is already gone by the time the event fires) — guard before chaining `:getID()`
 - At mission init, `getPlayerName()` can briefly return a player name for phantom slot-initialization units; add `unit:isExist()` check before charging costs or sending messages
+- **`isExist()` returns `false` inside a DEAD handler** — the unit is dead so it reports non-existent, even though the object reference is still valid for the duration of the callback. Never gate on `isExist()` when you need to call `getCoalition()` or `getTypeName()` on the dead unit; call them directly.
+
+### DCS Event System — Kill Attribution (cost_logic.lua lessons)
+- **`S_EVENT_HIT` initiator is the weapon, not the aircraft** — for missiles and bombs, `event.initiator` in the HIT callback is the weapon object (e.g. the AGM-65D), not the player's aircraft. `getPlayerName()` on a weapon returns nil. Fix: use `event.initiator:getLauncher()` to walk back to the pilot, or cache `weapon→player` at `S_EVENT_SHOT` time when the aircraft is the initiator.
+- **`S_EVENT_KILL` is the correct hook for kill attribution** — fires with `event.initiator` = killing unit (player aircraft) and `event.target` = killed unit directly. Much more reliable than HIT→DEAD chain. Confirmed firing in DCS 2.9.26.
+- **`S_EVENT_KILL` fires before `S_EVENT_DEAD`** for direct one-shot kills (e.g. Maverick direct hit): the engine sequence is `type=hit` → `type=kill` → `type=bda` → (later) `type=dead`. If using HIT→DEAD chain, a one-shot kill can trigger DEAD before the HIT callback has finished writing to `lastHitBy`.
+- **`getID()` may differ between event types** — `event.target:getID()` in a HIT callback and `event.initiator:getID()` in a DEAD callback for the same unit can return different values (mission ID vs object handle). Use `getName()` as the key for cross-event tracking tables; unit names are stable within a session.
+- **Double-count guard required** — if both `S_EVENT_KILL` and the `S_EVENT_DEAD` fallback can credit a kill, track credited units in a `killCredited[unitName]` table and skip DEAD Case 2 when the flag is set.
+- **CBU submunitions fire their own HIT events** — releasing a CBU-97 fires one `S_EVENT_SHOT` for the dispenser, but individual `S_EVENT_HIT` events come from BLU-108 submunitions. The submunitions are never in a weapon→player cache keyed on the parent dispenser. Use `getLauncher()` in the HIT handler to reach the pilot from the submunition.
+
+### DCS Weapon Type Name Conventions
+- `getTypeName()` returns **underscores** where weapon names contain hyphens — e.g. the engine logs `weapon=Mk-84` and `weapon=CBU-97` but Lua `getTypeName()` returns `Mk_84` and `CBU_97`. Confirmed pattern: every hyphen between alphanumeric groups becomes an underscore.
+- Confirmed from `S_EVENT_SHOT` log: `Mk_84`, `CBU_97`, `AGM_65D`, `GBU_38`
+- Engine log shows display name (e.g. `GBU-38(V)1/B`) but `getTypeName()` returns the base type key (e.g. `GBU_38`) — variant suffixes are stripped
+- Names with spaces (e.g. `Hydra-70 M151`, `GAU-8/A Avenger`) are uncertain — hyphen→underscore may or may not apply; keep both forms as aliases in the config until confirmed
+- Confirmed type name from log: `kamaz_tent_civil` (civilian KAMAZ with tent cover, all lowercase with underscores)
 
 ### Ground Unit AI Speed
 - DCS ground AI ignores the `speed` field in route waypoints when it falls below the unit's minimum AI speed
@@ -402,6 +423,21 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - `missionCommands.addSubMenuForCoalition(coa, title, parentMenu)` — creates a submenu; returns a handle used as parent for child items. Pass `nil` as parent for top-level.
 - `missionCommands.addCommandForCoalition(coa, title, parentMenu, fn, args)` — adds a clickable item; `fn(args)` is called when selected
 - Create the menu handle once (e.g. in `init.lua`) and pass it as a parameter to modules that need to add entries — avoids duplicate top-level menus if two modules both call `addSubMenuForCoalition` with the same title
+
+### Fire and Smoke Effects
+- `trigger.action.effectSmokeBig(Vec3 point, number preset, number density, string name)` — creates a persistent large fire/smoke effect (burning vehicle/structure appearance). Persists until mission end; no looping needed.
+- `trigger.action.effectSmokeSmall` does **NOT exist** — calling it throws "attempt to call field (a nil value)". There is no scripted small-fire equivalent; use preset values on `effectSmokeBig` for size variation (1 = larger, 2 = smaller in testing).
+- `trigger.action.smoke(Vec3 point, smokeColor)` — colored smoke grenade effect; dissipates after ~5 minutes. Loop with `timer.scheduleFunction` every 270s to keep it persistent.
+
+### Trigger Zones
+- `trigger.misc.getZone(name)` returns `{name, point={x,y,z}, radius}` where `point` is a Vec3.
+- `point.y` in a zone is often 0 (sea level as placed in ME) — always recompute altitude with `land.getHeight({x=p.x, y=p.z})` before passing to `trigger.action.smoke()` or other position-sensitive calls, or the effect spawns underground.
+
+### DCS Ground Unit AI Speed
+- Observed in-game speed for ground units (both infantry and vehicles) on Syria: **5 m/s** — DCS ground AI ignores waypoint speed values below its internal minimum and uses its own floor instead.
+- Use `GROUND_SPEED_MPS = 5.0` in spawn distance formulas.
+- Spawn distance for timed arrival: `attackMins × 60 × 5.0 + CONTACT_DIST` where `CONTACT_DIST` accounts for the range at which combat begins (tanks engage ~2,400m / ~1.5 miles out).
+- No arrival time correction factor is needed when the formula uses the actual observed speed and accounts for contact distance.
 - Menu is per-coalition; Blue players only see Blue menus
 
 ---
@@ -437,6 +473,13 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - [x] CAS: implement first mission (Defend Kovanli) — blue_defending type, 4 force levels, 1–3 groups, 35–120 min arrival
 - [x] CAS: confirm Red attack groups move toward town — confirmed; units orbit at 185m ring rather than stopping at center
 - [x] CAS: confirm `BRDM-2` type string — confirmed `"BRDM-2"` (ColdWarAssetsPack replaces model at startup but type string unchanged; added to LIGHT_ARMOR_POOL)
+- [x] CAS: refine Kovanli mission — attack time 30–45 min, calibrated to 5 m/s ground speed + 2,400m contact dist
+- [x] CAS: line-of-departure spawning — 2,000m frontage perpendicular to approach bearing
+- [x] CAS: fan-out waypoint at ~2nm — re-spreads units to full front width after terrain choke points
+- [x] CAS: bearing exclusion — `spawn_arc_exclude` field; Kovanli excludes south (wall on border)
+- [x] CAS: attack radials in F10 info — compass heading per group so pilots know attack vectors
+- [x] CAS: atmosphere effects — looping green smoke at trigger zone, 3–7 fire effects around town
+- [ ] CAS: confirm `effectSmokeBig` preset values — preset 1 vs 2 appearance needs in-game verification
 - [ ] CAS: implement red_defending mission type
 - [ ] CAS: add more missions to the MISSIONS table
 - [ ] Investigate why airfield icons don't change color in singleplayer
