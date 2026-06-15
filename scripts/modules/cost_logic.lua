@@ -32,10 +32,18 @@ CostTracker.safeUnits = {}
 -- Key = unitID (number), Value = true
 CostTracker.ejectedUnits = {}
 
--- Kill attribution: maps dead unit ID -> player name who last hit it.
+-- Kill attribution via HIT→DEAD chain (fallback for multi-hit kills / statics).
 -- Updated on S_EVENT_HIT, consumed on S_EVENT_DEAD.
--- Key = unitID (number), Value = playerName (string)
+-- Key = unit name (string) — more stable than getID() across event types.
 CostTracker.lastHitBy = {}
+
+-- Maps weapon object -> player name for HIT attribution when initiator is a weapon.
+-- Key = weapon userdata object, Value = playerName (string)
+CostTracker.weaponToPlayer = {}
+
+-- Tracks units already credited via S_EVENT_KILL so S_EVENT_DEAD doesn't double-count.
+-- Key = unit name (string), Value = true
+CostTracker.killCredited = {}
 
 -- ============================================================
 --  INTERNAL HELPERS
@@ -69,6 +77,7 @@ local function getAircraftCost(typeName)
 end
 
 -- Returns true if the unit belongs to the red coalition.
+-- Only safe to call on live units (isExist() == true).
 local function isEnemyUnit(unit)
     if not unit or not unit:isExist() then return false end
     return unit:getCoalition() == coalition.side.RED
@@ -111,6 +120,20 @@ local function addDestroyed(playerName, amount)
         playerName, amount, s.spent, s.destroyed, s.net))
 end
 
+-- Shows a brief kill confirmation on screen and logs the kill.
+local function creditKill(playerName, unitType, source)
+    local value = getKillValue(unitType)
+    local isDefault = (COST_CONFIG.killValue[unitType] == nil)
+    env.info(string.format("[CostTracker] KILL(%s) %s → %.3fM%s to %s",
+        source, unitType, value, isDefault and " (DEFAULT)" or "", playerName))
+    addDestroyed(playerName, value)
+    local s = CostTracker.playerScores[playerName]
+    local sign = s.net >= 0 and "+" or ""
+    local msg = string.format("[Kill +%.2fM] %s  |  Net: %s%.2fM",
+        value, unitType, sign, s.net)
+    trigger.action.outTextForCoalition(coalition.side.BLUE, msg, 6, false)
+end
+
 -- ============================================================
 --  EVENT HANDLER
 -- ============================================================
@@ -127,23 +150,79 @@ function CostEventHandler:onEvent(event)
         local weaponType = "default"
         if event.weapon and event.weapon:isExist() then
             weaponType = event.weapon:getTypeName()
+            -- Cache weapon→player for HIT attribution fallback.
+            -- In S_EVENT_HIT the initiator can be the weapon rather than the aircraft.
+            CostTracker.weaponToPlayer[event.weapon] = playerName
         end
 
         local cost = getMunitionCost(weaponType)
+        local isDefault = (COST_CONFIG.munitionCost[weaponType] == nil)
+        env.info(string.format("[CostTracker] SHOT type='%s' cost=%.4fM%s by %s",
+            weaponType, cost, isDefault and " (DEFAULT)" or "", playerName))
         if cost > 0 then
             addSpent(playerName, cost)
         end
 
-    -- ── HIT: track last player to hit each unit ──────────────
-    elseif event.id == world.event.S_EVENT_HIT then
+    -- ── KILL: primary kill attribution ───────────────────────
+    -- S_EVENT_KILL fires with event.initiator = killer unit and event.target =
+    -- killed unit. This is more direct than HIT→DEAD and handles one-shot kills
+    -- (e.g. Maverick direct hit) where DEAD fires before HIT can record lastHitBy.
+    elseif event.id == world.event.S_EVENT_KILL then
         local playerName = getPlayerName(event.initiator)
+        if not playerName then return end
+
+        local target = event.target
+        if not target then return end
+        if type(target.getCoalition) ~= "function" then return end
+        if target:getCoalition() ~= coalition.side.RED then return end
+        if type(target.getCategory) ~= "function" then return end
+        local cat = target:getCategory()
+        if cat ~= Object.Category.UNIT and cat ~= Object.Category.STATIC then return end
+
+        local unitName = target:getName()
+        local unitType = target:getTypeName()
+        CostTracker.killCredited[unitName] = true  -- suppress DEAD double-count
+        creditKill(playerName, unitType, "KILL")
+
+    -- ── HIT: record last player to hit each unit (fallback chain) ──
+    -- Primary kills are handled via S_EVENT_KILL. HIT→lastHitBy feeds S_EVENT_DEAD
+    -- as a fallback for multi-hit kills and statics (which don't trigger S_EVENT_KILL).
+    elseif event.id == world.event.S_EVENT_HIT then
+        local playerName, hitMethod
+        -- Direct: initiator is the aircraft (cannon, unguided bombs in some cases)
+        playerName = getPlayerName(event.initiator)
+        if playerName then
+            hitMethod = "direct"
+        else
+            -- getLauncher(): covers missiles, guided bombs, and CBU submunitions.
+            -- BLU-108 submunitions from CBU-97 were never cached in weaponToPlayer
+            -- because only the parent dispenser appeared in S_EVENT_SHOT.
+            local obj = event.weapon or event.initiator
+            if obj and type(obj.getLauncher) == "function" then
+                local launcher = obj:getLauncher()
+                playerName = getPlayerName(launcher)
+                if playerName then hitMethod = "getLauncher" end
+            end
+        end
+        if not playerName then
+            -- Last-resort: weapon object key (may fail if DCS re-wraps userdata)
+            local weapon = event.weapon or event.initiator
+            if weapon then
+                playerName = CostTracker.weaponToPlayer[weapon]
+                if playerName then hitMethod = "weaponCache" end
+            end
+        end
+        local targetType = event.target and event.target:getTypeName() or "nil"
+        env.info(string.format("[CostTracker] HIT target=%s by=%s via=%s",
+            targetType, tostring(playerName), tostring(hitMethod)))
         if not playerName then return end
 
         local target = event.target
         if not target or not target:isExist() then return end
         local cat = target:getCategory()
         if cat ~= Object.Category.UNIT and cat ~= Object.Category.STATIC then return end
-        CostTracker.lastHitBy[target:getID()] = playerName
+        -- Key by name: more stable than getID() which can differ between event types
+        CostTracker.lastHitBy[target:getName()] = playerName
 
     -- ── DEAD: unit or static destroyed ───────────────────────
     elseif event.id == world.event.S_EVENT_DEAD then
@@ -156,6 +235,7 @@ function CostEventHandler:onEvent(event)
 
         local deadID   = deadUnit:getID()
         local deadType = deadUnit:getTypeName()
+        local deadName = deadUnit:getName()
 
         -- Case 1: A player's aircraft was destroyed (units only — statics have no pilot)
         -- isExist() guard filters spurious DEAD events fired during player slot init
@@ -179,13 +259,24 @@ function CostEventHandler:onEvent(event)
             end
         end
 
-        -- Case 2: An enemy unit or static was destroyed — credit the killer
-        if isEnemyUnit(deadUnit) then
-            local killer = CostTracker.lastHitBy[deadID]
-            if killer then
-                local value = getKillValue(deadType)
-                addDestroyed(killer, value)
-                CostTracker.lastHitBy[deadID] = nil
+        -- Case 2: An enemy unit or static was destroyed — credit the killer.
+        -- Do NOT use isEnemyUnit() here: isExist() returns false on dead units,
+        -- so isEnemyUnit always returns false inside a DEAD handler.
+        if deadUnit:getCoalition() == coalition.side.RED then
+            if CostTracker.killCredited[deadName] then
+                -- Already credited via S_EVENT_KILL; clean up and skip.
+                CostTracker.killCredited[deadName] = nil
+                CostTracker.lastHitBy[deadName]    = nil
+                env.info(string.format("[CostTracker] DEAD RED %s — already credited via KILL", deadType))
+            else
+                -- S_EVENT_KILL didn't fire (multi-hit kill or static); use HIT→DEAD chain.
+                local killer = CostTracker.lastHitBy[deadName]
+                if killer then
+                    CostTracker.lastHitBy[deadName] = nil
+                    creditKill(killer, deadType, "DEAD")
+                else
+                    env.info(string.format("[CostTracker] DEAD RED %s — no killer attributed", deadType))
+                end
             end
         end
 

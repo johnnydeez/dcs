@@ -31,15 +31,15 @@ COST_CONFIG.display = {
 --  Values = approximate real-world flyaway cost in M USD.
 -- ============================================================
 COST_CONFIG.aircraftCost = {
-    ["A-10CII"]         = 18.0,  -- A-10C II (~$18M unit cost)
-    ["A-10C"]           = 12.0,
-    ["F-16C_50"]        = 25.0,  -- F-16C Block 50 (~$25M)
-    ["F-15C"]           = 30.0,
-    ["F-15E"]           = 43.0,
-    ["FA-18C_hornet"]   = 29.0,
-    ["AV8BNA"]          = 24.0,
-    ["Su-25T"]          = 11.0,
-    ["default"]         = 15.0,  -- Fallback for any unlisted aircraft
+    ["A-10CII"]         = 65.0,  -- A-10C II (no longer produced; estimated today's replacement cost ~$50-80M)
+    ["A-10C"]           = 55.0,  -- A-10C (earlier avionics suite)
+    ["F-16C_50"]        = 65.0,  -- F-16C Block 50 (~$60-70M in today's dollars; newer Block 70/72 is $80-90M)
+    ["F-15C"]           = 65.0,  -- F-15C (out of production; F-15EX replacement is ~$94M)
+    ["F-15E"]           = 75.0,  -- F-15E Strike Eagle (~$65-80M inflation-adjusted)
+    ["FA-18C_hornet"]   = 50.0,  -- F/A-18C legacy Hornet (out of production; Super Hornet is $65M+)
+    ["AV8BNA"]          = 40.0,  -- AV-8B Harrier II+
+    ["Su-25T"]          = 25.0,  -- Su-25T Frogfoot (Russian procurement pricing)
+    ["default"]         = 40.0,  -- Fallback for any unlisted aircraft
 }
 
 -- ============================================================
@@ -57,56 +57,61 @@ COST_CONFIG.aircraftCost = {
 COST_CONFIG.munitionCost = {
 
     -- ── Air-to-Air Missiles ──────────────────────────────────
-    ["AIM-9X"]              = 0.472,  -- Sidewinder Block II
-    ["AIM-9M"]              = 0.300,
-    ["AIM-9L"]              = 0.200,
+    -- DCS getTypeName() returns underscores where names have hyphens.
+    -- Hyphen form kept as alias until confirmed via SHOT log.
+    ["AIM_9X"]              = 0.472,  ["AIM-9X"] = 0.472,  -- Sidewinder Block II
+    ["AIM_9M"]              = 0.300,  ["AIM-9M"] = 0.300,
+    ["AIM_9L"]              = 0.200,  ["AIM-9L"] = 0.200,
 
     -- ── Air-to-Ground Missiles ───────────────────────────────
-    ["AGM-65D"]             = 0.070,  -- Maverick IR
-    ["AGM-65G"]             = 0.070,  -- Maverick IR (warhead variant)
-    ["AGM-65H"]             = 0.110,  -- Maverick CCD
-    ["AGM-65K"]             = 0.280,  -- Maverick AGM datalink
-    ["AGM-65L"]             = 0.300,  -- Maverick laser
-    ["AGM-88C"]             = 0.284,  -- HARM
+    ["AGM_65D"]             = 0.070,  ["AGM-65D"] = 0.070,  -- Maverick IR
+    ["AGM_65G"]             = 0.070,  ["AGM-65G"] = 0.070,  -- Maverick IR (warhead variant)
+    ["AGM_65H"]             = 0.110,  ["AGM-65H"] = 0.110,  -- Maverick CCD
+    ["AGM_65K"]             = 0.280,  ["AGM-65K"] = 0.280,  -- Maverick AGM datalink
+    ["AGM_65L"]             = 0.300,  ["AGM-65L"] = 0.300,  -- Maverick laser
+    ["AGM_88C"]             = 0.284,  ["AGM-88C"] = 0.284,  -- HARM
 
     -- ── Guided Bombs (Paveway series) ────────────────────────
-    ["GBU-10"]              = 0.020,  -- 2000 lb Paveway II
-    ["GBU-12"]              = 0.019,  -- 500 lb Paveway II
-    ["GBU-16"]              = 0.020,  -- 1000 lb Paveway II
+    ["GBU_10"]              = 0.020,  ["GBU-10"] = 0.020,  -- 2000 lb Paveway II
+    ["GBU_12"]              = 0.019,  ["GBU-12"] = 0.019,  -- 500 lb Paveway II
+    ["GBU_16"]              = 0.020,  ["GBU-16"] = 0.020,  -- 1000 lb Paveway II
 
     -- ── Guided Bombs (JDAM series) ───────────────────────────
-    ["GBU-31"]              = 0.025,  -- JDAM 2000 lb
-    ["GBU-31(V)3/B"]        = 0.025,  -- JDAM 2000 lb penetrator variant
-    ["GBU-32"]              = 0.022,  -- JDAM 1000 lb
-    ["GBU-38"]              = 0.021,  -- JDAM 500 lb
-    ["GBU-54"]              = 0.028,  -- Laser JDAM 500 lb
+    ["GBU_31"]              = 0.025,  ["GBU-31"] = 0.025,  -- JDAM 2000 lb
+    -- Penetrator variant: engine shows GBU-38(V)1/B → GBU_38, so this follows same pattern
+    ["GBU_31_V_3B"]         = 0.025,  ["GBU_31(V)3/B"] = 0.025,  ["GBU-31(V)3/B"] = 0.025,
+    ["GBU_32"]              = 0.022,  ["GBU-32"] = 0.022,  -- JDAM 1000 lb
+    ["GBU_38"]              = 0.021,  ["GBU-38"] = 0.021,  -- JDAM 500 lb
+    ["GBU_54"]              = 0.028,  ["GBU-54"] = 0.028,  -- Laser JDAM 500 lb
 
     -- ── Cluster Bombs ────────────────────────────────────────
-    ["CBU-87"]              = 0.014,  -- CEM unguided cluster
-    ["CBU-97"]              = 0.360,  -- SFW sensor-fuzed (expensive)
-    ["CBU-103"]             = 0.370,  -- SFW with WCMD guidance
-    ["CBU-105"]             = 0.400,  -- SFW WCMD (most capable)
+    ["CBU_87"]              = 0.014,  -- CEM unguided cluster (confirmed underscore)
+    ["CBU_97"]              = 0.360,  -- SFW sensor-fuzed (confirmed underscore from log)
+    ["CBU_103"]             = 0.370,  -- SFW with WCMD guidance
+    ["CBU_105"]             = 0.400,  -- SFW WCMD (most capable)
 
     -- ── Unguided Bombs ───────────────────────────────────────
-    ["Mk_82"]               = 0.004,  -- 500 lb iron bomb
+    ["Mk_82"]               = 0.004,  -- 500 lb iron bomb (confirmed underscore)
     ["Mk_82AIR"]            = 0.005,  -- 500 lb retarded (BSU-49 fin)
     ["Mk_82SE"]             = 0.005,  -- 500 lb Snake Eye retarded
-    ["Mk_84"]               = 0.016,  -- 2000 lb iron bomb
-    ["BDU-50LD"]            = 0.001,  -- Practice bomb (token cost)
-    ["BDU-50HD"]            = 0.001,
+    ["Mk_84"]               = 0.016,  -- 2000 lb iron bomb (confirmed underscore from log)
+    ["BDU_50LD"]            = 0.001,  ["BDU-50LD"] = 0.001,  -- Practice bomb (token cost)
+    ["BDU_50HD"]            = 0.001,  ["BDU-50HD"] = 0.001,
 
     -- ── Rockets (cost per individual rocket fired) ───────────
     --  DCS fires one S_EVENT_SHOT per rocket.
-    ["Hydra-70 M151"]       = 0.002,  -- FFAR HE
-    ["Hydra-70 M229"]       = 0.002,  -- FFAR HE (heavier)
-    ["Hydra-70 M247"]       = 0.002,  -- FFAR HEAT
-    ["Hydra-70 WTU-1/B"]    = 0.001,  -- Practice rocket
-    ["FFAR Mk5 HEAT"]       = 0.002,
-    ["Zuni Mk71"]           = 0.004,  -- 5" Zuni
+    --  Names with spaces: hyphen→underscore uncertain, both forms kept.
+    ["Hydra_70 M151"]       = 0.002,  ["Hydra-70 M151"] = 0.002,  -- FFAR HE
+    ["Hydra_70 M229"]       = 0.002,  ["Hydra-70 M229"] = 0.002,  -- FFAR HE (heavier)
+    ["Hydra_70 M247"]       = 0.002,  ["Hydra-70 M247"] = 0.002,  -- FFAR HEAT
+    ["Hydra_70 WTU-1/B"]    = 0.001,  ["Hydra-70 WTU-1/B"] = 0.001,  -- Practice rocket
+    ["FFAR Mk5 HEAT"]       = 0.002,  -- no hyphens, probably correct as-is
+    ["Zuni Mk71"]           = 0.004,  -- no hyphens, probably correct as-is
 
     -- ── Gun (cost per trigger pull — approx 50-rd GAU-8 burst)
     --  GAU-8 round ~$50 each x ~50 rds = ~$2,500 per burst
-    ["GAU-8/A Avenger"]     = 0.0025,
+    --  Slash/space in name: form uncertain, both kept.
+    ["GAU_8/A Avenger"]     = 0.0025, ["GAU-8/A Avenger"] = 0.0025,
 
     -- ── Default fallback ─────────────────────────────────────
     ["default"]             = 0.010,  -- Unknown munition
@@ -119,23 +124,23 @@ COST_CONFIG.munitionCost = {
 COST_CONFIG.killValue = {
 
     -- ── Enemy Fixed-Wing Aircraft ────────────────────────────
-    ["MiG-29A"]             = 8,
-    ["MiG-29S"]             = 10,
-    ["MiG-29G"]             = 9,
-    ["Su-27"]               = 12,
-    ["Su-30"]               = 14,
-    ["Su-33"]               = 15,
-    ["Su-25"]               = 7,
-    ["Su-25T"]              = 9,
-    ["MiG-21Bis"]           = 5,
-    ["MiG-23MLD"]           = 6,
-    ["J-11A"]               = 13,
+    ["MiG-29A"]             = 25,  -- ~$24M (2026 estimate)
+    ["MiG-29S"]             = 35,  -- modernized variant premium
+    ["MiG-29G"]             = 30,
+    ["Su-27"]               = 45,  -- ~$30M in 1997; inflation-adjusted ~$45M today
+    ["Su-30"]               = 55,  -- ~$34M export price; modern equivalent ~$55M
+    ["Su-33"]               = 60,  -- naval variant premium over Su-27
+    ["Su-25"]               = 18,  -- Frogfoot attack aircraft
+    ["Su-25T"]              = 25,  -- upgraded Frogfoot
+    ["MiG-21Bis"]           = 12,  -- late variant of aging 1960s airframe
+    ["MiG-23MLD"]           = 18,  -- late-model swing-wing
+    ["J-11A"]               = 50,  -- Chinese Su-27 derivative
 
     -- ── Enemy Helicopters ────────────────────────────────────
-    ["Mi-24V"]              = 6,   -- Hind gunship
-    ["Mi-8MT"]              = 3,   -- Hip transport
-    ["SA342M"]              = 4,   -- Gazelle armed
-    ["SA342L"]              = 3,
+    ["Mi-24V"]              = 12,  -- Hind gunship (~$12M)
+    ["Mi-8MT"]              = 8,   -- Hip transport (~$8M)
+    ["SA342M"]              = 5,   -- Gazelle armed (~$4-6M)
+    ["SA342L"]              = 4,
 
     -- ── SAM Systems ──────────────────────────────────────────
     ["S-300PS 40B6M tr"]    = 18,  -- S-300 launch vehicle
@@ -145,8 +150,8 @@ COST_CONFIG.killValue = {
     ["SA-6 Kub BM"]         = 9,   -- SA-6 launcher
     ["SA-6 Kub SR"]         = 8,   -- SA-6 radar
     ["Osa 9A33 ln"]         = 7,   -- SA-8 Gecko
-    ["2S6 Tunguska"]        = 8,   -- SA-19 combined gun/SAM
-    ["ZSU-23-4 Shilka"]     = 5,
+    ["2S6 Tunguska"]        = 10,  -- SA-19 combined gun/SAM (~$8-12M)
+    ["ZSU-23-4 Shilka"]     = 2.0, -- radar-guided AAA (~$1-2M)
     ["Strela-10M3"]         = 6,   -- SA-13 Gopher (spawned by sam_setup)
     ["Strela-1 9P31"]       = 5,   -- SA-9 Gaskin (spawned by sam_setup)
     ["SA-3 S-125 TR"]       = 8,   -- SA-3 track radar
@@ -160,20 +165,20 @@ COST_CONFIG.killValue = {
     ["Scud_B"]              = 5.0, -- Scud-B TEL (primary S&D missile mission target)
 
     -- ── Tanks & Heavy AFVs ───────────────────────────────────
-    ["T-55"]                = 2.0, -- older tank (convoy)
-    ["T-72B"]               = 3,
-    ["T-72B3"]              = 4,
-    ["T-80UD"]              = 4,
-    ["T-90"]                = 5,
-    ["CHAP_T64BV"]          = 4.0, -- T-64BV Type 2017 (CH mod, convoy)
-    ["BMP-1"]               = 2,
-    ["BMP-2"]               = 2,
-    ["BMP-3"]               = 3,
-    ["BTR-70"]              = 2,
-    ["BTR-80"]              = 2,
-    ["BRDM-2"]              = 1,
-    ["ZSU_57_2"]            = 3,
-    ["AAV7"]                = 2,
+    ["T-55"]                = 0.5, -- obsolete; surplus pricing (~$0.3-0.5M)
+    ["T-72B"]               = 2.5, -- ~$2M procurement; B variant slight premium
+    ["T-72B3"]              = 3.5, -- modernized; reactive armor + new FCS
+    ["T-80UD"]              = 4.0, -- gas turbine variant; more capable than T-72
+    ["T-90"]                = 5.5, -- ~$4-7M per research; splitting the range
+    ["CHAP_T64BV"]          = 3.0, -- T-64BV Type 2017 (CH mod, convoy)
+    ["BMP-1"]               = 0.8, -- 1960s IFV; low surplus value
+    ["BMP-2"]               = 1.5, -- upgraded IFV with 30mm autocannon
+    ["BMP-3"]               = 3.2, -- confirmed ~$3.2M (Greek export pricing)
+    ["BTR-70"]              = 0.5, -- aging 8x8 APC; widespread surplus
+    ["BTR-80"]              = 1.2, -- confirmed ~$1.2M
+    ["BRDM-2"]              = 0.4, -- light recon vehicle; cheap and obsolete
+    ["ZSU_57_2"]            = 1.5, -- twin-57mm AAA; old but still dangerous
+    ["AAV7"]                = 2.5, -- US amphibious APC (~$2.5M)
     ["CHAP_MATV"]           = 1.0, -- M-ATV (CH mod, convoy)
 
     -- ── Logistics / Soft Targets ─────────────────────────────
@@ -184,6 +189,7 @@ COST_CONFIG.killValue = {
     ["Ural-4320T"]          = 0.5,
     ["Ural-375"]            = 0.5,
     ["KAMAZ Truck"]         = 0.5,
+    ["kamaz_tent_civil"]    = 0.3,  -- civilian-style KAMAZ with tent cover (confirmed type name from log)
     ["GAZ-66"]              = 0.3,
     ["GAZ-3308"]            = 0.3,
     ["ZIL-135"]             = 0.5,
