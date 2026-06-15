@@ -20,6 +20,7 @@ local SAM_SITES = {
     { sa2 = "RED_BasselAlAssad_SA2", sa6 = "RED_BasselAlAssad_SA6", region = "RED_CORE" },
     { sa2 = "RED_Damascus_SA2",      sa6 = "RED_Damascus_SA6",      region = "DAMASCUS" },
     { sa2 = "RED_Aleppo_SA2",        sa6 = "RED_Aleppo_SA6",        region = "ALEPPO"   },
+    { sa2 = "RED_TalSiman_SA2",      sa6 = "RED_TalSiman_SA6",      region = "EUPHRATES" },
 }
 
 -- ============================================================
