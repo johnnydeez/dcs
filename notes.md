@@ -251,6 +251,7 @@ Pre-placed in ME as late-activation groups. Groups named `RED_<Location>_SA2` / 
 | RED_BasselAlAssad | RED_CORE (always Red) |
 | RED_Damascus | DAMASCUS (contested) |
 | RED_Aleppo | ALEPPO (contested) |
+| RED_TalSiman | EUPHRATES (contested) |
 
 Up to 8 sites planned total.
 
