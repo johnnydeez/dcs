@@ -73,6 +73,10 @@ local CLUSTERS = {
             "Pinarbashi",
             "Gecitkale",
             "Ercan",
+            "Chukurova",          -- Adana-Mersin
+            "Kahramanmaras",
+            "Adiyaman",
+            "Diyarbakir",
         },
     },
     {
@@ -95,6 +99,11 @@ local CLUSTERS = {
             "Prince Hassan",
             "King Hussein Air College",
             "Ruwayshid",
+            "Zarqa",               -- Jordan; name unconfirmed, verify with dumpAirbases()
+            "H4",                  -- H4 Emergency Strip, Jordan; name unconfirmed, verify with dumpAirbases()
+            "Nevatim",             -- Nevatim Airbase, Israel; name unconfirmed, verify with dumpAirbases()
+            "Hatzerim",            -- Hatzerim Airbase / Flight Academy, Israel
+            "Teyman",              -- Teyman Airfield, Israel; name unconfirmed, verify with dumpAirbases()
         },
     },
     {

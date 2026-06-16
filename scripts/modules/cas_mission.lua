@@ -121,9 +121,10 @@ local MISSIONS = {
         smoke_zone   = "BLUE_CAS_Kovanli_GreenSmoke",
         battle_smoke = true,
 
-        -- Exclude southerly spawns: wall on the southern border.
-        -- math.pi = due south; math.pi/3 = ±60° exclusion (covers SE through SW).
-        spawn_arc_exclude = { math.pi, math.pi / 3 },
+        -- Exclude bearings from 90° (due east) clockwise to 241° (WSW) through south.
+        -- The Turkey/Syria border wall blocks ground movement in that entire arc.
+        -- Center = (90+241)/2 = 165.5°; half-width = (241-90)/2 = 75.5°.
+        spawn_arc_exclude = { math.rad(165.5), math.rad(75.5) },
     },
 }
 
@@ -290,25 +291,26 @@ local function spawnRedAttackers(def, threat)
     local attackMins = math.random(30, 45)
     local spawnDist  = attackMins * 60 * GROUND_SPEED_MPS + CONTACT_DIST   -- metres from town
 
-    local budgets       = computeGroupBudgets(def.defenders, forceLevel, groupCount)
     local totalUnits    = 0
     local groupBearings = {}
 
-    -- Groups approach from evenly-spaced bearings with a random overall rotation.
-    -- Retry until no group bearing falls inside the mission's exclusion arc (if any).
-    local bearingOffset
-    for _ = 1, 30 do
-        bearingOffset = math.random() * 2 * math.pi
-        local ok = true
-        for i = 1, groupCount do
-            local b = bearingOffset + (i - 1) * (2 * math.pi / groupCount)
-            if bearingExcluded(b, def.spawn_arc_exclude) then ok = false; break end
+    -- Each group independently picks a random approach bearing, retrying up to 60
+    -- times to avoid the exclusion arc. Groups may approach from similar directions
+    -- but none will spawn in terrain that blocks movement.
+    local perGroupBearings = {}
+    for i = 1, groupCount do
+        local b = 0
+        for _ = 1, 60 do
+            b = math.random() * 2 * math.pi
+            if not bearingExcluded(b, def.spawn_arc_exclude) then break end
         end
-        if ok then break end
+        perGroupBearings[i] = b
     end
 
+    local budgets = computeGroupBudgets(def.defenders, forceLevel, groupCount)
+
     for i = 1, groupCount do
-        local bearing  = bearingOffset + (i - 1) * (2 * math.pi / groupCount)
+        local bearing  = perGroupBearings[i]
         local unitDefs = buildUnitDefs(budgets[i])
 
         -- Line-of-departure: units spread evenly along a line perpendicular to the
@@ -354,11 +356,11 @@ local function spawnRedAttackers(def, threat)
     -- Each unit is its own group with jittered spawn (500m) and destination (200m)
     -- so they remain spread out rather than clumping at the waypoint.
     local adDist    = spawnDist + randBetween(1852, 3704)
-    local adAnchorX = def.pos.x + adDist * math.cos(bearingOffset)
-    local adAnchorY = def.pos.z + adDist * math.sin(bearingOffset)
+    local adAnchorX = def.pos.x + adDist * math.cos(perGroupBearings[1])
+    local adAnchorY = def.pos.z + adDist * math.sin(perGroupBearings[1])
     local supportDist = randBetween(1500, 2500)
-    local supX = def.pos.x + supportDist * math.cos(bearingOffset)
-    local supY = def.pos.z + supportDist * math.sin(bearingOffset)
+    local supX = def.pos.x + supportDist * math.cos(perGroupBearings[1])
+    local supY = def.pos.z + supportDist * math.sin(perGroupBearings[1])
 
     local adDefs = buildAirDefDefs(threat)
     for k, adef in ipairs(adDefs) do
