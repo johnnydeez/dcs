@@ -2,10 +2,17 @@
 
 ## 1. De-sanitize MissionScripting.lua
 
-Edit `C:\Program Files\Eagle Dynamics\DCS World\Scripts\MissionScripting.lua`.
-Comment out the 6 lines inside the `do...end` sanitize block (lines 16–21):
+Run the included script to do this automatically:
 
-Use -- for comments
+1. Open a terminal as Administrator (right-click → "Run as administrator")
+2. Run: `python desanitize_dcs.py`
+3. Fully restart DCS (not just the mission)
+
+**Re-run after every DCS update** — updates reset MissionScripting.lua, which breaks script loading with `attempt to index global 'lfs' (a nil value)`.
+
+### Manual alternative
+
+Edit `C:\Program Files\Eagle Dynamics\DCS World\Scripts\MissionScripting.lua` and comment out the 6 lines inside the `do...end` sanitize block:
 
 ```lua
 do
@@ -17,8 +24,6 @@ do
     -- _G['package'] = nil
 end
 ```
-
-Requires a full DCS restart. Must be redone after every DCS update.
 
 ## 2. Copy scripts
 
