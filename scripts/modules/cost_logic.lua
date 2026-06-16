@@ -194,14 +194,19 @@ function CostEventHandler:onEvent(event)
         if playerName then
             hitMethod = "direct"
         else
-            -- getLauncher(): covers missiles, guided bombs, and CBU submunitions.
-            -- BLU-108 submunitions from CBU-97 were never cached in weaponToPlayer
-            -- because only the parent dispenser appeared in S_EVENT_SHOT.
+            -- If initiator is a Unit (has getPlayerName) but wasn't a player, it's AI — nothing to track.
+            -- Only reach getLauncher for weapon objects (e.g. CBU submunitions where the
+            -- initiator is the BLU-108 itself, not the launching aircraft).
+            if event.initiator and type(event.initiator.getPlayerName) == "function" then return end
             local obj = event.weapon or event.initiator
             if obj and type(obj.getLauncher) == "function" then
-                local launcher = obj:getLauncher()
-                playerName = getPlayerName(launcher)
-                if playerName then hitMethod = "getLauncher" end
+                local ok, launcher = pcall(function() return obj:getLauncher() end)
+                if ok and launcher then
+                    playerName = getPlayerName(launcher)
+                    if playerName then hitMethod = "getLauncher" end
+                elseif not ok then
+                    env.info("[CostTracker] HIT getLauncher failed: " .. tostring(launcher))
+                end
             end
         end
         if not playerName then
