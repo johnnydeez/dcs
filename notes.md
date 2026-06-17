@@ -19,7 +19,7 @@ Mission starts with a randomized layout of Red and Blue bases across the Syria m
 
 ---
 
-## Current Status — Session 11 In Progress
+## Current Status — Session 12 Complete
 
 At mission start, the script:
 1. Randomizes which contested clusters go Red vs Blue
@@ -39,6 +39,7 @@ At mission start, the script:
 15. Tracks per-player mission cost score throughout the session — munitions charged on `S_EVENT_SHOT`, aircraft losses charged on DEAD/CRASH/EJECTION (waived if pilot lands at a Blue airbase), kill credits attributed via `S_EVENT_KILL` (primary) with HIT→DEAD chain as fallback for multi-hit kills and statics
 16. Displays score via **Show Mission Score** F10 command (per player group), auto-broadcasts every 5 minutes, and shows a brief on-screen `[Kill +X.XXM]` flash on each confirmed kill
 17. Implements CAS missions via `cas_mission.lua` — first mission: **Defend Kovanli** (Kovanlı, Oğuzeli/Gaziantep). Blue late-activation groups (infantry, Bradleys, APCs, Scorpions) defend against dynamically spawned Red attackers in 1–3 groups, force level weak/adequate/strong/overwhelming, attack time 30–45 min. Units spawn on a 2,000m line-of-departure perpendicular to approach, with a fan-out waypoint at ~2nm to re-spread after terrain choke points. Bearing exclusion prevents south spawns. Attack radials, force level, and estimated first contact time shown in F10 info. Green smoke loops at a trigger zone; 3–7 `effectSmokeBig` fire effects scattered around town for atmosphere. Air defense threat randomized independently. F10 menu: **Missions > CAS > Defend Kovanli [THREAT]**
+18. Spawns autonomous Blue AI CAS flights every 20 minutes (`blue_air_support.lua`) — 2–4 aircraft per group (A-10C II, F-16C, F/A-18C), max 12 alive at once. Each flight departs a random Blue airbase, transits to a random Red airbase within 200nm, orbits overhead, and engages ground targets with WEAPON_FREE ROE. Group is destroyed after all aircraft land (RTB detected via `S_EVENT_LAND`).
 
 **Spawn slots:** DCS Dynamic Spawn (enabled per-airbase in the Mission Editor) correctly shows/hides player slots based on `setCoalition()`. No scripting required.
 
@@ -186,6 +187,7 @@ scripts/
         cost_config.lua             ← cost tracker: aircraft/munition costs + enemy kill values
         cost_logic.lua              ← cost tracker: DCS event handler, per-player spent/earned state
         cost_ui.lua                 ← cost tracker: score display, F10 menu, 5-min auto-broadcast
+        blue_air_support.lua        ← autonomous Blue AI CAS flights; 20-min spawn cycle, 12-aircraft cap, RTB despawn
     slotblock.lua                   ← hook script (inactive, kept for reference)
 ```
 
@@ -201,6 +203,7 @@ scripts/
 - `CostTracker.getPlayerSummary(name)` → formatted single-player score string
 - `CostTracker.getTeamTotals()` → `totalSpent, totalEarned, totalNet, formattedString`
 - cost_ui self-initializes via `timer.scheduleFunction` at load time; no explicit call needed from init.lua
+- `BlueAirSupport.init(assignments)` → registers land event handler and starts 20-min spawn loop
 
 ### Mission Editor Trigger
 - **Type:** ONCE
@@ -234,7 +237,8 @@ scripts/
 | At Tanf | AT_TANF | Always Blue | At Tanf |
 | Russian Core (Latakia) | RED_CORE | Always Red | Bassel Al-Assad, Hama, Taftanaz, Minakh, Wujah Al Hajar |
 | NATO Northern Arc | TURKEY | Contested | Incirlik, Adana Sakirpasa, Hatay, Gaziantep, Gazipasa, Sanliurfa, Pinarbashi, Gecitkale, Ercan, Chukurova, Kahramanmaras, Adiyaman, Diyarbakir |
-| Israel & Jordan | BLUE_SOUTH | Contested | Ramat David, Ben Gurion, Haifa, Tel Nof, Hatzor, Kiryat Shmona, Megiddo, Palmachim, Herzliya, King Abdullah II, Muwaffaq Salti, Marka, Prince Hassan, King Hussein Air College, Ruwayshid, Zarqa, H4, Nevatim, Hatzerim, Teyman |
+| Israel | ISRAEL | Always Blue | Ramat David, Ben Gurion, Haifa, Tel Nof, Hatzor, Kiryat Shmona, Megiddo, Palmachim, Herzliya, Eyn Shemer, Rosh Pina, Nevatim, Hatzerim, Teyman *(unconfirmed)* |
+| Jordan | JORDAN | Always Blue | King Abdullah II, Muwaffaq Salti, Marka, Prince Hassan, King Hussein Air College, Ruwayshid, Zarqa *(unconfirmed)*, H4 *(unconfirmed)* |
 | Damascus Basin | DAMASCUS | Contested | Damascus, Mezzeh, Al-Dumayr, Marj as Sultan N/S, Khalkhalah, Marj Ruhayyil, Tha'lah *(Ghabagheb — name unconfirmed)* |
 | Aleppo Region | ALEPPO | Contested | Aleppo, Kuweires, Jirah, Abu al-Duhur |
 | Central Syria (T4) | CENTRAL_SYRIA | Contested | Shayrat, Tiyas, Palmyra, Al Qusayr, Sayqal |
@@ -437,6 +441,18 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - `trigger.misc.getZone(name)` returns `{name, point={x,y,z}, radius}` where `point` is a Vec3.
 - `point.y` in a zone is often 0 (sea level as placed in ME) — always recompute altitude with `land.getHeight({x=p.x, y=p.z})` before passing to `trigger.action.smoke()` or other position-sensitive calls, or the effect spawns underground.
 
+### AI Aircraft CAS Spawning (blue_air_support.lua)
+- **`EngageTargetsInZone` is one-shot** — it fires at mission arrival and completes immediately; AI RTBs with unused weapons. Do NOT use for loitering CAS.
+- **Correct pattern:** `Orbit` (Circle) task at the attack waypoint + `EngageTargets` in `route.tasks[]` (enroute task, not waypoint task). `EngageTargets` runs continuously while the aircraft is alive; `Orbit` keeps it overhead.
+- **`route.tasks[]` format:** top-level field on the route table, parallel to `points`. Entry must have `key = "CAS"` to be recognized as a CAS task.
+- **`targetTypes` must be plain strings** — e.g. `"Ground Units"`, `"Air Defence"`. Using `{ id = "Ground Units" }` wrapper tables silently fails; aircraft orbit but never fire.
+- **ROE defaults to `OPEN_FIRE` (2)** — AI only fires at individually designated targets. Must explicitly set `WEAPON_FREE` (0) after spawn: `ctrl:setOption(AI.Option.Air.id.ROE, AI.Option.Air.val.ROE.WEAPON_FREE)`. Without this, aircraft with correct tasks will still orbit without firing.
+- **`TakeOffParking` waypoint** requires `airdromeId = ab:getID()` — omitting it causes the aircraft to spawn airborne instead of on the ramp.
+- **`country.id.CJTF_BLUE`** is the correct country for Blue coalition AI aircraft (not `country.id.USA` etc.).
+- **`A-10C_2` "Corrupt damage model" error** — DCS logs `Error: Unit [A-10C_2]: Corrupt damage model.` every time an A-10C II is spawned via script. Cosmetic DCS engine issue; aircraft spawns and flies normally. Not a script bug.
+- **RTB despawn via `S_EVENT_LAND`** — register a `world.addEventHandler` table. On each landing event, match unit name prefix (`BAS_%d+_`), schedule a 120s delayed check. At check time, if no unit in the group is still `inAir()`, call `grp:destroy()`. Multiple wingmen landing at different times each schedule the same check; subsequent ones find the group already gone.
+- **Route coordinate convention** (reminder): DCS Vec3 `.x` = North, `.z` = East. Route waypoint fields are `x = north`, `y = east` (NOT `y = altitude`). `alt` is the separate altitude field.
+
 ### DCS Ground Unit AI Speed
 - Observed in-game speed for ground units (both infantry and vehicles) on Syria: **5 m/s** — DCS ground AI ignores waypoint speed values below its internal minimum and uses its own floor instead.
 - Use `GROUND_SPEED_MPS = 5.0` in spawn distance formulas.
@@ -483,10 +499,14 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - [x] CAS: bearing exclusion — `spawn_arc_exclude` field; Kovanli excludes south (wall on border)
 - [x] CAS: attack radials in F10 info — compass heading per group so pilots know attack vectors
 - [x] CAS: atmosphere effects — looping green smoke at trigger zone, 3–7 fire effects around town
+- [x] Fix Israel/Jordan bases spawning Red — was `BLUE_SOUTH` contested cluster; split into `ISRAEL` + `JORDAN` both `fixed = coalition.side.BLUE`, added `Eyn Shemer` and `Rosh Pina`
+- [x] Blue AI CAS flights (`blue_air_support.lua`) — A-10C II, F-16C, F/A-18C; 20-min interval, 12-aircraft cap, fixed CAS loadouts with LITENING TGPs, RTB despawn via land event
 - [ ] CAS: confirm `effectSmokeBig` preset values — preset 1 vs 2 appearance needs in-game verification
 - [ ] CAS: implement red_defending mission type
 - [ ] CAS: add more missions to the MISSIONS table
 - [ ] Investigate why airfield icons don't change color in singleplayer
+- [ ] Blue air support: confirm Teyman, Zarqa, H4 base name strings via `Log.dumpAirbases()` (currently marked unconfirmed in cluster definitions)
+- [ ] Blue air support: consider adding an F10 menu entry to show active BAS flights
 
 ---
 

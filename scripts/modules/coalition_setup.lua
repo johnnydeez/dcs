@@ -80,9 +80,9 @@ local CLUSTERS = {
         },
     },
     {
-        id    = "BLUE_SOUTH",
-        name  = "Israel & Jordan",
-        fixed = nil,
+        id    = "ISRAEL",
+        name  = "Israel",
+        fixed = coalition.side.BLUE,
         bases = {
             "Ramat David",
             "Ben Gurion",
@@ -93,17 +93,26 @@ local CLUSTERS = {
             "Megiddo",
             "Palmachim",
             "Herzliya",
+            "Eyn Shemer",
+            "Rosh Pina",
+            "Nevatim",
+            "Hatzerim",
+            "Teyman",              -- name unconfirmed, verify with dumpAirbases()
+        },
+    },
+    {
+        id    = "JORDAN",
+        name  = "Jordan",
+        fixed = coalition.side.BLUE,
+        bases = {
             "King Abdullah II",
             "Muwaffaq Salti",
             "Marka",
             "Prince Hassan",
             "King Hussein Air College",
             "Ruwayshid",
-            "Zarqa",               -- Jordan; name unconfirmed, verify with dumpAirbases()
-            "H4",                  -- H4 Emergency Strip, Jordan; name unconfirmed, verify with dumpAirbases()
-            "Nevatim",             -- Nevatim Airbase, Israel; name unconfirmed, verify with dumpAirbases()
-            "Hatzerim",            -- Hatzerim Airbase / Flight Academy, Israel
-            "Teyman",              -- Teyman Airfield, Israel; name unconfirmed, verify with dumpAirbases()
+            "Zarqa",               -- name unconfirmed, verify with dumpAirbases()
+            "H4",                  -- name unconfirmed, verify with dumpAirbases()
         },
     },
     {
