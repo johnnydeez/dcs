@@ -124,87 +124,92 @@ COST_CONFIG.munitionCost = {
 COST_CONFIG.killValue = {
 
     -- ── Enemy Fixed-Wing Aircraft ────────────────────────────
-    ["MiG-29A"]             = 25,  -- ~$24M (2026 estimate)
-    ["MiG-29S"]             = 35,  -- modernized variant premium
+    ["MiG-29A"]             = 25,   -- ~$24M (2026 estimate)
+    ["MiG-29S"]             = 35,   -- modernized variant premium
     ["MiG-29G"]             = 30,
-    ["Su-27"]               = 45,  -- ~$30M in 1997; inflation-adjusted ~$45M today
-    ["Su-30"]               = 55,  -- ~$34M export price; modern equivalent ~$55M
-    ["Su-33"]               = 60,  -- naval variant premium over Su-27
-    ["Su-25"]               = 18,  -- Frogfoot attack aircraft
-    ["Su-25T"]              = 25,  -- upgraded Frogfoot
-    ["MiG-21Bis"]           = 12,  -- late variant of aging 1960s airframe
-    ["MiG-23MLD"]           = 18,  -- late-model swing-wing
-    ["J-11A"]               = 50,  -- Chinese Su-27 derivative
+    ["Su-27"]               = 45,   -- ~$30M in 1997; inflation-adjusted ~$45M
+    ["Su-30"]               = 55,   -- ~$34M export price; modern equivalent ~$55M
+    ["Su-33"]               = 60,   -- naval variant premium over Su-27
+    ["Su-25"]               = 18,   -- Frogfoot attack aircraft
+    ["Su-25T"]              = 25,   -- upgraded Frogfoot
+    ["MiG-21Bis"]           = 12,   -- late variant of aging 1960s airframe
+    ["MiG-23MLD"]           = 18,   -- late-model swing-wing
+    ["J-11A"]               = 50,   -- Chinese Su-27 derivative
 
     -- ── Enemy Helicopters ────────────────────────────────────
-    ["Mi-24V"]              = 12,  -- Hind gunship (~$12M)
-    ["Mi-8MT"]              = 8,   -- Hip transport (~$8M)
-    ["SA342M"]              = 5,   -- Gazelle armed (~$4-6M)
+    ["Mi-24V"]              = 12,   -- Hind gunship
+    ["Mi-8MT"]              = 8,    -- Hip transport
+    ["SA342M"]              = 5,    -- Gazelle armed
     ["SA342L"]              = 4,
 
     -- ── SAM Systems ──────────────────────────────────────────
-    ["S-300PS 40B6M tr"]    = 18,  -- S-300 launch vehicle
-    ["S-300PS 64H6E sr"]    = 20,  -- S-300 search radar
-    ["SA-11 Buk LN"]        = 12,  -- SA-11 launcher
-    ["SA-11 Buk SR"]        = 10,  -- SA-11 search radar
-    ["SA-6 Kub BM"]         = 9,   -- SA-6 launcher
-    ["SA-6 Kub SR"]         = 8,   -- SA-6 radar
-    ["Osa 9A33 ln"]         = 7,   -- SA-8 Gecko
-    ["2S6 Tunguska"]        = 10,  -- SA-19 combined gun/SAM (~$8-12M)
-    ["ZSU-23-4 Shilka"]     = 2.0, -- radar-guided AAA (~$1-2M)
-    ["Strela-10M3"]         = 6,   -- SA-13 Gopher (spawned by sam_setup)
-    ["Strela-1 9P31"]       = 5,   -- SA-9 Gaskin (spawned by sam_setup)
-    ["SA-3 S-125 TR"]       = 8,   -- SA-3 track radar
-    ["5p73 s-125 ln"]       = 7,   -- SA-3 launcher
-    ["SNR_75V tr"]          = 10,  -- SA-2 Fan Song tracking radar (type string unconfirmed)
-    ["S_75M_Volhov"]        = 7,   -- SA-2 S-75 launcher (type string unconfirmed)
-    ["SA-18 Igla manpad"]   = 1.0, -- MANPADS (defense_setup / sd_mission air defense)
-    ["Ural-375 ZU-23"]      = 0.8, -- ZU-23 AAA gun truck
+    -- All values: per vehicle (not per battery), 2026 USD millions.
+    -- Sources: battery contract prices ÷ vehicle count, export deal inflation-adjustment,
+    -- ForecastInternational archives, Ukraine war damage assessments.
+    ["S-300PS 64H6E sr"]    = 18,   -- Big Bird phased-array search radar; most expensive S-300 vehicle
+    ["S-300PS 40B6M tr"]    = 12,   -- S-300PS launcher; ~$120-150M battery ÷ ~10 vehicles
+    ["SA-11 Buk LN"]        = 14,   -- 9A310 TELAR; ~$100M battery ÷ 4 TELARs + support
+    ["SA-11 Buk SR"]        = 8,    -- 9S18 Snow Drift acquisition radar
+    ["SA-6 Kub BM"]         = 7,    -- 2K12 Kub launcher vehicle (user-confirmed benchmark)
+    ["SA-6 Kub SR"]         = 8.5,  -- 1S91 SURN radar/illuminator; nerve center of battery
+    ["2S6 Tunguska"]        = 15,   -- ForecastInternational explicit cite: $15.1M unit cost
+    ["Osa 9A33 ln"]         = 9,    -- SA-8 Gecko; all-in-one (radar + missiles on one chassis)
+    ["ZSU-23-4 Shilka"]     = 2.5,  -- Libya 1972 export price × CPI to 2026
+    ["Strela-10M3"]         = 5,    -- SA-13 Gopher on MT-LB chassis
+    ["Strela-1 9P31"]       = 3.5,  -- SA-9 Gaskin on BRDM-2; older/simpler seeker than SA-13
+    ["SA-3 S-125 TR"]       = 4,    -- SNR-125 Low Bow fire-control radar
+    ["5p73 s-125 ln"]       = 2.5,  -- SA-3 4-rail launcher (passive; fully dependent on Low Bow)
+    ["SNR_75V tr"]          = 4,    -- SA-2 Fan Song radar; India battery deal backs out to ~$4M
+    ["S_75M_Volhov"]        = 3,    -- SA-2 S-75 launcher; India deal ~$3M/launcher ex-missiles
+    ["SA-18 Igla manpad"]   = 0.35, -- Per gripstock + 2-missile set; complete 9K38 system ~$528K
+    ["Ural-375 ZU-23"]      = 0.25, -- ZU-23-2 gun ($15-20K) + Ural truck + military markup
 
     -- ── Ballistic Missile / S&D targets ──────────────────────
-    ["Scud_B"]              = 5.0, -- Scud-B TEL (primary S&D missile mission target)
+    ["Scud_B"]              = 6,    -- 9P117 MAZ-543 TEL; HIMARS launcher ($5-6M) as comparator
 
     -- ── Tanks & Heavy AFVs ───────────────────────────────────
-    ["T-55"]                = 0.5, -- obsolete; surplus pricing (~$0.3-0.5M)
-    ["T-72B"]               = 2.5, -- ~$2M procurement; B variant slight premium
-    ["T-72B3"]              = 3.5, -- modernized; reactive armor + new FCS
-    ["T-80UD"]              = 4.0, -- gas turbine variant; more capable than T-72
-    ["T-90"]                = 5.5, -- ~$4-7M per research; splitting the range
-    ["CHAP_T64BV"]          = 3.0, -- T-64BV Type 2017 (CH mod, convoy)
-    ["BMP-1"]               = 0.8, -- 1960s IFV; low surplus value
-    ["BMP-2"]               = 1.5, -- upgraded IFV with 30mm autocannon
-    ["BMP-3"]               = 3.2, -- confirmed ~$3.2M (Greek export pricing)
-    ["BTR-70"]              = 0.5, -- aging 8x8 APC; widespread surplus
-    ["BTR-80"]              = 1.2, -- confirmed ~$1.2M
-    ["BRDM-2"]              = 0.4, -- light recon vehicle; cheap and obsolete
-    ["ZSU_57_2"]            = 1.5, -- twin-57mm AAA; old but still dangerous
-    ["AAV7"]                = 2.5, -- US amphibious APC (~$2.5M)
-    ["CHAP_MATV"]           = 1.0, -- M-ATV (CH mod, convoy)
+    ["T-90"]                = 5.0,  -- T-90A ~$4.15M FY2011 Russian MOD; T-90M ~$5M in 2026
+    ["T-80UD"]              = 3.5,  -- Pakistan paid $650M for 320 (late 1990s) × CPI to 2026
+    ["T-72B3"]              = 3.0,  -- ~52M ruble modernization package + base vehicle cost
+    ["T-72B"]               = 2.0,  -- Late-Soviet production; below B3 for older FCS/ERA
+    ["CHAP_T64BV"]          = 2.5,  -- T-64BV Type 2017; no active production line
+    ["T-55"]                = 0.35, -- Surplus; real transaction prices $200-500K
+    ["BMP-3"]               = 3.2,  -- Greek export purchase data; most reliable IFV figure
+    ["BMP-2"]               = 1.2,  -- Finland €350K/unit (2016) × CPI to 2026
+    ["BMP-1"]               = 0.5,  -- Germany sold surplus to Greece at ~€25K (demil); combat-ready higher
+    ["BTR-80"]              = 1.2,  -- Consistent across multiple sources
+    ["BTR-70"]              = 0.4,  -- Surplus only; no current production
+    ["BRDM-2"]              = 0.25, -- Light 4×4 scout; abundant ex-Soviet surplus
+    ["ZSU_57_2"]            = 0.6,  -- 1950s twin-57mm, no radar; surplus value only
+    ["AAV7"]                = 3.5,  -- Romania 2024 transfer ~$4.77M; older BAE contract ~$2.3M; midpoint
+    ["CHAP_MATV"]           = 0.9,  -- FY2009-11 procurement $587K × 1.5 CPI to 2026
+    ["MTLB"]                = 0.4,  -- Light tracked transporter; common ex-Soviet surplus
 
     -- ── Logistics / Soft Targets ─────────────────────────────
-    ["ATZ-5"]               = 0.5, -- fuel truck (convoy)
-    ["ATZ-10"]              = 0.5, -- fuel truck (convoy)
-    ["Ural-375 PBU"]        = 0.5, -- command vehicle (convoy, aka Ural-4320 MCC in ME)
-    ["Ural-4320-31"]        = 0.5, -- cargo truck
-    ["Ural-4320T"]          = 0.5,
-    ["Ural-375"]            = 0.5,
-    ["KAMAZ Truck"]         = 0.5,
-    ["kamaz_tent_civil"]    = 0.3,  -- civilian-style KAMAZ with tent cover (confirmed type name from log)
-    ["GAZ-66"]              = 0.3,
-    ["GAZ-3308"]            = 0.3,
-    ["ZIL-135"]             = 0.5,
-    ["MTLB"]                = 1,
+    -- Real replacement costs are much lower than previous values.
+    -- Trucks are cheap; convoy kills are rewarded by volume, not per-unit price.
+    ["ATZ-5"]               = 0.15, -- Military fuel tanker on Zil base
+    ["ATZ-10"]              = 0.15,
+    ["Ural-375 PBU"]        = 0.15, -- Command vehicle on Ural chassis
+    ["Ural-4320-31"]        = 0.10, -- Standard military cargo truck
+    ["Ural-4320T"]          = 0.10,
+    ["Ural-375"]            = 0.10,
+    ["KAMAZ Truck"]         = 0.10,
+    ["kamaz_tent_civil"]    = 0.10, -- civilian-style KAMAZ with tent cover (confirmed type name from log)
+    ["GAZ-66"]              = 0.08,
+    ["GAZ-3308"]            = 0.08,
+    ["ZIL-135"]             = 0.30, -- Specialized 8×8 heavy military vehicle; not standard cargo
 
     -- ── Infantry ─────────────────────────────────────────────
     ["Soldier AK"]          = 0.1,
     ["Soldier RPG"]         = 0.1,
-    ["Infantry AK Ins"]     = 0.1, -- AKM insurgent
+    ["Infantry AK Ins"]     = 0.1,  -- AKM insurgent
 
     -- ── Naval ────────────────────────────────────────────────
-    ["MOSCOW"]              = 30,  -- Slava-class cruiser
+    ["MOSCOW"]              = 30,   -- Slava-class cruiser
     ["Neustrashimy"]        = 20,
     ["Rezky"]               = 15,
-    ["SOM"]                 = 5,   -- Small patrol craft
+    ["SOM"]                 = 5,    -- Small patrol craft
 
     -- ── Default fallback ─────────────────────────────────────
     ["default"]             = 1,
