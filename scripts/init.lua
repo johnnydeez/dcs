@@ -41,9 +41,10 @@ if not load("modules\\convoy_setup.lua")    then return end
 if not load("modules\\cas_mission.lua")     then return end
 if not load("modules\\sd_mission.lua")      then return end
 if not load("modules\\mission_setup.lua")   then return end
-if not load("modules\\cost_config.lua")     then return end
-if not load("modules\\cost_logic.lua")      then return end
-if not load("modules\\cost_ui.lua")         then return end
+if not load("modules\\cost_config.lua")        then return end
+if not load("modules\\cost_logic.lua")         then return end
+if not load("modules\\cost_ui.lua")            then return end
+if not load("modules\\blue_air_support.lua")   then return end
 
 -- ── Run startup sequence ─────────────────────────────────────
 local assignments, clusterSides = CoalitionSetup.assign()
@@ -54,5 +55,6 @@ local missionsMenu = missionCommands.addSubMenuForCoalition(coalition.side.BLUE,
 SamSetup.spawn(clusterSides, assignments, samMenu)
 ConvoySetup.spawn(clusterSides, assignments, missionsMenu)
 MissionSetup.generate(assignments, missionsMenu)
+BlueAirSupport.init(assignments)
 
 Log.info("Init complete.")
