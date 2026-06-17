@@ -50,9 +50,13 @@ CostTracker.killCredited = {}
 -- ============================================================
 
 -- Returns the player name for a unit, or nil if AI / invalid.
+-- Guard order matters: weapon objects lack getCategory entirely, so check that
+-- before calling isExist() (which also doesn't exist on weapon objects).
 local function getPlayerName(unit)
-    if not unit or not unit:isExist() then return nil end
+    if not unit then return nil end
+    if type(unit.getCategory) ~= "function" then return nil end
     if unit:getCategory() ~= Object.Category.UNIT then return nil end
+    if not unit:isExist() then return nil end
     return unit:getPlayerName()  -- nil for AI units
 end
 
@@ -77,9 +81,10 @@ local function getAircraftCost(typeName)
 end
 
 -- Returns true if the unit belongs to the red coalition.
--- Only safe to call on live units (isExist() == true).
 local function isEnemyUnit(unit)
-    if not unit or not unit:isExist() then return false end
+    if not unit then return false end
+    if type(unit.getCategory) ~= "function" then return false end
+    if not unit:isExist() then return false end
     return unit:getCoalition() == coalition.side.RED
 end
 
@@ -141,6 +146,7 @@ end
 local CostEventHandler = {}
 
 function CostEventHandler:onEvent(event)
+    local ok, err = pcall(function()
 
     -- ── SHOT: munition fired / released ─────────────────────
     if event.id == world.event.S_EVENT_SHOT then
@@ -168,9 +174,6 @@ function CostEventHandler:onEvent(event)
     -- killed unit. This is more direct than HIT→DEAD and handles one-shot kills
     -- (e.g. Maverick direct hit) where DEAD fires before HIT can record lastHitBy.
     elseif event.id == world.event.S_EVENT_KILL then
-        local playerName = getPlayerName(event.initiator)
-        if not playerName then return end
-
         local target = event.target
         if not target then return end
         if type(target.getCoalition) ~= "function" then return end
@@ -181,7 +184,18 @@ function CostEventHandler:onEvent(event)
 
         local unitName = target:getName()
         local unitType = target:getTypeName()
-        CostTracker.killCredited[unitName] = true  -- suppress DEAD double-count
+
+        -- Always suppress the HIT→DEAD fallback, regardless of who killed.
+        -- Without this, a human who previously hit this unit would get credited
+        -- via lastHitBy when an AI delivers the killing blow.
+        CostTracker.killCredited[unitName] = true
+        CostTracker.lastHitBy[unitName] = nil
+
+        local playerName = getPlayerName(event.initiator)
+        if not playerName then
+            env.info(string.format("[CostTracker] KILL(AI) %s — no credit", unitType))
+            return
+        end
         creditKill(playerName, unitType, "KILL")
 
     -- ── HIT: record last player to hit each unit (fallback chain) ──
@@ -223,7 +237,9 @@ function CostEventHandler:onEvent(event)
         if not playerName then return end
 
         local target = event.target
-        if not target or not target:isExist() then return end
+        if not target then return end
+        if type(target.getCategory) ~= "function" then return end
+        if not target:isExist() then return end
         local cat = target:getCategory()
         if cat ~= Object.Category.UNIT and cat ~= Object.Category.STATIC then return end
         -- Key by name: more stable than getID() which can differ between event types
@@ -233,9 +249,17 @@ function CostEventHandler:onEvent(event)
     elseif event.id == world.event.S_EVENT_DEAD then
         local deadUnit = event.initiator
         if not deadUnit then return end
-        -- Weapon objects (missiles, bombs) lack getCategory entirely; skip them
         if type(deadUnit.getCategory) ~= "function" then return end
         local cat = deadUnit:getCategory()
+
+        -- Clean up weapon→player cache on weapon death. DCS can reuse userdata
+        -- pointers, so a stale entry for a human's weapon could later match an
+        -- AI weapon and misattribute a hit.
+        if cat == Object.Category.WEAPON then
+            CostTracker.weaponToPlayer[deadUnit] = nil
+            return
+        end
+
         if cat ~= Object.Category.UNIT and cat ~= Object.Category.STATIC then return end
 
         local deadID   = deadUnit:getID()
@@ -372,6 +396,10 @@ function CostEventHandler:onEvent(event)
         end
 
     end  -- end event type dispatch
+    end)  -- end pcall
+    if not ok then
+        env.info("[CostTracker] ERROR in onEvent id=" .. tostring(event and event.id) .. ": " .. tostring(err))
+    end
 end  -- end onEvent
 
 -- ============================================================
