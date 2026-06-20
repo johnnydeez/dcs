@@ -53,10 +53,12 @@ local THREAT_DEFS = {
     med = {
         { type = "Strela-1 9P31",     count = {1, 1} },
         { type = "Ural-375 ZU-23",    count = {1, 1} },
+        { type = "SA-18 Igla manpad", count = {1, 2} },
     },
     high = {
-        { type = "Strela-10M3",       count = {1, 1} },
+        { type = "Strela-10M3",       count = {1, 2} },
         { type = "ZSU-23-4 Shilka",   count = {1, 2} },
+        { type = "SA-18 Igla manpad", count = {2, 3} },
     },
 }
 
@@ -96,6 +98,34 @@ local function ll(lat, lon)
 end
 
 local MISSIONS = {
+    {
+        name  = "HS02_ATTACK",
+        label = "Attack HS02",
+        mtype = "red_defending",
+        pos   = ll(35.3363, 36.0742),
+
+        -- Perimeter points clockwise from NW, derived from in-game coordinate markers.
+        -- Each becomes an anchor for one spawn bucket; units scatter within 80m of it.
+        perimeter = {
+            ll(35.3402, 36.0688),   -- NW: revetments / parking area
+            ll(35.3402, 36.0728),   -- N: northern apron
+            ll(35.3392, 36.0795),   -- NE: barracks north
+            ll(35.3360, 36.0795),   -- E: barracks east side
+            ll(35.3333, 36.0770),   -- SE: barracks south end
+            ll(35.3328, 36.0718),   -- S: south edge
+            ll(35.3325, 36.0688),   -- SW: road loop bottom
+            ll(35.3365, 36.0688),   -- W: western fence
+        },
+
+        garrison = {
+            infantry    = 16,
+            light_armor = 4,
+            heavy_armor = 2,
+        },
+
+        airdef_anchor = ll(35.3363, 36.0742),
+        battle_smoke  = true,
+    },
     {
         name  = "KOVANLI_DEFENSE",
         label = "Defend Kovanli",
@@ -141,6 +171,11 @@ end
 local function formatAbsTime(t)
     local s = math.floor(t) % 86400
     return string.format("%02d:%02d:%02d", math.floor(s / 3600), math.floor((s % 3600) / 60), s % 60)
+end
+
+-- Converts a Vec3 from ll() {x=north, y=alt, z=east} to spawner pos {x=north, y=east, alt}.
+local function vec3ToPos(v)
+    return { x = v.x, y = v.z, alt = land.getHeight({ x = v.x, y = v.z }) }
 end
 
 local function buildAirDefDefs(threat)
@@ -284,7 +319,7 @@ end
 -- ── blue_defending Red spawner ─────────────────────────────────────
 
 local function spawnRedAttackers(def, threat)
-    local forceLevelPool = { "weak", "adequate", "strong", "overwhelming" }
+    local forceLevelPool = { "adequate", "strong", "overwhelming" }
     local forceLevel = forceLevelPool[math.random(#forceLevelPool)]
 
     local groupCount = math.random(1, 3)
@@ -394,22 +429,103 @@ local function spawnRedAttackers(def, threat)
     }
 end
 
+-- ── red_defending garrison spawner ─────────────────────────────────
+
+local function spawnRedDefenders(def, threat)
+    local forceLevelPool = { "adequate", "strong", "overwhelming" }
+    local forceLevel     = forceLevelPool[math.random(#forceLevelPool)]
+    local mults          = FORCE_LEVELS[forceLevel]
+
+    local totalInf   = math.max(2, math.floor(def.garrison.infantry    * randBetween(mults.infantry[1],    mults.infantry[2])))
+    local totalLight = math.max(0, math.floor(def.garrison.light_armor * randBetween(mults.light_armor[1], mults.light_armor[2])))
+    local totalHeavy = math.max(0, math.floor(def.garrison.heavy_armor * randBetween(mults.heavy_armor[1], mults.heavy_armor[2])))
+
+    local unitDefs = {}
+    for _ = 1, totalInf   do table.insert(unitDefs, { type = pick(INFANTRY_POOL)    }) end
+    for _ = 1, totalLight do table.insert(unitDefs, { type = pick(LIGHT_ARMOR_POOL) }) end
+    for _ = 1, totalHeavy do table.insert(unitDefs, { type = pick(HEAVY_ARMOR_POOL) }) end
+    for i = #unitDefs, 2, -1 do
+        local j = math.random(i)
+        unitDefs[i], unitDefs[j] = unitDefs[j], unitDefs[i]
+    end
+
+    -- Build closed perimeter polyline: each segment stores its start, normalised
+    -- direction, perpendicular, length, and cumulative distance from point 0.
+    local perim      = def.perimeter
+    local perimCount = #perim
+    local segments   = {}
+    local perimLen   = 0
+    for i = 1, perimCount do
+        local a  = perim[i]
+        local b  = perim[(i % perimCount) + 1]
+        local dx = b.x - a.x
+        local dz = b.z - a.z
+        local len = math.sqrt(dx * dx + dz * dz)
+        if len > 0 then
+            local ndx = dx / len
+            local ndz = dz / len
+            table.insert(segments, {
+                ax = a.x, az = a.z,
+                ndx = ndx, ndz = ndz,
+                perpx = -ndz, perpz = ndx,
+                len = len, cum = perimLen,
+            })
+            perimLen = perimLen + len
+        end
+    end
+
+    -- Random positions along the perimeter, sorted so units stay ordered around the
+    -- loop without crossing. This produces natural clusters and gaps rather than
+    -- regular spacing.
+    local n         = #unitDefs
+    local positions = {}
+    for i = 1, n do positions[i] = math.random() * perimLen end
+    table.sort(positions)
+
+    for idx, udef in ipairs(unitDefs) do
+        local t = positions[idx]
+
+        local seg = segments[#segments]
+        for _, s in ipairs(segments) do
+            if t < s.cum + s.len then
+                seg = s
+                break
+            end
+        end
+
+        local along = t - seg.cum
+        local px    = seg.ax + along * seg.ndx + randBetween(-30, 30) * seg.perpx
+        local pz    = seg.az + along * seg.ndz + randBetween(-30, 30) * seg.perpz
+
+        Spawner.spawnGroundGroup(country.id.CJTF_RED, { x = px, y = pz, alt = land.getHeight({x=px, y=pz}) }, { udef }, {
+            name = string.format("CAS_%s_def_%d", def.name, idx),
+        })
+    end
+
+    Log.info(string.format("CasMission: '%s' garrison — force=%s, %d units (inf=%d, la=%d, ha=%d)",
+        def.name, forceLevel, n, totalInf, totalLight, totalHeavy))
+
+    return { forceLevel = forceLevel, totalUnits = n }
+end
+
 -- ── Spawn one CAS mission ──────────────────────────────────────────
 
 local function spawnOneMission(def, threat)
     spawnSide(def.blue, country.id.CJTF_BLUE, def.name, "blue")
 
     local redInfo
+    local defenderInfo
     if def.mtype == "blue_defending" then
         redInfo = spawnRedAttackers(def, threat)
     else
         spawnSide(def.red, country.id.CJTF_RED, def.name, "red")
-        local airdefAnchor = def.airdef_anchor
-            or (def.red and def.red.spawn_pos)
-            or def.pos
-        Spawner.spawnGroundGroup(country.id.CJTF_RED, airdefAnchor, buildAirDefDefs(threat), {
+        if def.perimeter then
+            defenderInfo = spawnRedDefenders(def, threat)
+        end
+        local airdefVec3 = def.airdef_anchor or def.pos
+        Spawner.spawnGroundGroup(country.id.CJTF_RED, vec3ToPos(airdefVec3), buildAirDefDefs(threat), {
             name   = "CAS_" .. def.name .. "_airdef",
-            spread = 150,
+            spread = 200,
         })
     end
 
@@ -430,11 +546,12 @@ local function spawnOneMission(def, threat)
     Log.info(string.format("CasMission: '%s' spawned, threat=%s", def.name, threat))
 
     return {
-        label   = def.label,
-        mtype   = def.mtype,
-        threat  = threat,
-        pos     = def.pos,
-        redInfo = redInfo,
+        label        = def.label,
+        mtype        = def.mtype,
+        threat       = threat,
+        pos          = def.pos,
+        redInfo      = redInfo,
+        defenderInfo = defenderInfo,
     }
 end
 
@@ -457,7 +574,7 @@ function CasMission.generate(assignments, casMenu)
         local result = spawnOneMission(def, threat)
         if result then
             local infoStr
-            if result.redInfo then
+            if result.mtype == "blue_defending" then
                 local ri = result.redInfo
                 local hdgStrs = {}
                 for _, h in ipairs(ri.groupBearings) do
@@ -471,9 +588,11 @@ function CasMission.generate(assignments, casMenu)
                     table.concat(hdgStrs, ", "),
                     formatAbsTime(ri.arrivalTime))
             else
+                local di = result.defenderInfo
                 infoStr = string.format(
-                    "CAS: %s [%s]\n   ASSAULT\n   GPS: %s",
-                    result.label, result.threat:upper(), Spawner.formatLL(result.pos))
+                    "CAS: %s [%s]\n   STRIKE — assault Red garrison\n   GPS: %s\n   Garrison: %d units [%s]",
+                    result.label, result.threat:upper(), Spawner.formatLL(result.pos),
+                    di and di.totalUnits or 0, di and di.forceLevel or "?")
             end
             table.insert(lines, "\n" .. infoStr)
             table.insert(menuInfos, {
