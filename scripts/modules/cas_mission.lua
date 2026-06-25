@@ -34,6 +34,16 @@ local FAN_OUT_DIST     = 3700  -- ~2 nm; re-spread waypoint after terrain choke 
 local ORBIT_RADIUS     = 185   -- ~0.10 nm; orbit ring around the defended position
 local ORBIT_STEPS      = 12    -- waypoints per full loop
 local ORBIT_LOOPS      = 3     -- number of full orbits before stopping
+local BLUE_SPAWN_DIST_MIN = 11112  -- 6 nm lower bound
+local BLUE_SPAWN_DIST_MAX = 12964  -- 7 nm upper bound
+local BLUE_OFFROAD_DIST_M = 3700   -- ~2 nm; where Blue units leave the road and fan out
+local BLUE_BATTLE_DIST_M  = 3148   -- ~1.7 nm; observed distance at which engagement begins
+local BLUE_EFFECTIVE_MPS  = 2.29   -- calibrated effective road travel speed (m/s); accounts for routing overhead
+local BLUE_COUNTS = {
+    infantry    = { 12, 20 },
+    light_armor = {  4,  8 },
+    heavy_armor = {  2,  4 },
+}
 
 -- ── Unit type pools ────────────────────────────────────────────────
 -- BMP-1 confirmed: dumpLateGroupUnits group 'A' → type='BMP-1'
@@ -43,6 +53,11 @@ local INFANTRY_TYPES   = { ["Soldier AK"]=true, ["Infantry AK Ins"]=true, ["Sold
 -- BRDM-2 confirmed: dumpLateGroupUnits group 'B' → type='BRDM-2' (ColdWarAssetsPack replaces model)
 local LIGHT_ARMOR_POOL = { "BTR-70", "BTR-80", "BTR-80", "BMP-1", "BRDM-2" }
 local HEAVY_ARMOR_POOL = { "T-55", "T-55", "T-72B" }
+
+-- Confirmed via dumpLateGroupUnits 2026-06-25
+local BLUE_INFANTRY_POOL    = { "Soldier M4" }
+local BLUE_LIGHT_ARMOR_POOL = { "M1134 Stryker ATGM", "M1043 HMMWV Armament" }
+local BLUE_HEAVY_ARMOR_POOL = { "M-1 Abrams", "M-2 Bradley" }
 
 -- ── Air defense loadouts per threat level ──────────────────────────
 local THREAT_DEFS = {
@@ -118,13 +133,24 @@ local MISSIONS = {
         },
 
         garrison = {
-            infantry    = 16,
-            light_armor = 4,
-            heavy_armor = 2,
+            infantry    = 28,
+            light_armor = 7,
+            heavy_armor = 4,
         },
 
-        airdef_anchor = ll(35.3363, 36.0742),
-        battle_smoke  = true,
+        airdef_anchor  = ll(35.3363, 36.0742),
+        battle_smoke   = true,
+        blue_attackers = true,
+        blue_smoke_zones = {
+            { bearing =   0, name = "BLUE_CAS_HS02_365_GreenSmoke" },
+            { bearing =  45, name = "BLUE_CAS_HS02_045_GreenSmoke" },
+            { bearing =  90, name = "BLUE_CAS_HS02_090_GreenSmoke" },
+            { bearing = 135, name = "BLUE_CAS_HS02_135_GreenSmoke" },
+            { bearing = 180, name = "BLUE_CAS_HS02_180_GreenSmoke" },
+            { bearing = 225, name = "BLUE_CAS_HS02_225_GreenSmoke" },
+            { bearing = 270, name = "BLUE_CAS_HS02_270_GreenSmoke" },
+            { bearing = 315, name = "BLUE_CAS_HS02_315_GreenSmoke" },
+        },
     },
     {
         name  = "KOVANLI_DEFENSE",
@@ -285,6 +311,32 @@ local function buildOrbitRoute(spawnPos, townVec3, entryBearing, fanOutPos)
     return { points = points }
 end
 
+-- Route for Blue attacking force: road travel to near-base WP, then fan out off-road and orbit.
+-- spawnPos: {x,y,alt}; roadNearBase: {x,y} road-snapped exit point; fanOutPos: {x,y} off-road
+-- spread position; townVec3: Vec3 base center; entryBearing: toward base from fanOutPos.
+local function buildBlueRoute(spawnPos, roadNearBase, fanOutPos, townVec3, entryBearing)
+    local cx = townVec3.x
+    local cy = townVec3.z
+    local points = {
+        { x=spawnPos.x,     y=spawnPos.y,     alt=spawnPos.alt,
+          type="Turning Point", action="On Road",  speed=GROUND_SPEED_MPS, ETA=0, ETA_locked=false },
+        { x=roadNearBase.x, y=roadNearBase.y, alt=land.getHeight({x=roadNearBase.x, y=roadNearBase.y}),
+          type="Turning Point", action="On Road",  speed=GROUND_SPEED_MPS, ETA=0, ETA_locked=false },
+        { x=fanOutPos.x,    y=fanOutPos.y,    alt=land.getHeight({x=fanOutPos.x,    y=fanOutPos.y}),
+          type="Turning Point", action="Off Road", speed=GROUND_SPEED_MPS, ETA=0, ETA_locked=false },
+    }
+    for i = 0, ORBIT_STEPS * ORBIT_LOOPS - 1 do
+        local a  = entryBearing + i * (2 * math.pi / ORBIT_STEPS)
+        local wx = cx + ORBIT_RADIUS * math.cos(a)
+        local wy = cy + ORBIT_RADIUS * math.sin(a)
+        table.insert(points, {
+            x=wx, y=wy, alt=land.getHeight({x=wx, y=wy}),
+            type="Turning Point", action="Off Road", speed=GROUND_SPEED_MPS, ETA=0, ETA_locked=false,
+        })
+    end
+    return { points = points }
+end
+
 -- Splits total Red unit budget across groupCount groups.
 -- Returns list of {infantry, light_armor, heavy_armor} per-group tables.
 local function computeGroupBudgets(defenders, forceLevel, groupCount)
@@ -314,6 +366,88 @@ local function buildUnitDefs(budget)
     for i = 1, budget.light_armor do table.insert(defs, { type = pick(LIGHT_ARMOR_POOL) }) end
     for i = 1, budget.heavy_armor do table.insert(defs, { type = pick(HEAVY_ARMOR_POOL) }) end
     return defs
+end
+
+-- ── red_defending Blue attacker spawner ───────────────────────────
+
+local function spawnBlueAttackers(def)
+    local groupCount = 1
+    local totalUnits = 0
+    local battleTime = nil
+
+    for g = 1, groupCount do
+        local bearing = math.random() * 2 * math.pi
+
+        -- Road-snap spawn point at a randomized distance from base along chosen bearing.
+        local spawnDist = randBetween(BLUE_SPAWN_DIST_MIN, BLUE_SPAWN_DIST_MAX)
+        local spRawX = def.pos.x + spawnDist * math.cos(bearing)
+        local spRawZ = def.pos.z + spawnDist * math.sin(bearing)
+        local srx, sry = land.getClosestPointOnRoads("roads", spRawX, spRawZ)
+
+        if srx then
+            -- Road-snap near-base exit WP ~BLUE_OFFROAD_DIST_M from base along same bearing.
+            local nbRawX = def.pos.x + BLUE_OFFROAD_DIST_M * math.cos(bearing)
+            local nbRawZ = def.pos.z + BLUE_OFFROAD_DIST_M * math.sin(bearing)
+            local nrx, nry = land.getClosestPointOnRoads("roads", nbRawX, nbRawZ)
+            if not nrx then nrx, nry = nbRawX, nbRawZ end
+
+            -- Approach bearing from road exit WP toward base; perpendicular for fan-out spread.
+            local approachBear = math.atan2(def.pos.z - nry, def.pos.x - nrx)
+            local perpBear     = approachBear + math.pi / 2
+
+            local unitDefs = {}
+            local nInf   = math.random(BLUE_COUNTS.infantry[1],    BLUE_COUNTS.infantry[2])
+            local nLight = math.random(BLUE_COUNTS.light_armor[1], BLUE_COUNTS.light_armor[2])
+            local nHeavy = math.random(BLUE_COUNTS.heavy_armor[1], BLUE_COUNTS.heavy_armor[2])
+            for _ = 1, nInf   do table.insert(unitDefs, { type = pick(BLUE_INFANTRY_POOL)    }) end
+            for _ = 1, nLight do table.insert(unitDefs, { type = pick(BLUE_LIGHT_ARMOR_POOL) }) end
+            for _ = 1, nHeavy do table.insert(unitDefs, { type = pick(BLUE_HEAVY_ARMOR_POOL) }) end
+
+            local n = #unitDefs
+            for j, udef in ipairs(unitDefs) do
+                -- All units in the group spawn clustered at the road snap point.
+                local jx  = srx + randBetween(-50, 50)
+                local jz  = sry + randBetween(-50, 50)
+                local spawnPos = { x = jx, y = jz, alt = land.getHeight({x=jx, y=jz}) }
+
+                -- Fan-out: spread laterally from the road exit WP, same FRONTAGE as Kovanli.
+                local t             = n > 1 and (j - 1) / (n - 1) - 0.5 or 0
+                local lateralOffset = t * FRONTAGE
+                local fanX = nrx + lateralOffset * math.cos(perpBear)
+                local fanZ = nry + lateralOffset * math.sin(perpBear)
+                local entryBear = math.atan2(def.pos.z - fanZ, def.pos.x - fanX)
+
+                Spawner.spawnGroundGroup(country.id.CJTF_BLUE, spawnPos, { udef }, {
+                    name  = string.format("CAS_%s_blue_%d_%d", def.name, g, j),
+                    route = buildBlueRoute(spawnPos, {x=nrx, y=nry}, {x=fanX, y=fanZ}, def.pos, entryBear),
+                })
+                totalUnits = totalUnits + 1
+            end
+
+            local travelSecs = (spawnDist - BLUE_BATTLE_DIST_M) / BLUE_EFFECTIVE_MPS
+            battleTime = timer.getAbsTime() + travelSecs
+
+            if def.blue_smoke_zones then
+                local compassDeg = math.deg(bearing) % 360
+                local bestZone, bestDiff = nil, 360
+                for _, z in ipairs(def.blue_smoke_zones) do
+                    local diff = math.abs(compassDeg - z.bearing)
+                    if diff > 180 then diff = 360 - diff end
+                    if diff < bestDiff then bestDiff = diff; bestZone = z.name end
+                end
+                if bestZone then startSmoke(bestZone) end
+            end
+
+            local hdg = math.floor(math.deg(bearing) % 360 + 0.5)
+            Log.info(string.format("CasMission: Blue group %d/%d @ bearing %03d°, dist=%.0fm, %d units, battle est %s",
+                g, groupCount, hdg, spawnDist, n, formatAbsTime(battleTime)))
+        else
+            Log.warn(string.format("CasMission: Blue group %d road snap failed, skipping", g))
+        end
+    end
+
+    Log.info(string.format("CasMission: '%s' Blue attackers — %d groups, %d units total", def.name, groupCount, totalUnits))
+    return { groupCount = groupCount, totalUnits = totalUnits, battleTime = battleTime }
 end
 
 -- ── blue_defending Red spawner ─────────────────────────────────────
@@ -515,12 +649,16 @@ local function spawnOneMission(def, threat)
 
     local redInfo
     local defenderInfo
+    local blueInfo
     if def.mtype == "blue_defending" then
         redInfo = spawnRedAttackers(def, threat)
     else
         spawnSide(def.red, country.id.CJTF_RED, def.name, "red")
         if def.perimeter then
             defenderInfo = spawnRedDefenders(def, threat)
+        end
+        if def.blue_attackers then
+            blueInfo = spawnBlueAttackers(def)
         end
         local airdefVec3 = def.airdef_anchor or def.pos
         Spawner.spawnGroundGroup(country.id.CJTF_RED, vec3ToPos(airdefVec3), buildAirDefDefs(threat), {
@@ -552,6 +690,7 @@ local function spawnOneMission(def, threat)
         pos          = def.pos,
         redInfo      = redInfo,
         defenderInfo = defenderInfo,
+        blueInfo     = blueInfo,
     }
 end
 
@@ -589,10 +728,17 @@ function CasMission.generate(assignments, casMenu)
                     formatAbsTime(ri.arrivalTime))
             else
                 local di = result.defenderInfo
+                local bi = result.blueInfo
+                local blueStr = ""
+                if bi then
+                    blueStr = string.format("\n   Blue force: %d units in %d group%s\n   Est. battle start: %s",
+                        bi.totalUnits, bi.groupCount, bi.groupCount > 1 and "s" or "",
+                        bi.battleTime and formatAbsTime(bi.battleTime) or "unknown")
+                end
                 infoStr = string.format(
-                    "CAS: %s [%s]\n   STRIKE — assault Red garrison\n   GPS: %s\n   Garrison: %d units [%s]",
+                    "CAS: %s [%s]\n   STRIKE — assault Red garrison\n   GPS: %s\n   Garrison: %d units [%s]%s",
                     result.label, result.threat:upper(), Spawner.formatLL(result.pos),
-                    di and di.totalUnits or 0, di and di.forceLevel or "?")
+                    di and di.totalUnits or 0, di and di.forceLevel or "?", blueStr)
             end
             table.insert(lines, "\n" .. infoStr)
             table.insert(menuInfos, {

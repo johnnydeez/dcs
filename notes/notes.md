@@ -19,7 +19,7 @@ Mission starts with a randomized layout of Red and Blue bases across the Syria m
 
 ---
 
-## Current Status — Session 12 Complete
+## Current Status — Session 14 In Progress
 
 At mission start, the script:
 1. Randomizes which contested clusters go Red vs Blue
@@ -38,8 +38,11 @@ At mission start, the script:
 14. Populates two F10 menu submenus: **SAM Threats** (one entry per active SAM) and **Missions** (convoys + strike missions); each entry shows a 60-second info readout on click
 15. Tracks per-player mission cost score throughout the session — munitions charged on `S_EVENT_SHOT`, aircraft losses charged on DEAD/CRASH/EJECTION (waived if pilot lands at a Blue airbase), kill credits attributed via `S_EVENT_KILL` (primary) with HIT→DEAD chain as fallback for multi-hit kills and statics
 16. Displays score via **Show Mission Score** F10 command (per player group), auto-broadcasts every 5 minutes, and shows a brief on-screen `[Kill +X.XXM]` flash on each confirmed kill
-17. Implements CAS missions via `cas_mission.lua` — first mission: **Defend Kovanli** (Kovanlı, Oğuzeli/Gaziantep). Blue late-activation groups (infantry, Bradleys, APCs, Scorpions) defend against dynamically spawned Red attackers in 1–3 groups, force level weak/adequate/strong/overwhelming, attack time 30–45 min. Units spawn on a 2,000m line-of-departure perpendicular to approach, with a fan-out waypoint at ~2nm to re-spread after terrain choke points. Bearing exclusion prevents south spawns. Attack radials, force level, and estimated first contact time shown in F10 info. Green smoke loops at a trigger zone; 3–7 `effectSmokeBig` fire effects scattered around town for atmosphere. Air defense threat randomized independently. F10 menu: **Missions > CAS > Defend Kovanli [THREAT]**
+17. Implements CAS missions via `cas_mission.lua` — first mission: **Defend Kovanli** (Kovanlı, Oğuzeli/Gaziantep). Blue late-activation groups (infantry, Bradleys, APCs, Scorpions) defend against dynamically spawned Red attackers in 1–3 groups, force level adequate/strong/overwhelming (weak excluded for CAS missions), attack time 30–45 min. Units spawn on a 2,000m line-of-departure perpendicular to approach, with a fan-out waypoint at ~2nm to re-spread after terrain choke points. Bearing exclusion prevents south spawns. Attack radials, force level, and estimated first contact time shown in F10 info. Green smoke loops at a trigger zone; 3–7 `effectSmokeBig` fire effects scattered around town for atmosphere. Air defense threat randomized independently. F10 menu: **Missions > CAS > Defend Kovanli [THREAT]**
 18. Spawns autonomous Blue AI CAS flights every 20 minutes (`blue_air_support.lua`) — 2–4 aircraft per group (A-10C II, F-16C, F/A-18C), max 12 alive at once. Each flight departs a random Blue airbase, transits to a random Red airbase within 200nm, orbits overhead, and engages ground targets with WEAPON_FREE ROE. Group is destroyed after all aircraft land (RTB detected via `S_EVENT_LAND`).
+19. Implements second CAS mission: **Attack HS02** (`red_defending` type, `cas_mission.lua`). Red garrison dynamically spawns distributed along the helibase perimeter using sorted-random positions on a closed 8-point polyline (coordinates from F10 map markers). Force level rolls from adequate/strong/overwhelming. Each unit is its own 1-unit group with ±30m perpendicular jitter off the perimeter line — produces natural clustering and gaps rather than even spacing. Air defense spawns at base center with 200m spread. Battle smoke. F10 menu: **Missions > CAS > Attack HS02 [THREAT]**
+20. CAS air defense threat levels updated: SA-18 Igla MANPADS added to med (1–2 units) and high (2–3 units) tiers in addition to existing SA-9/ZU-23 and SA-13/Shilka loadouts.
+21. HS02 Blue attacking force (`spawnBlueAttackers` in `cas_mission.lua`): 1 group per session, road-snapped spawn at randomized 6–7nm from base, road travel to 2nm exit WP (`On Road` action so DCS handles routing), fan-out laterally across 2000m frontage at 2nm, orbit base at 185m. Force composition rolls per session: 12–20 infantry (`Soldier M4`), 4–8 light armor (`M1134 Stryker ATGM` / `M1043 HMMWV Armament`), 2–4 heavy armor (`M-1 Abrams` / `M-2 Bradley`). Approach bearing selects closest of 8 green smoke zones (45° spaced) for repeating smoke. Est. battle start shown in F10 info based on calibrated effective travel speed.
 
 **Spawn slots:** DCS Dynamic Spawn (enabled per-airbase in the Mission Editor) correctly shows/hides player slots based on `setCoalition()`. No scripting required.
 
@@ -61,8 +64,8 @@ At mission start, the script:
 - Parameters: `location_type`, `target_type`, `threat_level` (low/med/high)
 - Each mission module declares `VALID_LOCATIONS` — the location types valid for that target
 
-**CAS (Close Air Support)** — requires pre-built ME late-activation groups for both targets and friendlies. Stubbed, not yet implemented.
-- Parameters: `location_type`, `target_type`, `threat_level`, friendlies present
+**CAS (Close Air Support)** — mixed late-activation ME groups and dynamic spawning.
+- Parameters: `location_type`, `target_type`, `threat_level`, friendlies present (optional)
 
 ### S&D Location Types
 | Type | Description |
@@ -159,6 +162,7 @@ Attacking is harder than defending in DCS, so even "adequate" must slightly exce
 | Mission | Type | Location | Blue Groups | Status |
 |---|---|---|---|---|
 | Defend Kovanli | blue_defending | Kovanlı, Oğuzeli/Gaziantep (N36°48.672' E37°41.904') | Infantry×30, Bradley×3, AAVAPC7×5, Scorpion×2 | ✅ Implemented — smoke_zone, battle_smoke, spawn_arc_exclude (no south) |
+| Attack HS02 | red_defending | HS02 helibase (N35°20.2' E36°04.5', Hama region) | None (Blue force is dynamic) | ✅ Implemented — perimeter garrison, battle_smoke, Blue attacking force, 8-zone green smoke |
 
 ---
 
@@ -293,7 +297,8 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - Edit `C:\Program Files\Eagle Dynamics\DCS World\Scripts\MissionScripting.lua`
 - Comment out the 6 lines inside the `do...end` sanitize block (lines 16–21)
 - **Requires full DCS restart** — editing while DCS is running has no effect
-- Must be redone after every DCS update
+- Must be redone after every DCS update — symptom is `attempt to index global 'lfs' (a nil value)` on mission start
+- Use `desanitize_dcs.py` in the repo root (run as Administrator): `python desanitize_dcs.py`
 
 ### DCS Airbase API
 - Correct function: `Airbase:setCoalition(coalition.side.BLUE)` — added in DCS 2.8.8
@@ -318,6 +323,7 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - `land.getClosestPointOnRoads("roads", x, y)` returns two values `rx, ry` — NOT a table (indexing it causes a script error)
 - Wrong unit type names are silently replaced with Leopard-2; check dcs.log for `woCar: Unit X is unknown`
 - Confirmed correct type strings: `Soldier AK`, `Soldier RPG`, `BTR-80`, `SA-18 Igla manpad`, `Ural-375 ZU-23`, `Ural-4320-31`, `KAMAZ Truck`, `Infantry AK Ins` (AKM insurgent), `BMP-1`
+- Confirmed Blue unit type strings (2026-06-25 via dumpLateGroupUnits): `Soldier M4`, `M1134 Stryker ATGM`, `M-2 Bradley`, `M-1 Abrams`, `M1043 HMMWV Armament`
 - DCS replaces unknown unit types with Leopard-2 (not a crash, easy to miss without checking the log)
 
 ### Static Object Spawning
@@ -408,6 +414,20 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - Engine log shows display name (e.g. `GBU-38(V)1/B`) but `getTypeName()` returns the base type key (e.g. `GBU_38`) — variant suffixes are stripped
 - Names with spaces (e.g. `Hydra-70 M151`, `GAU-8/A Avenger`) are uncertain — hyphen→underscore may or may not apply; keep both forms as aliases in the config until confirmed
 - Confirmed type name from log: `kamaz_tent_civil` (civilian KAMAZ with tent cover, all lowercase with underscores)
+
+### Vec3 vs Spawner Position Format
+- `ll(lat, lon)` returns a DCS Vec3: `{ x=north, y=altitude, z=east }` — the `y` component is **altitude**, not east
+- `Spawner.spawnGroundGroup` expects `pos` as `{ x=north, y=east, alt }` — the `y` component is **east**
+- Passing a Vec3 from `ll()` directly to `Spawner.spawnGroundGroup` silently uses altitude as the east coordinate, placing units at a wildly wrong position
+- **Fix:** use a `vec3ToPos(v)` helper: `{ x=v.x, y=v.z, alt=land.getHeight({x=v.x, y=v.z}) }`
+- This also applies to `def.airdef_anchor` and `def.pos` when used as spawner positions
+
+### Perimeter Garrison Spawning (red_defending)
+- **Do not use evenly-spaced slots** along the perimeter — produces a visibly regular defensive line (units at perfectly predictable intervals)
+- **Correct approach:** generate n random positions in `[0, perimLen)`, sort them, assign one unit per position. Sorted random produces natural clustering and gaps that vary each session
+- Each unit spawns as its own 1-unit group (no `spread` grouping) for independent AI
+- ±30m perpendicular jitter off the perimeter line gives the line natural depth variation without clustering
+- Perimeter is a **closed polyline**: segment list connects last anchor back to first anchor so the full base perimeter is covered including the west-to-NW segment
 
 ### Ground Unit AI Speed
 - DCS ground AI ignores the `speed` field in route waypoints when it falls below the unit's minimum AI speed
@@ -512,8 +532,11 @@ Dynamically spawned each session via `coalition.addGroup()`.
 - [x] Fix Israel/Jordan bases spawning Red — was `BLUE_SOUTH` contested cluster; split into `ISRAEL` + `JORDAN` both `fixed = coalition.side.BLUE`, added `Eyn Shemer` and `Rosh Pina`
 - [x] Blue AI CAS flights (`blue_air_support.lua`) — A-10C II, F-16C, F/A-18C; 20-min interval, 12-aircraft cap, fixed CAS loadouts with LITENING TGPs, RTB despawn via land event
 - [ ] CAS: confirm `effectSmokeBig` preset values — preset 1 vs 2 appearance needs in-game verification
-- [ ] CAS: implement red_defending mission type
+- [x] CAS: implement red_defending mission type — HS02_ATTACK perimeter garrison spawner complete
 - [ ] CAS: add more missions to the MISSIONS table
+- [x] HS02: add Blue attacking force — dynamic spawn, road-snap, fan-out, orbit, green smoke, est. battle start time
+- [x] HS02: verify Blue unit type strings — confirmed: `M1134 Stryker ATGM`, `Soldier M4`, `M-2 Bradley`, `M-1 Abrams`, `M1043 HMMWV Armament`
+- [ ] HS02: calibrate `BLUE_EFFECTIVE_MPS` (currently 2.29 m/s) and `BLUE_SPAWN_DIST_MIN/MAX` (currently 6–7nm) from test runs — est. battle start should be ~1hr to 1:15 after mission start
 - [ ] Investigate why airfield icons don't change color in singleplayer
 - [ ] Blue air support: confirm Teyman, Zarqa, H4 base name strings via `Log.dumpAirbases()` (currently marked unconfirmed in cluster definitions)
 - [ ] Blue air support: consider adding an F10 menu entry to show active BAS flights
