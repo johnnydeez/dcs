@@ -1,0 +1,301 @@
+{
+  "_comment": "Kola airbase reference points in DCS projected metres (x=north, y=east). Extracted once from pydcs dcs/terrain/kola/airports.py (Airport.__init__ position) on 2026-09-22; lat/lon derived with tools/kola_proj.py. Verify names in-game with Log.dumpAirbases(). `code` is our own 4-letter key used in generated zone names (ZONE_<code>_<brg>_<km*10>).",
+  "airbases": [
+    {
+      "name": "Afrikanda",
+      "x": -13402.855,
+      "y": 438922.312,
+      "lat": 67.45731,
+      "lon": 32.78402,
+      "code": "AFRI"
+    },
+    {
+      "name": "Alakurtti",
+      "x": -84651.668,
+      "y": 344113.5,
+      "lat": 66.97273,
+      "lon": 30.34854,
+      "code": "ALAK"
+    },
+    {
+      "name": "Alta",
+      "x": 221465.984,
+      "y": 27686.099,
+      "lat": 69.97726,
+      "lon": 23.3659,
+      "code": "ALTA"
+    },
+    {
+      "name": "Andoya",
+      "x": 151539.578,
+      "y": -254451.789,
+      "lat": 69.29758,
+      "lon": 16.13541,
+      "code": "ANDO"
+    },
+    {
+      "name": "Arvidsjaur",
+      "x": -268159.332,
+      "y": -142107.058,
+      "lat": 65.5915,
+      "lon": 19.2778,
+      "code": "ARVI"
+    },
+    {
+      "name": "Banak",
+      "x": 234846.248,
+      "y": 88378.912,
+      "lat": 70.06878,
+      "lon": 24.97351,
+      "code": "BANA"
+    },
+    {
+      "name": "Bardufoss",
+      "x": 118870.594,
+      "y": -160678.242,
+      "lat": 69.05535,
+      "lon": 18.5435,
+      "code": "BARD"
+    },
+    {
+      "name": "Boden Heli Base",
+      "x": -244792.211,
+      "y": -30945.339,
+      "lat": 65.80933,
+      "lon": 21.69452,
+      "code": "BODN"
+    },
+    {
+      "name": "Bodo",
+      "x": -66958.883,
+      "y": -348337.328,
+      "lat": 67.2692,
+      "lon": 14.36536,
+      "code": "BODO"
+    },
+    {
+      "name": "Enontekio",
+      "x": 41616.834,
+      "y": 37027.746,
+      "lat": 68.3625,
+      "lon": 23.4241,
+      "code": "ENON"
+    },
+    {
+      "name": "Evenes",
+      "x": 60208.768,
+      "y": -239417.102,
+      "lat": 68.49119,
+      "lon": 16.67814,
+      "code": "EVEN"
+    },
+    {
+      "name": "Hemavan",
+      "x": -232656.234,
+      "y": -332951.641,
+      "lat": 65.80546,
+      "lon": 15.08359,
+      "code": "HEMA"
+    },
+    {
+      "name": "Hosio",
+      "x": -227262.609,
+      "y": 151497.344,
+      "lat": 65.89611,
+      "lon": 25.70385,
+      "code": "HOSI"
+    },
+    {
+      "name": "Ivalo",
+      "x": 80495.586,
+      "y": 197621.367,
+      "lat": 68.60712,
+      "lon": 27.40484,
+      "code": "IVAL"
+    },
+    {
+      "name": "Jokkmokk",
+      "x": -168129.938,
+      "y": -100661.414,
+      "lat": 66.49635,
+      "lon": 20.14701,
+      "code": "JOKK"
+    },
+    {
+      "name": "Kalevala",
+      "x": -273752.097,
+      "y": 409809.57,
+      "lat": 65.20951,
+      "lon": 31.1336,
+      "code": "KALE"
+    },
+    {
+      "name": "Kalixfors",
+      "x": -26773.459,
+      "y": -94330.129,
+      "lat": 67.76496,
+      "lon": 20.25101,
+      "code": "KALX"
+    },
+    {
+      "name": "Kallax",
+      "x": -274102.5,
+      "y": -10878.523,
+      "lat": 65.54379,
+      "lon": 22.12187,
+      "code": "KALL"
+    },
+    {
+      "name": "Kemi Tornio",
+      "x": -243395.969,
+      "y": 101204.632,
+      "lat": 65.78148,
+      "lon": 24.58228,
+      "code": "KEMI"
+    },
+    {
+      "name": "Kilpyavr",
+      "x": 163480.617,
+      "y": 389049.812,
+      "lat": 69.09491,
+      "lon": 32.40059,
+      "code": "KILP"
+    },
+    {
+      "name": "Kirkenes",
+      "x": 216627.876,
+      "y": 280054.908,
+      "lat": 69.72536,
+      "lon": 29.89007,
+      "code": "KIRK"
+    },
+    {
+      "name": "Kiruna",
+      "x": -20455.625,
+      "y": -90638.922,
+      "lat": 67.822,
+      "lon": 20.33681,
+      "code": "KIRU"
+    },
+    {
+      "name": "Kittila",
+      "x": -29037.706,
+      "y": 100101.598,
+      "lat": 67.70099,
+      "lon": 24.84687,
+      "code": "KITT"
+    },
+    {
+      "name": "Koshka Yavr",
+      "x": 172272.047,
+      "y": 338839.0,
+      "lat": 69.25122,
+      "lon": 31.19638,
+      "code": "KOSH"
+    },
+    {
+      "name": "Kuusamo",
+      "x": -200546.576,
+      "y": 310601.321,
+      "lat": 65.98737,
+      "lon": 29.23995,
+      "code": "KUUS"
+    },
+    {
+      "name": "Luostari Pechenga",
+      "x": 187599.094,
+      "y": 328063.922,
+      "lat": 69.40239,
+      "lon": 30.99092,
+      "code": "LUOS"
+    },
+    {
+      "name": "Monchegorsk",
+      "x": 46867.562,
+      "y": 437312.674,
+      "lat": 67.98904,
+      "lon": 33.01867,
+      "code": "MONC"
+    },
+    {
+      "name": "Murmansk International",
+      "x": 131730.496,
+      "y": 409479.0,
+      "lat": 68.78165,
+      "lon": 32.75136,
+      "code": "MURM"
+    },
+    {
+      "name": "Olenya",
+      "x": 68386.711,
+      "y": 451986.391,
+      "lat": 68.15178,
+      "lon": 33.4643,
+      "code": "OLEN"
+    },
+    {
+      "name": "Poduzhemye",
+      "x": -278453.125,
+      "y": 561022.438,
+      "lat": 64.91865,
+      "lon": 34.26299,
+      "code": "PODU"
+    },
+    {
+      "name": "Rovaniemi",
+      "x": -152462.094,
+      "y": 151503.711,
+      "lat": 66.56485,
+      "lon": 25.83049,
+      "code": "ROVA"
+    },
+    {
+      "name": "Severomorsk-1",
+      "x": 164318.273,
+      "y": 430555.578,
+      "lat": 69.0305,
+      "lon": 33.423,
+      "code": "SEV1"
+    },
+    {
+      "name": "Severomorsk-3",
+      "x": 148839.247,
+      "y": 445897.989,
+      "lat": 68.86706,
+      "lon": 33.71812,
+      "code": "SEV3"
+    },
+    {
+      "name": "Sodankyla",
+      "x": -57296.551,
+      "y": 178052.148,
+      "lat": 67.39503,
+      "lon": 26.61914,
+      "code": "SODA"
+    },
+    {
+      "name": "Tromso",
+      "x": 188106.469,
+      "y": -143382.984,
+      "lat": 69.68151,
+      "lon": 18.91773,
+      "code": "TROM"
+    },
+    {
+      "name": "Vidsel",
+      "x": -237355.531,
+      "y": -101474.102,
+      "lat": 65.87527,
+      "lon": 20.14987,
+      "code": "VIDS"
+    },
+    {
+      "name": "Vuojarvi",
+      "x": -93814.805,
+      "y": 177899.305,
+      "lat": 67.06913,
+      "lon": 26.5398,
+      "code": "VUOJ"
+    }
+  ]
+}
