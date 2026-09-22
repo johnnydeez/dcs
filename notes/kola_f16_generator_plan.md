@@ -3,36 +3,47 @@
 > **Status:** v0 — initial planning, 2026-09-21. No code yet.
 > Companion to the Syria project (`notes/notes.md`). Open questions are marked **[Q]** — answer them inline and the doc becomes the spec.
 >
-> **Layout:** *Last session* (pick up here) → *Plan* (§1–10, concept and research) → *Architecture* (§11, code structure decisions).
+> **Layout:** *Where we are* (pick up here) → *Plan* (§1–10, concept and research) → *Architecture* (§11, code structure decisions).
 
 ---
 
-## Last session — where we left off  *(2026-09-21)*
+## Where we are — pick up here  *(2026-09-22, end of session)*
 
-**Done this session:** §11.1–11.5 — separate from Syria; one plain-data plan table built by the 7 stages, nothing spawns until it's finished, immutable after build; startup sequence (load → wait → gather inputs → stages → dump → hand off); consumer list; consumers build DCS formats on the fly, no separate spawn/mission tables.
+**Status: the pipeline runs end-to-end in DCS for stage 1.** Boot → gather → stage 1 (territory + front) → plan dump → `Territory.apply` sets all base coalitions and draws base/zone circles by side. **Verified working in-game.** Settled: the 7-stage plain-data plan (§11.1–11.5), weather as a planner input (§1.11), the survey-zone dataset with generated names and plan-side roles (§1.12), the 11-cluster table with `p_red` + `requires_red` (§3), the `kola_f16\` script tree + load order (§11.6), the naming/id + callsign convention (§11.7).
 
-**Moving to the Windows dev box to start writing.** Still to decide, in the order we'll hit it:
+**What exists (all in git, deployed to `Saved Games\DCS\Scripts\kola_f16\`):**
+```
+kola_f16/
+  init.lua                  load order; after CONFIG.START_DELAY: dumpWeather → Gather.run → Stage1.run → plan dump → Territory.apply + on-screen summary
+  config.lua                START_DELAY, PLAN_DUMP(+file), FRONT_RANGE_KM=200, FORCE_CLUSTER, draw radii
+  lib/util.lua              seedRandom, pick/shuffle, dist/bearing, toVec3, withLatLon, formatLL, serialize, writeFile
+  lib/logger.lua            Log.* + dumpAirbases/dumpGroups/dumpLateGroupUnits/dumpWeather
+  data/clusters.lua         11 clusters (§3)   data/zones.lua  12 zones, generated
+  gather.lua                plan.world: airbases{pos+lat/lon, me_side}, zones{pos+lat/lon}, date/start_time/abs_time, weather (deep copy), base_cluster, unknown/unlisted base checks
+  stages/s1_territory.lua   plan.territory: clusters{side,how}, bases{side,cluster}, zones{side,cluster}, front{nearest_enemy, frontline, adjacency}, summary
+  consumers/territory.lua   setCoalition + autoCapture(false) per base; 10 km base circles, 3 km zone circles + name labels; Territory.summaryText
+tools/                      miz_zones.py, dcslua.py, kola_proj.py, kola_airbases.json (stdlib only)
+kola_f16_random_tasking.miz the flyable mission (needs ONCE + TIME MORE 1 → DO SCRIPT dofile(lfs.writedir().."Scripts\\kola_f16\\init.lua"), and dynamic-spawn F-16 slots at Blue bases)
+```
+Plan dump lands in `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `python tools/miz_zones.py "<survey .miz>"` after drawing zones. DCS updates re-sanitize `MissionScripting.lua` → `python desanitize_dcs.py` from an admin shell + full DCS restart (hit this today).
 
-*Needed before the first file:*
-1. **Kola script directory layout and load order** — what `init.lua` loads and in what order (data files, stages, consumers). Install path and the ME trigger line, since it's separate from Syria.
-2. **Naming / id convention** — group names, mission numbers, target ids, ME late-activation group names. Planner assigns them, tracker matches DCS events back to them, so it has to be settled before stage 1 is written.
+**Next code (stage 2 onward), suggested order:**
+1. **Read `kola_last_plan.lua` from today's run** and pin the real `env.mission.weather` field names into §1.11 (the dump is in the file and in dcs.log).
+2. **Stage 2 — base defenses**: per-base AAA/MANPADS/SHORAD entries (`DEF_<Base>_<n>`), heavier on `front.frontline`. Needs `data/unit_pools.lua` (Kola-era Red + Blue pools; type strings must be confirmed via `dumpLateGroupUnits` — the Leopard-2 trap) and the `randomPointInZone` / ring-offset helper in `lib/spawner.lua` (port from Syria `spawner.lua`, keep `isOnLand` / `isFlatEnough`).
+3. **Ground spawner consumer** (`consumers/ground_spawner.lua`) — translates `plan.defenses` entries to `coalition.addGroup`, group name = plan id verbatim. First thing that actually spawns.
+4. Then stage 3 (fixed ground from zones + `TGT_` catalog → threat map), stage 4 (ground maneuver → contacts).
 
-*Needed by the time we reach the executor:*
-3. **Runtime state table shape** — what spawner/scheduler/tracker record and how it's keyed to the plan.
-4. **ATO scheduler + scramble loop** — tick rates, alive-cap policy (defer vs drop a line), how the landing-despawn handler feeds the count.
-5. **Success model** — binary per line vs score (§9 item 9).
+**Also pending:** ~90 more survey zones (§1.12); `data/statics.lua` parsing; runway-length table (§3); `dumpAirbases()` once to confirm all 37 names (gather already warns on mismatches — none seen today).
 
-*Can wait for their phases:*
-6. Skynet (phase 3), pydcs (phase 8), naval research (phase 2).
-
-*Phase 0 prerequisites on the Windows box (§8):* Kola `.miz` with dynamic-spawn F-16 slots, de-sanitize check, `dumpAirbases()` to confirm base name strings, runway lengths.
-
-**Suggested start for the next session:** items 1 and 2, then write `init.lua`, the input-gather step, and stage 1 — enough to get a plan dump on screen and prove the pipeline before any spawning exists.
+**Decide as we hit them:**
+- Runtime state table shape (§11.2) — what spawner/scheduler/tracker record, keyed to the plan.
+- ATO scheduler + scramble loop — tick rates, alive-cap policy, landing-despawn feeding the count (§1.9/§1.10).
+- Success model — binary per line vs score (§9 item 9).
+- Later phases: Skynet (ph 3), pydcs (ph 8), naval research (ph 2).
 
 ---
 
-## 1. Concept  *(decided 2026-09-21)*
-
+## 1. Concept
 A mission generator for the **F-16C Block 50** on the **Kola map**. When the `.miz` loads, the script:
 
 1. **Rolls the battlefield** — Syria-style cluster assignment: some clusters always Red, some always Blue, contested clusters randomized. Airbase ownership, F10 territory circles, dynamic-spawn slots all follow.
@@ -49,8 +60,7 @@ Where the Syria project is a *sandbox* (everything spawns at T+0, players pick w
 
 **Players:** 1 for now, 2 F-16 slots (friend later). No AI in the player's flight.
 
-### 1.1 The build order  *(decided 2026-09-21)*
-
+### 1.1 The build order
 The key architectural idea: **separate the plan from its execution.** `Planner.build()` is a pure function of (RNG, content catalog, config) that returns a plain Lua table. `Executor.run(plan)` spawns things. `Briefing.deliver(plan)` talks to the player. This lets us log the whole plan to a file, replay it, or dry-run the planner without spawning a single unit.
 
 The plan is built in **stages**, each consuming the outputs of every stage before it and never reaching backward. Later stages can be *intelligent* because earlier stages have already fixed the facts they need.
@@ -163,6 +173,8 @@ Contested clusters need **both** Red-side and Blue-side content pre-placed, beca
 
 Rough ME content budget: **2–4 hand-placed target sites per Red-capable cluster**, plus one Defend + one Attack CAS site per contested cluster. Everything late-activation, named `TGT_<Base>_<Type>_<Part>` so the catalog and the ME stay in sync (same discipline as `RED_<Site>_SA2`).
 
+> **Scope:** pre-placement applies only to **ME late-activation target groups** (SAM batteries, airfield statics, ships). All script-spawned ground — CAS garrisons, defend positions, armor — comes from **coalition-agnostic zones** (§1.12) assigned a side by the roll, which replace the "pre-place both sides" approach for those categories.
+
 ### 1.3 Feasibility matrix — what can be rolled given the territory
 
 | Mission type | Needs | Guaranteed? |
@@ -179,11 +191,10 @@ Rough ME content budget: **2–4 hand-placed target sites per Red-capable cluste
 
 Type weights are applied *after* filtering to feasible types, so a session never dead-ends. Recommend a **session history file** (we have `io`/`lfs` — de-sanitized) recording the last N mission types so the roller can down-weight repeats. Cheap, and it's the seed of campaign-style progression later.
 
-### 1.4 Launch base  *(decided)*
-
+### 1.4 Launch base
 The planner **picks the launch base** and builds the whole flight plan from it (steerpoints, IP, TOT, fuel). The player reads the frag and spawns there via dynamic spawn. No enforcement, no personalized re-brief needed — the frag is the plan. Every Blue F-16-capable base needs dynamic spawn enabled in the ME since any of them can be chosen.
 
-### 1.5 Briefing  *(decided: essentials on screen at start, everything else in F10)*
+### 1.5 Briefing
 
 One `outText` at T+0 with the **essentials only** — no chained/timed messages. F10 **Briefing** submenu holds the full sections for reading in the cockpit. Map marks carry the geometry.
 
@@ -220,7 +231,7 @@ Real-world briefing layers and what they'd contain here:
 | **Intel — GOB** (ground, for CAS) | FLOT, friendly unit + position, enemy unit type + axis, commander's intent, JTAC contact | Friendly group + smoke marker, enemy composition + attack radials (Syria CAS already does this), JTAC freq if using AI FAC |
 | **Target materials** | Imagery, description, DMPI, desired effect, collateral limits, weaponeering, attack axis restrictions | Target description + composition, success criterion phrased as desired effect ("destroy the SA-10 engagement radar"), recommended loadout, attack axis suggestion from the IP geometry |
 
-#### Threat-intel fidelity rule  *(replaces the "difficulty knob" idea)*
+#### Threat-intel fidelity rule
 
 Fidelity follows the threat's real-world nature, not a difficulty setting:
 
@@ -285,16 +296,15 @@ Sections map 1:1 to F10 **Briefing >** `Frag` / `Steerpoints` / `Support` / `Thr
 #### In-flight updates
 Event-driven `outText`: "MAGIC: bandits airborne Monchegorsk, 2-ship, heading 270", "TEXACO on station", "Secondary: convoy sighted moving S on E105", objective met/failed, score delta. Result + "Roll next tasking" (phase 7) via F10 **Briefing > Status**.
 
-### 1.6 Spawn timing  *(decided)*
-Target, point defense, and ambient Red base defenses spawn at T+0 (Syria pattern — proven). Red CAP and QRA are **event-driven** (timer after player takeoff, or player crossing the front line) so they aren't bingo before the player arrives.
+### 1.6 Spawn timingTarget, point defense, and ambient Red base defenses spawn at T+0 (Syria pattern — proven). Red CAP and QRA are **event-driven** (timer after player takeoff, or player crossing the front line) so they aren't bingo before the player arrives.
 
-### 1.7 Ground layer at T+0  *(decided — a full layer, not an afterthought)*
+### 1.7 Ground layer at T+0
 
 The ATO (§1.9) covers the **air** picture. The **ground** picture is spawned at mission start, Syria-style, and is a first-class part of the battlefield:
 
 1. **Airfield coalitions** — every base set per the cluster roll (`setCoalition`, `autoCapture(false)`, F10 circles, dynamic-spawn slots follow).
 2. **Airfield defenses** — randomized ground defenses at every Red base (Syria `defense_setup` pattern; Kola unit pools).
-3. **ME-defined ground zones** — trigger zones placed by hand in the ME, each tagged with a side condition and a role, e.g. `ZONE_RED_ARMOR_Pechenga`, `ZONE_BLUE_MECH_Ivalo`, `ZONE_RED_SAM_Kandalaksha`. At T+0 the script spawns Red and Blue ground units *inside their zones* according to the cluster roll — Red zones in Red-owned clusters activate, Blue zones in Blue-owned clusters activate, contested clusters get whichever side won the roll. Zones can also be **movement corridors**: a unit group spawns in one zone and routes to another, giving Red armor pushing toward a Blue border town, Blue reinforcing a defensive line, convoys on real roads.
+3. **Surveyed ground zones** — clearings drawn once in a survey `.miz` and committed as `data/zones.lua` (§1.12). A zone carries no side and no role; it inherits its cluster's rolled side in stage 1, and stages 3–4 decide what (if anything) to put in it this session from its size, its distance to bases and to the front, and road proximity. At T+0 the ground spawner places those units *inside their zones*. Zones can also be **movement corridors**: a unit group spawns in one zone and routes to another, giving Red armor pushing toward a Blue border town, Blue reinforcing a defensive line, convoys on real roads.
 
 Why zones instead of Syria's ring-around-the-airbase random offsets: Kola is lakes, marsh, and forest the API can't see. Hand-placed zones in known clearings/along roads sidestep the whole terrain-validation problem (§6) and give the planner a real **GOB** to brief — "Red mechanized battalion assessed vic. Pechenga moving W" is true because a zone spawned it.
 
@@ -304,12 +314,11 @@ How the ground layer feeds the ATO:
 - Secondaries (TEL hunt, convoy, recon box) are drawn from zone spawns.
 - Rule of thumb still applies: nothing in the ground layer may be a juicier target than the player's frag, and roaming units stay clear of planned IPs/corridors.
 
-Details to design later: zone naming convention, per-zone unit templates by side and role, force-level scaling (Syria `FORCE_LEVELS` pattern), how many zones per cluster, whether Blue and Red zones can be paired into "fronts" that fight each other without the player. **[LATER — own design pass]**
+Zone mechanics — generated naming, the survey-file pipeline, cluster-based side assignment, plan-side role assignment, and the `[side][role]` templates — are specified in **§1.12**. Still deferred to their own pass: force-level scaling (Syria `FORCE_LEVELS` pattern), how many zones per cluster, and whether opposing zones can be paired into "fronts" that fight each other without the player. **[LATER — own design pass]**
 
-### 1.8 Session history  *(decided)*
-Write `Saved Games\DCS\kola_f16_history.lua` (or JSON-ish) after each plan: date, mission type, target id, launch base, outcome. Roller down-weights recent types. Controlled by a config flag: `HISTORY_ENABLED = true/false`, plus `FORCE_MISSION_TYPE = "sead"` / `FORCE_TARGET = "SAM_OLENYA_SA10"` overrides for testing.
+### 1.8 Session historyWrite `Saved Games\DCS\kola_f16_history.lua` (or JSON-ish) after each plan: date, mission type, target id, launch base, outcome. Roller down-weights recent types. Controlled by a config flag: `HISTORY_ENABLED = true/false`, plus `FORCE_MISSION_TYPE = "sead"` / `FORCE_TARGET = "SAM_OLENYA_SA10"` overrides for testing.
 
-### 1.9 The ATO model  *(decided in principle 2026-09-21 — the organizing idea)*
+### 1.9 The ATO model
 
 Instead of planning one mission, the generator plans an **Air Tasking Order for a ~6-hour window** starting at mission time. Every line is a flight with a callsign, aircraft, mission type, target or station, and times. One Blue line is the player's; AI flies the rest. Red gets its own ATO.
 
@@ -346,7 +355,7 @@ Instead of planning one mission, the generator plans an **Air Tasking Order for 
 #### The player's place in it
 - The player's role is rolled like before (§1.3 feasibility, history weighting); the ATO is built *around* that line, then filled out.
 - Package missions (escort, SEAD-for-a-strike, strike-with-SEAD) fall out naturally: the player is one line, AI flies the others, the brief lists them under `Package`.
-- After recovery, **F10 > Briefing > ATO** can offer "take line 2087" — the player picks another *not-yet-started* line in the window and gets a new brief. This replaces the "roll next tasking" idea and is how a session chains 2–3 sorties.
+- After recovery, **F10 > Briefing > ATO** can offer "take line 2087" — the player picks another *not-yet-started* line in the window and gets a new brief. This is how a session chains 2–3 sorties.
 
 #### Red ATO
 Mirror structure, smaller: CAP rotations from Monchegorsk / Severomorsk-3 / Kilpyavr, QRA posture per base, 0–2 Red strike packages (Su-24/Su-34) against Blue border bases during the window. The intel **AOB** in the brief is derived from Red's *standing posture* (station areas, base types, QRA), degraded by the fidelity rule — never from Red's timeline. This also gives CAP/sweep player missions real customers.
@@ -363,8 +372,7 @@ This is a big step up from "one tasking." Plan to build the *data model* fully f
 5. + Filler packages, airlift/recce, "take another line" after landing.
 At every layer the F10 `ATO` view shows only lines that actually execute — never fake lines.
 
-### 1.10 Reaction model — keep it simple  *(decided 2026-09-21)*
-
+### 1.10 Reaction model — keep it simple
 **Hard rule: no side reads the other side's plan.** Neither planner predicts the other's behavior. Each side has objectives and planned missions built from the static picture; responsiveness comes from *one* cheap reaction loop per side plus DCS's native AI.
 
 #### Plan-time: static facts only
@@ -409,6 +417,76 @@ The player gets what a pilot gets: fixed threats known, a CAP *area* to expect t
 
 #### Red is not tuned to the player
 Red defends what Red values, with no knowledge of which target is the player's. CAP stations and SAM density weight toward Red's high-value areas (Olenya, Severomorsk, the core) — which is where the good targets are, so coverage emerges without special-casing. Variance is accepted; the history-weighted type roll, per-target threat tiers, and "take another line" after landing handle quiet nights.
+
+### 1.11 Weather as a planner input
+The runtime **can read** the mission's weather, time, and date — only *changing* them is impossible (that's §7). So weather is a first-class input to the plan, read once in the gather-inputs step (§11.3 step 3) and stored on `plan.world.weather` / `plan.world.date`. Even fixed ME weather becomes something the planner adapts to instead of ignoring.
+
+**Sources (all plain data, read at T+0):**
+- `env.mission.weather` — clouds (`base` / `preset` / `thickness` / `density` / `iprecptns`), `wind` (`atGround` / `at2000` / `at8000`, each `speed` + `dir`), `fog` / `enable_fog`, `visibility`, `dust_density` / `enable_dust`, `season.temperature`, `qnh`, `groundTurbulence`.
+- `env.mission.date` `{Year,Month,Day}` and `env.mission.start_time` (sec since midnight); `timer.getAbsTime()` for the running clock.
+- Point queries when needed: `atmosphere.getWind(pt)`, `atmosphere.getWindWithTurbulence(pt)`, `atmosphere.getTemperatureAndPressure(pt)` (returns K, Pa).
+
+**Verify first:** the fog namespace and cloud-preset structure changed with DCS 2.9's dynamic weather. Add a `Log.dumpWeather()` (same pattern as `dumpAirbases`) and run it once on the Kola `.miz` to pin the real field names before relying on them — Phase-0 item (§8).
+
+**Why it drives what gets created** — weather is a filter/weight applied through stages 1–6 and a brief section in stage 7:
+
+| Weather fact | Planner consequence |
+|---|---|
+| Low ceiling / thick cloud | Down-weight LGB / visual-TGP / visual CAS; favor **JDAM / HARM / radar-cued** (GPS-INS works through cloud). Shifts §1.3 feasibility + recommended load. |
+| Poor visibility / fog / precip | Suppress Recon (visual confirm) and CAS visual ID; widen mobile-SAM "assessed area" fidelity (bad wx = vaguer intel, in-fiction). |
+| Night / polar night (date + time + lat) | Force TGP/NVG-appropriate loads, bias IR/GPS weapons, may suppress visual CAS. The §3 polar-night concern as a live input. |
+| Wind aloft (speed/dir) | Orient tanker track + CAP station into wind; pick launch base / runway favouring an into-wind heavy departure. |
+| Temp + QNH + field elevation | Density-altitude check → exclude a short/hot/high base from the launch pool (§3 runway concern); correct altimeter in the brief. |
+| Ceiling + visibility together | **VFR vs IFR** determination per base → whether visual takeoff/recovery is viable; drives divert/recovery choice and the SPINS card. |
+
+Composes cleanly with the pydcs route (§7 option 3): **Python sets weather/time, Lua reads and reacts** — no coupling.
+
+### 1.12 Zones — the ground-unit dataset  *(revised 2026-09-22)*
+Implements the §1.7 ground layer. **Every ground unit except base defenses spawns inside a surveyed zone.** A zone is exactly one thing: **a clearing where ground units can realistically be placed.** The dataset is **locations and sizes, nothing more** — no side, no role, no substance, and nothing about the front, which doesn't exist until stage 1 has run. The other fields in an entry (`base`, `brg`, `km`, `cluster`) are derived from the position against the fixed airbase list and are static facts about the map; every session-dependent decision is made by the planner at run time.
+
+**Survey `.miz`, not the mission `.miz`.** Zones are drawn as ME trigger zones in a dedicated survey file (`Saved Games\DCS\Missions\khola_ground_zones.miz`) that is never flown. `tools/miz_zones.py` parses `mission.triggers.zones` out of it into the committed `kola_f16/data/zones.lua`; that data file is the **only** source the plan reads. The real mission `.miz` contains none of these zones, so there is no `trigger.misc.getZone()` at runtime and no need to keep ME names in sync with anything. Target list: ~100 zones, drawn once. Map "Draw" objects live in `mission.drawings` and aren't parsed — use the trigger-zone tool.
+
+**Circle or quad.** On disk each zone has `x` (North), `y` (East) in **projected metres**, plus `type`: `0` = circle (has `radius`), `2` = quad (has 4 `verticies`). Circles for small clearings; quads for larger irregular areas (assembly areas, recon search boxes) — draw the polygon around the actual clearing/road so units only ever spawn on good ground (§6). One helper — **"random valid point in zone"** (disc-sample for circle, polygon-sample for quad, keeping the `isOnLand` / `isFlatEnough` retry) — is the single primitive stages 3–4 use to place ground units.
+
+**Coordinates: store projected, derive GPS in-sim.** The dataset keeps projected `x,z` (`z` = the file's `y`/East, renamed so it can't be confused with altitude); the spawner consumes those directly. **Lat/Lon → DMS/MGRS is computed in-sim** via `coord.LOtoLL` at brief time (stage 7). Matches the §11.5 `pos = { x, z, lat, lon }` shape. (The tool also computes lat/lon offline with its own transverse-Mercator implementation, `tools/kola_proj.py`, for the review comments — verified to ~10 m against published airport coordinates.)
+
+**Names are generated, never typed.** `ZONE_<BASE>_<brg>_<km×10>` from the nearest airbase: `ZONE_KITT_100_012` is 1.2 km on bearing 100° from Kittilä; `ZONE_SEV1_341_097` is 9.7 km NNW of Severomorsk-1. `BASE` is a 4-letter code per airbase (`tools/kola_airbases.json`). Reads like a radio fix in logs and briefs, unique in practice; a genuine collision (same base, same degree, same 100 m ring) gets a `B`, `C`… suffix ordered by `zone_id`, and the tool reports it. Hand-typed ME names are ignored. Each entry also keeps the ME's internal **`zone_id`**, which is stable while the zone exists even if it's nudged (the name would change) — anything that must reference a specific zone (a catalog entry) keys on `zone_id`.
+
+**Role is assigned by the plan, not the zone.** What goes in a zone on a given session is decided in stages 3–4 from things the planner already knows:
+
+| Signal | Source | What it implies |
+|---|---|---|
+| Radius / area | the zone | what *fits*: a SAM battery ~50 m, a garrison ~150 m, an armor assembly area 300 m+, a recon box = big quad |
+| Distance to nearest base (`km`) | the zone | close → base-adjacent (garrison, SHORAD); far → field site |
+| Distance to the front | stage 1 | near → armor/mech assembly, contacts; deep → SAM, depot, convoy node |
+| Road proximity | `land.getClosestPointOnRoads` in-sim | convoy node, corridor endpoint |
+| Rolled side | stage 1 | which `[side][role]` template pool |
+
+Role vocabulary (plan-side): `armor`, `mech`, `garrison`, `sam`, `recon`, `convoy_node`. **"Attack" / "Defend" is not a role** — it's relational, emerging at stage 4 where an owned zone is adjacent to an enemy-owned zone (`contacts`). Unit templates are keyed by `[side][role]` (the `INFANTRY_POOL` / `BLUE_INFANTRY_POOL` split from `cas_mission.lua`). A zone that *must* be a specific thing can carry an ME zone property `role=…` as an override; expected to be rare.
+
+**Side anchor — option A (cluster tag).** Each zone carries a `cluster` and inherits that cluster's rolled side in stage 1 — the direct parallel to how bases are listed under clusters. Chosen over "nearest-owned-base" (B) because it keeps territory coherent and lets a zone be a **forward outpost** (the Syria `AT_TANF` pattern). The tool sets `cluster` from the nearest base's cluster in `data/clusters.lua`; an ME zone property `cluster=…` overrides it for the exceptions (zones 35–55 km from any base are where the guess is weakest).
+
+**Movement corridors = zone pairs.** A Red push is a start zone → end zone pair (both in the same cluster); the moving group belongs to the **start zone's** side. Contacts fall out where the corridor meets enemy-owned ground.
+
+**Pipeline:**
+```
+draw trigger zones in survey .miz ─save─▶ khola_ground_zones.miz
+        │  python tools/miz_zones.py <miz>     (offline; stdlib only)
+        ▼
+  kola_f16/data/zones.lua    committed, pure data:
+                             { name, zone_id, cluster, base, brg, km,
+                               type, x, z, radius | verts }
+        ├───────────────┐
+        ▼               ▼
+  data/catalog.lua   gather-inputs (T+0): read both, derive lat/lon,
+  (hand-authored,    apply stage-1 side → plan.world.zones
+   keyed by zone_id: stages 3–4 assign roles → plan.fixed / plan.ground
+   per-site detail,
+   success criteria)
+```
+Committed data over a live read so the dataset is reviewable/diffable in git; regenerated whenever the survey changes (rarely — the survey is drawn once). Rich per-site detail lives in the companion catalog keyed by `zone_id`; most zones need no catalog entry and are populated from the generic `[side][role]` template.
+
+**Tooling (all under `tools/`, no external dependencies — pydcs is reference material only):** `dcslua.py` reads/writes DCS's Lua-table serialization; `kola_proj.py` is the Kola projection (WGS84 TM, CM 21°E, k₀ 0.9996, FE −62702, FN −7543625); `kola_airbases.json` holds the 37 Kola airbase positions + codes (extracted once from pydcs's airport data); `miz_zones.py` is the parser.
 
 ---
 
@@ -455,20 +533,23 @@ High-detail airports per Orbx: Rovaniemi, Kemi-Tornio, Kuusamo, Ivalo, Severomor
 
 Finland and Sweden are NATO members as of 2023/2024, so "all Nordic = Blue" is the realistic baseline. The interesting contested zones are the border regions.
 
-| Cluster | Type | Bases |
-|---|---|---|
-| **NORWAY_REAR** | Always Blue | Bodø, Evenes, Andøya, Bardufoss |
-| **SWEDEN** | Always Blue | Kallax, Vidsel, Kiruna, Jokkmokk, Kalixfors, Arvidsjaur, Hemavan, Boden |
-| **FINLAND_SOUTH** | Always Blue | Rovaniemi, Kemi Tornio, Kuusamo, Hosio, Vuojärvi |
-| **FINNMARK** | Contested | Banak, Alta, Kirkenes |
-| **LAPLAND_NORTH** | Contested | Ivalo, Kittilä, Sodankylä, Enontekiö |
-| **KOLA_CORE** | Always Red | Murmansk Intl, Severomorsk-1, Severomorsk-3, Olenya, Monchegorsk, Kilpyavr, Koshka Yavr, Luostari Pechenga |
-| **KOLA_SOUTH** | Contested (lean Red) | Afrikanda, Alakurtti |
-| **KARELIA** | Always Red | Kalevala, Poduzhemye |
+*(Revised 2026-09-22 — this is what `data/clusters.lua` holds.)*
 
-Contested-cluster randomization gives the "Russia pushed into Finnmark" vs "NATO holds the border" variation. **Decided:** Syria-style dynamic assignment with fixed + contested clusters. Consequence: contested clusters need both Red-side and Blue-side content pre-placed (§1.2), and the IADS in KOLA_CORE can still be hand-placed with real-world fidelity since that cluster is always Red.
+| Cluster | Type | Bases | Notes |
+|---|---|---|---|
+| **NORWAY_REAR** | Always Blue | Bodø, Evenes, Andøya, Bardufoss, Tromsø | |
+| **SWEDEN** | Always Blue | Kallax, Vidsel, Kiruna, Jokkmokk, Kalixfors, Arvidsjaur, Hemavan, Boden | |
+| **FINLAND_SOUTH** | Always Blue | Rovaniemi, Kemi Tornio, Hosio | |
+| **FINNMARK_EAST** | Contested, p_red 0.7 | Kirkenes | 56 km from Luostari — first to fall |
+| **LAPLAND_EAST** | Contested, p_red 0.5 | Ivalo, Sodankylä, Vuojärvi | E75 corridor, ~170 km from Red |
+| **FINLAND_EAST** | Contested, p_red 0.5 | Kuusamo | 121 km from both Alakurtti and Kalevala |
+| **KOLA_SOUTH** | Contested, p_red 0.75 | Afrikanda, Alakurtti | Blue = NATO counter-offensive, kept rare |
+| **FINNMARK_WEST** | Contested, requires FINNMARK_EAST Red | Banak, Alta | 250–300 km deep |
+| **LAPLAND_WEST** | Contested, requires LAPLAND_EAST Red | Kittilä, Enontekiö | 250–330 km deep |
+| **KOLA_CORE** | Always Red | Murmansk Intl, Severomorsk-1, Severomorsk-3, Olenya, Monchegorsk, Kilpyavr, Koshka Yavr, Luostari Pechenga | |
+| **KARELIA** | Always Red | Kalevala, Poduzhemye | |
 
-**[Q]** Exact cluster membership above is a first guess — worth a pass together on the map. In particular: is KOLA_SOUTH (Afrikanda, Alakurtti) worth being contested, or should it just be Red so the front is always the Finnish/Norwegian border?
+Six contested clusters → 64 possible maps. Two mechanics keep it plausible: **`p_red`** weights the roll per cluster, and **`requires_red`** makes a deep cluster roll only if its border-tier neighbour already fell (evaluated in file order), so Russia can't hold Alta while Kirkenes stays NATO. Kuusamo and KOLA_SOUTH border Red directly and roll independently. The IADS in KOLA_CORE can be hand-placed with real-world fidelity since that cluster is always Red.
 
 ---
 
@@ -511,27 +592,9 @@ Each session rolls one **primary** from the weighted pool, then 0–2 **secondar
 
 ## 5. Architecture
 
-### 5.1 Relationship to the Syria code **[Q — biggest decision]**
+### 5.1 Relationship to the Syria code
 
-Three options:
-
-| Option | Description | Pros | Cons |
-|---|---|---|---|
-| **A. Fork** | Copy `scripts/` to `scripts_kola/` (or new repo), edit freely | Fastest start, zero risk to Syria | Two copies of spawner/logger/cost tracker drift apart |
-| **B. Shared lib + per-map config** | Refactor to `scripts/lib/` (shared) + `scripts/maps/syria/` + `scripts/maps/kola/`; `init.lua` takes a map param | One codebase, bug fixes land everywhere | Refactor work up front; Syria regression risk |
-| **C. Shared lib, separate mission dirs** | `lib/` shared; `a2g_dynamic_syria/` and `kola_f16/` each have own `init.lua` + modules, both `dofile` the shared lib | Cheap refactor (just move 2 files), no Syria logic touched | Modules like `sam_setup`/`cas_mission` still get copied if reused |
-
-**Recommendation: C.** Move `logger.lua`, `spawner.lua`, and the `cost_*` trio to a shared `lib/`; leave Syria modules alone. Kola gets its own module set. Promote things to `lib/` only once both maps actually use them identically.
-
-Runtime layout would become:
-```
-Saved Games\DCS\Scripts\
-    lib\                      ← shared: logger, spawner, cost_config/logic/ui
-    a2g_dynamic_syria\        ← unchanged
-    kola_f16\                 ← new
-        init.lua
-        modules\...
-```
+Kola is a **completely separate** script tree (`kola_f16\`) — nothing in the Syria tree is touched and there is no shared library; Kola keeps its own copies of whatever it borrows. Rationale, layout, and load order are in §11.1 / §11.6. What ports over cleanly and what's genuinely new are below.
 
 ### 5.2 What ports over cleanly
 - `spawner.lua` — as-is (ring spawn, flatness, land check, routes, fireGroups). Add an MGRS formatter for the F-16 (`coord.LLtoMGRS`).
@@ -571,7 +634,7 @@ Saved Games\DCS\Scripts\
 
 ---
 
-## 7. Out-of-sim randomization (weather / time / statics) — decision point
+## 7. Out-of-sim randomization (weather / time / statics)
 
 Lua at runtime **cannot** change weather, time of day, or date. On Kola that's a real loss (polar night vs midnight sun, snowstorms). Options:
 
@@ -579,7 +642,7 @@ Lua at runtime **cannot** change weather, time of day, or date. On Kola that's a
 2. **Multiple `.miz` files** — 3–4 hand-made variants (summer day / winter twilight / storm), pick one at server start. Cheap, coarse.
 3. **pydcs pre-generation** — a Python step (you already source CLSIDs from [pydcs](https://github.com/pydcs/dcs)) writes the `.miz` before launch: random weather, time, date, and can also place statics/SAM sites programmatically with validated type names. In-sim Lua then handles the dynamic parts. **Big upside:** pydcs knows every unit type string, so the Leopard-2 silent-replacement bug class goes away for anything it places.
 
-**[Q]** Appetite for a Python pre-gen step? It's the most powerful path and the tooling (`desanitize_dcs.py`) already runs Python on the server box. Recommendation: plan for **option 3 as a later phase**; start with option 1 so the Lua side gets built first.
+Recommendation: **option 1 now** (fixed ME weather/time, all randomness in-sim) so the Lua side gets built first; **option 3 (pydcs pre-gen) as a later phase** (§8 phase 8) — the most powerful path, and `desanitize_dcs.py` already runs Python on the server box. Still open (§9).
 
 ---
 
@@ -587,8 +650,8 @@ Lua at runtime **cannot** change weather, time of day, or date. On Kola that's a
 
 | Phase | Deliverable | Reuses | New |
 |---|---|---|---|
-| **0** | Kola `.miz` with dynamic-spawn F-16 slots at Blue bases, de-sanitize check, `dumpAirbases()` confirming all names, runway table | Install flow | Runway research |
-| **1** | `lib/` split (§5.1 option C); Kola `init.lua` + `coalition_setup` with clusters; F10 skeleton | logger, spawner, cost_* | cluster table |
+| **0** | Kola `.miz` with dynamic-spawn F-16 slots at Blue bases, de-sanitize check, `dumpAirbases()` confirming all names, `dumpWeather()` pinning weather field names (§1.11), runway table; survey zones drawn + parsed into `data/zones.lua` (§1.12) — **done for the first 12** | Install flow, `dumpGroups`/`dumpLateGroupUnits` | Runway research, weather dump, zone parser |
+| **1** | Kola `init.lua` + gather-inputs + stage 1 (territory/front); `coalition_setup` with clusters; F10 skeleton | logger, spawner, cost_* | cluster table, stage pipeline |
 | **2** | **Strike primary (P3/P4)** against ME-placed statics at Red airfields + point defense; objective tracking; mission card | sam threat tiers | catalog roller, objective tracker, card |
 | **3** | **SEAD/DEAD (P1/P2)** with 3–4 hand-placed batteries; Skynet prototype on one site | sam_setup pattern | Skynet integration, HARM scoring |
 | **4** | Support package: tanker + AWACS with TACAN/freqs in the card | blue_air_support | beacon/freq commands |
@@ -599,40 +662,22 @@ Lua at runtime **cannot** change weather, time of day, or date. On Kola that's a
 
 ---
 
-## 9. Open questions summary
+## 9. Open questions
 
-**Decided 2026-09-21**
-- ~~One primary tasking vs. board~~ → **one mission planned at load time**, player learns the type from intel. All F-16 role types in scope.
-- ~~Contested clusters vs. fixed front~~ → **Syria-style dynamic assignment** (fixed Red, fixed Blue, contested).
+**Concept**
+1. ~~Cluster membership review~~ — settled 2026-09-22 (§3): 6 contested clusters with `p_red` + `requires_red`.
+2. Should mission start time itself vary (dawn/dusk/night) per session? Only possible via the pydcs route *(§7)*.
+3. `outText` length limits and DTC-on-dynamic-spawn behaviour — test items, not decisions *(§1.5 caveats)*.
 
-- ~~Launch base~~ → **planner picks it**, player spawns there. No enforcement. *(§1.4)*
-- ~~Briefing delivery~~ → **one full brief at start**, F10 sections for drill-down, ATO/SPINS/intel-brief realism. *(§1.5)*
-- ~~Intel-quality knob~~ → replaced by the **fidelity rule**: fixed SAMs confirmed, mobile SAMs probable/possible/unlisted, AAA generic. *(§1.5)*
-- ~~Session history~~ → **yes**, with `HISTORY_ENABLED` flag and `FORCE_MISSION_TYPE` / `FORCE_TARGET` test overrides. *(§1.8)*
-- ~~Spawn timing~~ → T+0 for target/defenses, event-driven for Red air. *(§1.6)*
-- ~~Single tasking~~ → **full ATO for a ~6 h window**, one Blue line is the player's, AI flies the rest, Red has its own ATO. Built in layers. *(§1.9)*
-- ~~Briefing length~~ → essentials in one `outText`, no timed chaining; everything else in F10 submenus. *(§1.5)*
-- ~~Ambient layer~~ → air side is the ATO; **ground side is a full T+0 layer**: airfield coalitions, airfield defenses, and ME-defined Red/Blue ground zones. Zone details are their own later design pass. *(§1.7)*
-- ~~Player count~~ → **1 player for now, 2 F-16 slots** (friend later). **No AI in the player's flight.**
-- ~~Build order~~ → **7 stages**: base coalitions + front geometry → base defenses → fixed ground units (IADS, targets, garrisons) → ground scheme of maneuver → Red air ATO → Blue air ATO (AI + player) → intel/brief. Each stage consumes the previous ones' outputs only. *(§1.1)*
-- ~~AI JTAC~~ → works in-game already, trivially added later. Not a design question.
-- ~~How sides react to each other~~ → **No side reads the other's plan.** Both ATOs from static facts (stages 1–4); Blue packaging = static lookup table; brief's AOB = Red standing posture, no times. Execution: **one scramble loop per side** (per-fighter-base QRA/alert with cooldown + cap), native DCS AI for everything else. Red not tuned to the player. *(§1.10)*
+**Architecture**
+1. Skynet IADS as a dependency for SEAD? *(§5.3, §6)*
+2. Python (pydcs) pre-generation for weather/time — now, later, or never? *(§7)*
+3. Naval strike — worth the ship-spawn research? *(§4.1 P5)*
+4. Success criteria — binary pass/fail, or a score tied to the cost tracker? *(§5.3)*
 
-**Open — concept level**
-1. Cluster membership review, esp. KOLA_SOUTH contested vs. Red *(§3)*
-2. ATO window: 6 h from mission start — should mission start time itself vary (dawn/dusk/night) per session? Only possible via the pydcs route (§7).
-3. `outText` length limits and DTC-on-dynamic-spawn behavior — test items, not decisions *(§1.5 caveats)*
-
-**Deferred — own design pass later**
-- Ground zones: naming, per-zone templates, force scaling, zones-per-cluster, paired Red/Blue fronts *(§1.7)*
-- Ground ambient beyond zones: roaming SAMs, convoys, ship traffic, keep-clear rules around planned corridors *(§1.7)*
-
-**Open — architecture level**
-5. Code structure: fork / full refactor / shared-lib (recommended C)?
-6. Skynet IADS as a dependency for SEAD?
-7. Python (pydcs) pre-generation for weather/time — now, later, never?
-8. Naval strike — worth the ship-spawn research?
-9. Success criteria — binary pass/fail, or a score (ties into cost tracker)?
+**Deferred to their own design pass**
+- Ground zones: force scaling, zones-per-cluster, paired Red/Blue fronts *(§1.7, §1.12)*.
+- Ground ambient beyond zones: roaming SAMs, convoys, ship traffic, keep-clear rules around planned corridors *(§1.7)*.
 
 ---
 
@@ -648,14 +693,12 @@ Lua at runtime **cannot** change weather, time of day, or date. On Kola that's a
 
 ---
 
-## 11. Architecture  *(started 2026-09-21 — in discussion)*
+## 11. Architecture
 
-### 11.1 Relationship to the Syria code  *(decided 2026-09-21)*
+### 11.1 Relationship to the Syria code
+**Completely separate.** No shared `lib/`, no refactor of the Syria scripts, nothing in the Syria tree is touched. Kola is its own script directory with its own copies of whatever it borrows (logger, spawner, cost tracker patterns). The Syria mission must keep working exactly as it does today, and sharing code would put that at risk.
 
-**Completely separate.** No shared `lib/`, no refactor of the Syria scripts, nothing in the Syria tree is touched. Kola is its own script directory with its own copies of whatever it borrows (logger, spawner, cost tracker patterns). The Syria mission must keep working exactly as it does today, and sharing code would put that at risk. This supersedes §5.1 (option C is dropped).
-
-### 11.2 The plan is one table  *(decided 2026-09-21)*
-
+### 11.2 The plan is one table
 The 7 stages of §1.1 build **one accumulating Lua table**. Stage 1 writes `plan.territory`; stage 2 reads it and writes `plan.defenses`; and so on. Each stage is one module that takes the table, reads the keys of earlier stages, and adds its own key. "Stage N only reads earlier stages" is a convention, not enforced.
 
 - **Nothing spawns until all 7 stages are done.** Unlike Syria, where each module decides and spawns in the same function, here the stages only produce data. This is a much larger setup; deciding everything first and spawning afterwards is the only way the later stages (ATOs, brief) can see the complete picture.
@@ -664,8 +707,7 @@ The 7 stages of §1.1 build **one accumulating Lua table**. Stage 1 writes `plan
 - **Immutable once built** (not enforced). Consumers — spawner, mission reporter/briefing, ATO scheduler, objective tracker — all read the plan; none write to it.
 - **Runtime state lives elsewhere.** What has launched, what's dead, objective status, scramble cooldowns: separate tracking structures owned by the executor/trackers, keyed by the same IDs the plan uses (mission number, target id, group name) so the two can always be joined.
 
-### 11.3 From mission start to a finished plan  *(decided 2026-09-21)*
-
+### 11.3 From mission start to a finished plan
 1. **ME trigger fires `init.lua`** at mission start. Loads the script files, nothing else.
 2. **Wait a few seconds** (`timer.scheduleFunction`) — airbase queries return empty at T+0 (the Syria issue noted in §6).
 3. **Gather inputs — one step, up front.** All DCS reads happen here and are converted to plain values: airbase list with positions and current coalition, trigger zones, late-activation group names and positions, mission time/date. Plus the static data files (cluster table, content catalog, unit pools) and the session history file. Every stage then works from the same snapshot; the stages never see a DCS object. Cost: what the stages need has to be known ahead of time — for airbases/zones/groups that's clear enough.
@@ -673,10 +715,9 @@ The 7 stages of §1.1 build **one accumulating Lua table**. Stage 1 writes `plan
 5. **Plan dump** to file if the config flag is set.
 6. **Hand off** to spawner, briefing, ATO scheduler, objective tracker.
 
-Open: whether the gathered inputs are stored on the plan itself (e.g. `plan.world`) so the dump file is self-contained, or kept separate. Leaning on the plan — it costs nothing and makes the dump complete.
+The gathered inputs are stored on the plan itself (`plan.world`) so the dump file is self-contained; it costs nothing and makes the dump complete.
 
-### 11.4 Consumers of the plan  *(decided 2026-09-21)*
-
+### 11.4 Consumers of the plan
 Who reads the plan and what they pull from it:
 
 | Consumer | When | Reads | Needs per entry |
@@ -691,8 +732,7 @@ Who reads the plan and what they pull from it:
 
 Two kinds of need show up: spawner and scheduler need **spawn-ready detail** (unit types, exact positions, routes); briefing/tracker/history need **mission-level meaning** (target name, TOT, threat type + confidence). Both are in the one table. Group names, mission numbers, and target ids are **assigned by the planner**, not invented at spawn time — the tracker has to match DCS event names back to plan entries.
 
-### 11.5 One table — what's in it and what isn't  *(decided 2026-09-21)*
-
+### 11.5 One table — what's in it and what isn't
 **The plan holds every decision, in our own vocabulary.** What, where, who, when, how it's named, what counts as success. Example, a stage-2 defense entry:
 
 ```lua
@@ -712,3 +752,68 @@ Two kinds of need show up: spawner and scheduler need **spawn-ready detail** (un
 **State holds what happened.** Spawned group → plan id, alive/dead, launched, objective status, cooldowns. Written by consumers at runtime (§11.2).
 
 Net effect: all the planning is pure logic over plain data — fast, and segmented from the sim. The spawner then reads the plan and creates units that already fit the missions the plan built.
+
+### 11.6 Script layout and load order
+Install path `Saved Games\DCS\Scripts\kola_f16\`, loaded by one ME trigger (`MISSION START → DO SCRIPT → dofile(lfs.writedir() .. "Scripts\\kola_f16\\init.lua")`), de-sanitized `MissionScripting.lua`, and a separate `Hooks\slotblock.lua` for the F-16 dynamic slots — the same install shape as Syria (§ INSTALL.md), fully separate tree (§11.1). This is the standard DCS pattern; there isn't a meaningfully different one.
+
+```
+Saved Games\DCS\Scripts\kola_f16\
+  init.lua                     -- entry: load order + run sequence
+  lib\
+    logger.lua                 -- + dumpWeather(), dumpZones()   (ported from Syria)
+    spawner.lua                -- + randomPointInZone(), LLtoMGRS (ported)
+  data\                        -- static plain-data tables, no logic; hand- or parse-authored
+    clusters.lua               -- cluster table (§3), bases per cluster
+    zones.lua                  -- parsed from the .miz (§1.12)
+    statics.lua                -- static templates (airfield targets, ships), parsed from the .miz
+    catalog.lua                -- content catalog (§1.2): targets, success criteria, per-site templates
+    unit_pools.lua             -- [side][role] unit templates (§1.12)
+    callsigns.lua              -- curated DCS enum pools per role (§11.7)
+  stages\
+    s1_territory.lua  …  s7_brief.lua
+  consumers\
+    ground_spawner.lua   ato_scheduler.lua   briefing.lua
+    objectives.lua       scramble.lua        history.lua
+```
+
+Load order in `init.lua`: `lib\*` → `data\*` → `stages\*` → `consumers\*`, then the run sequence (§11.3): gather inputs → stages 1–7 → optional plan dump → hand the finished plan to each consumer. Data files load before stages so a stage can reference a data global directly (Syria's global-module convention). **Statics and any hand-placed unit templates live in `data\` alongside zones** — all coordinate-driven and all parseable from the `.miz`, per the same offline-parse workflow (§1.12).
+
+### 11.7 Naming and id convention
+**Core rule:** every spawnable plan entry has a unique `id`; the spawner uses it **verbatim as the DCS group name**; the objective tracker maps `group:getName()` → plan entry. No unit-name suffix parsing (Syria's `^(BAS_%d+)_`) — the group name *is* the key.
+
+**1. ME-authored** (must match the ME exactly; the planner references these):
+
+| Thing | Convention | Example |
+|---|---|---|
+| Late-activation target groups | `TGT_<Base>_<Type>_<Part>` | `TGT_Olenya_SA10_TR` |
+| Dynamic-spawn player slot groups | `<Base>_F16` | `Rovaniemi_F16` |
+| Debug harvest groups | single letters | `A`–`E` |
+
+**2. Planner-assigned logical ids** (live in the plan table):
+
+| Thing | Convention | Example |
+|---|---|---|
+| Ground zone (tool-generated, §1.12) | `ZONE_<BASE>_<brg>_<km×10>` | `ZONE_KITT_100_012` |
+| Catalog target id | `<KIND>_<Place>_<Type>` | `SAM_Olenya_SA10`, `SHIP_KolaBay_Kirov` |
+| ATO mission number `msn` | numeric blocks | Blue 2000–2999 · Red 5000–5999 · support 0900–0999 |
+| Package id | `PKG-<letter>` | `PKG-A` |
+| Radio callsign | curated DCS enum (below) | `Springfield 1` |
+
+**3. Spawner-assigned DCS names** (= the plan id verbatim):
+
+| Spawned thing | Group name | Tracker mapping |
+|---|---|---|
+| ATO air line | `MSN<msn>` | `MSN2041` → `blue.ato[2041]` |
+| Ground group from a zone | `<zonename>__<n>` | `ZONE_KITT_100_012__1` → that ground entry |
+| Base defense | `DEF_<Base>_<n>` | → defense entry |
+| Activated ME target | its `TGT_…` name | directly |
+
+The **player line** has no pre-named group (dynamic spawn) — its objective is keyed off the player unit (`getPlayerName()`) plus the frag's `msn`/target, the same way `cost_logic` attributes kills to a human.
+
+#### Callsign policy — radio ≠ group name  *(revisitable)*
+
+The DCS **group name** is the machine id above — never spoken. The **radio callsign** is a separate field drawn from DCS's built-in callsign **enum**, which drives the AI voiceovers *and* is what the brief prints — so what's written matches what's heard.
+
+- Curated per-role enum pools (Blue): fighters `{Springfield, Colt, Dodge, Ford, Chevy, Uzi, Enfield, Pontiac}`, tankers `{Texaco, Arco, Shell}`, AWACS `{Magic, Overlord, Wizard, Darkstar}`. The player gets a reserved fighter callsign **by role** (SEAD→Springfield, strike→Colt, CAP→Dodge…), so the frag reads consistently session to session.
+- Brief callsigns are these enum names (the §1.5 template is an illustrative draft); a display string that isn't a real enum name won't match the audio.
+- **"Audible but not overwhelming":** enum callsigns are assigned to **player-relevant Blue air only** — own flight, package-mates, the CAP covering the player, tanker, AWACS — so their radio calls are recognizable and useful. Volume is held down by (a) the §1.9 alive-cap limiting simultaneous transmitters, (b) not over-spawning concurrent Blue flights, (c) TOT deconfliction spreading events out. Red air still transmits (unavoidable) but isn't surfaced in the brief and is less intrusive; keep Red numbers modest. Tune the concurrent-Blue count in testing if it's still busy.
