@@ -10,6 +10,14 @@ CONFIG = {
     PLAN_DUMP        = true,
     PLAN_DUMP_FILE   = "kola_last_plan.lua",
 
+    -- Mission clock offset from UTC for the Kola map (pydcs terrain/kola: +3 h). Needed
+    -- to place the sun; DCS start_time is local time.
+    UTC_OFFSET_H     = 3,
+
+    -- TEMP: print the derived weather/time block on screen at init so the reads can be
+    -- checked against the ME. Remove once the brief owns this.
+    SHOW_WEATHER_DEBUG = true,
+
     -- Stage 1: a base is "frontline" if an enemy base is within this range; two
     -- opposing clusters are "adjacent" if any base pair is within it.
     FRONT_RANGE_KM   = 200,

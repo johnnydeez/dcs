@@ -20,6 +20,7 @@ end
 if not load("config.lua")                  then return end
 if not load("lib\\util.lua")               then return end
 if not load("lib\\logger.lua")             then return end
+if not load("lib\\weather.lua")            then return end
 
 Log.info("============================================")
 Log.info("  Kola F-16 generator loading")
@@ -28,6 +29,8 @@ Log.info("============================================")
 
 if not load("data\\clusters.lua")          then return end
 if not load("data\\zones.lua")             then return end
+if not load("data\\cloud_presets.lua")     then return end
+if not load("data\\unit_pool.lua")         then return end
 if not load("gather.lua")                  then return end
 if not load("stages\\s1_territory.lua")    then return end
 if not load("consumers\\territory.lua")    then return end
@@ -41,7 +44,7 @@ local function dumpPlan(plan)
 end
 
 local function run()
-    Log.dumpWeather()
+    if CONFIG.SHOW_WEATHER_DEBUG then Log.dumpWeather() end
 
     local plan = { world = Gather.run() }
     Stage1.run(plan)
@@ -50,7 +53,11 @@ local function run()
     dumpPlan(plan)
 
     Territory.apply(plan)
-    trigger.action.outText(Territory.summaryText(plan), 120)
+    local text = Territory.summaryText(plan)
+    if CONFIG.SHOW_WEATHER_DEBUG then
+        text = text .. "\n\n" .. Weather.summaryText(plan.world)
+    end
+    trigger.action.outText(text, 120)
     Log.info("Init complete.")
 end
 

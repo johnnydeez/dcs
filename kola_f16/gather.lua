@@ -43,19 +43,52 @@ local function gatherZones(world_)
     world_.zone_list = list
 end
 
+-- Reference point for anything evaluated "for the map as a whole" (sun position for
+-- now): the centroid of all airdromes. Per-base evaluation comes later with the brief.
+local function airbaseCentroid(world_)
+    local sx, sz, n = 0, 0, 0
+    for _, name in ipairs(world_.airbase_list) do
+        local p = world_.airbases[name].pos
+        sx, sz, n = sx + p.x, sz + p.z, n + 1
+    end
+    if n == 0 then return nil end
+    local c = Util.withLatLon({ x = sx / n, z = sz / n })
+    c.label = "airbase centroid"
+    return c
+end
+
+-- Deep-copies the ME weather and derives the planner's view of it (lib/weather.lua).
+-- The two atmosphere.* point queries are the only runtime measurements; they let the
+-- debug display confirm the .miz wind-direction convention and the temperature.
 local function gatherWeather(world_)
     local m = env.mission
-    world_.date = { Year = m.date.Year, Month = m.date.Month, Day = m.date.Day }
-    world_.start_time = m.start_time
-    world_.abs_time = timer.getAbsTime()
-    -- Deep-copy the weather table so the plan dump is plain data we own.
     local function copy(t)
         if type(t) ~= "table" then return t end
         local out = {}
         for k, v in pairs(t) do out[k] = copy(v) end
         return out
     end
-    world_.weather = copy(m.weather)
+
+    local ref = airbaseCentroid(world_) or Util.withLatLon({ x = 0, z = 0 })
+    local measured = {}
+    local groundPt = { x = ref.x, y = land.getHeight({ x = ref.x, y = ref.z }) + 10, z = ref.z }
+    local ok, wind = pcall(atmosphere.getWind, groundPt)
+    if ok and wind then
+        local mps = math.sqrt(wind.x * wind.x + wind.z * wind.z)
+        measured.wind = { to_deg = Util.bearing({ x = 0, z = 0 }, { x = wind.x, z = wind.z }), mps = mps }
+    else
+        Log.warn("atmosphere.getWind failed: " .. tostring(wind))
+    end
+    local ok2, tempK, pressPa = pcall(atmosphere.getTemperatureAndPressure, groundPt)
+    if ok2 and tempK then
+        measured.temp_c = tempK - 273.15
+        measured.pressure_hpa = pressPa and pressPa / 100 or nil
+    else
+        Log.warn("atmosphere.getTemperatureAndPressure failed: " .. tostring(tempK))
+    end
+
+    world_.time    = Weather.deriveTime(m.date, m.start_time, timer.getAbsTime(), ref)
+    world_.weather = Weather.derive(copy(m.weather), measured)
 end
 
 -- Cross-checks the cluster table against what DCS reports.
@@ -91,5 +124,8 @@ function Gather.run()
     checkClusters(w)
     Log.info(string.format("  %d airdromes, %d zones, %d clusters, rng advanced %d",
         #w.airbase_list, #w.zone_list, #CLUSTERS, w.rng_steps))
+    Log.info(string.format("  weather: %s, %s, vis %d m, %s; sun %+.1f° (%s)",
+        w.weather.clouds.name, w.weather.clouds.coverage, w.weather.visibility_m,
+        w.weather.flight_rules, w.time.sun.elev_deg, w.time.sun.condition))
     return w
 end
