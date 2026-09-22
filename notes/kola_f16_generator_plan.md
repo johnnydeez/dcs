@@ -1,45 +1,113 @@
 # Kola F-16 Randomized Mission Generator — Planning Doc
 
-> **Status:** v0 — initial planning, 2026-09-21. No code yet.
+> **Status:** v1 — stage 1 + world inputs running in DCS (2026-09-22). Planning sections §1–10 are the concept; §11 and "Where we are" are the spec.
 > Companion to the Syria project (`notes/notes.md`). Open questions are marked **[Q]** — answer them inline and the doc becomes the spec.
 >
 > **Layout:** *Where we are* (pick up here) → *Plan* (§1–10, concept and research) → *Architecture* (§11, code structure decisions).
+>
+> **Working rules:** commits are always done by John, on his own schedule — never ask about or perform a commit. After any edit under `kola_f16\`, copy the tree to `Saved Games\DCS\Scripts\kola_f16\` immediately; DCS is the only test environment.
 
 ---
 
-## Where we are — pick up here  *(2026-09-22, end of session)*
+## Where we are — pick up here  *(2026-09-22, session 2 — planning done, no code for stage 2 yet)*
 
-**Status: the pipeline runs end-to-end in DCS for stage 1.** Boot → gather → stage 1 (territory + front) → plan dump → `Territory.apply` sets all base coalitions and draws base/zone circles by side. **Verified working in-game.** Settled: the 7-stage plain-data plan (§11.1–11.5), weather as a planner input (§1.11), the survey-zone dataset with generated names and plan-side roles (§1.12), the 11-cluster table with `p_red` + `requires_red` (§3), the `kola_f16\` script tree + load order (§11.6), the naming/id + callsign convention (§11.7).
+**Status: stage 1 + all world inputs run in DCS and are verified.** Boot → gather (airbases, zones, **weather + time**) → stage 1 (territory + front) → plan dump → `Territory.apply` sets all base coalitions and draws base/zone circles by side. Settled: the 7-stage plain-data plan (§11.1–11.5), weather as a planner input with pinned field names (§1.11), the survey-zone dataset (§1.12), the side-agnostic unit pool (§1.13), the 11-cluster table (§3), the script tree + load order (§11.6), naming/ids (§11.7).
 
-**What exists (all in git, deployed to `Saved Games\DCS\Scripts\kola_f16\`):**
+**Done this session (2026-09-22):**
+- `lib/weather.lua` + gather: `plan.world.weather` (clouds/preset/coverage/ceiling, visibility, fog, flight rules, wind per level as from/to, temp, QNH) and `plan.world.time` (date, local/Zulu, season, sun elevation/condition, sunrise/sunset, polar day/night). Verified against a live run: the `.miz` wind `dir` is the direction the wind blows **to** (`atmosphere.getWind()` agrees); ME shows *from*. Kola clock is UTC+3. `CONFIG.SHOW_WEATHER_DEBUG` prints the block on screen — drop once the brief owns it.
+- `tools/cloud_presets.py` → `data/cloud_presets.lua` (34 ED presets: coverage word, precip, base range, layers).
+- `tools/unit_pool.py` (+ `unit_role_overrides.json`) → `data/unit_pool.lua` (361 ground / 144 planes / 26 helos / 57 ships, roles + SAM `system` tags + ED ranges; loaded by init) and `data/aircraft_pylons.lua` (pylon → CLSIDs; offline validation only, not loaded). Both parse with `tools/dcslua.py`; the Syria F-16 loadout validates.
+- Plan dump audited field by field — bases, clusters, zones, front, weather, time all correct and readable.
+
+**What exists (deployed to `Saved Games\DCS\Scripts\kola_f16\`):**
 ```
 kola_f16/
-  init.lua                  load order; after CONFIG.START_DELAY: dumpWeather → Gather.run → Stage1.run → plan dump → Territory.apply + on-screen summary
-  config.lua                START_DELAY, PLAN_DUMP(+file), FRONT_RANGE_KM=200, FORCE_CLUSTER, draw radii
+  init.lua                  load order; after CONFIG.START_DELAY: Gather.run → Stage1.run → plan dump → Territory.apply + on-screen summary (+ weather block)
+  config.lua                START_DELAY, PLAN_DUMP(+file), UTC_OFFSET_H=3, SHOW_WEATHER_DEBUG, FRONT_RANGE_KM=200, FORCE_CLUSTER, draw radii
   lib/util.lua              seedRandom, pick/shuffle, dist/bearing, toVec3, withLatLon, formatLL, serialize, writeFile
   lib/logger.lua            Log.* + dumpAirbases/dumpGroups/dumpLateGroupUnits/dumpWeather
-  data/clusters.lua         11 clusters (§3)   data/zones.lua  12 zones, generated
-  gather.lua                plan.world: airbases{pos+lat/lon, me_side}, zones{pos+lat/lon}, date/start_time/abs_time, weather (deep copy), base_cluster, unknown/unlisted base checks
+  lib/weather.lua           Weather.derive / deriveTime (§1.11), sunElevation/sunTimes (NOAA), flightRules, summaryText (TEMP debug)
+  data/clusters.lua         11 clusters (§3)   data/zones.lua  12 zones, generated   data/cloud_presets.lua  34 DCS presets, generated
+  data/unit_pool.lua        every AI-operable DCS unit, generated (§1.13)   data/aircraft_pylons.lua  generated, NOT loaded
+  gather.lua                plan.world: airbases{pos+lat/lon, me_side}, zones{pos+lat/lon}, time{…sun}, weather{…raw}, base_cluster, unknown/unlisted checks
   stages/s1_territory.lua   plan.territory: clusters{side,how}, bases{side,cluster}, zones{side,cluster}, front{nearest_enemy, frontline, adjacency}, summary
-  consumers/territory.lua   setCoalition + autoCapture(false) per base; 10 km base circles, 3 km zone circles + name labels; Territory.summaryText
-tools/                      miz_zones.py, dcslua.py, kola_proj.py, kola_airbases.json (stdlib only)
-kola_f16_random_tasking.miz the flyable mission (needs ONCE + TIME MORE 1 → DO SCRIPT dofile(lfs.writedir().."Scripts\\kola_f16\\init.lua"), and dynamic-spawn F-16 slots at Blue bases)
+  consumers/territory.lua   setCoalition + autoCapture(false) per base; base/zone circles + labels; Territory.summaryText
+tools/                      miz_zones.py, cloud_presets.py, unit_pool.py (+ unit_role_overrides.json), dcslua.py, kola_proj.py, kola_airbases.json (stdlib only)
+kola_f16_random_tasking.miz the flyable mission (ONCE + TIME MORE 1 → DO SCRIPT dofile(lfs.writedir().."Scripts\\kola_f16\\init.lua"); dynamic-spawn F-16 slots at Blue bases)
 ```
-Plan dump lands in `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `python tools/miz_zones.py "<survey .miz>"` after drawing zones. DCS updates re-sanitize `MissionScripting.lua` → `python desanitize_dcs.py` from an admin shell + full DCS restart (hit this today).
+Plan dump lands in `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `python tools/miz_zones.py "<survey .miz>"` after drawing zones; `python tools/unit_pool.py` after a DCS update once pydcs has caught up. DCS updates re-sanitize `MissionScripting.lua` → `python desanitize_dcs.py` from an admin shell + full DCS restart.
 
-**Next code (stage 2 onward), suggested order:**
-1. **Read `kola_last_plan.lua` from today's run** and pin the real `env.mission.weather` field names into §1.11 (the dump is in the file and in dcs.log).
-2. **Stage 2 — base defenses**: per-base AAA/MANPADS/SHORAD entries (`DEF_<Base>_<n>`), heavier on `front.frontline`. Needs `data/unit_pools.lua` (Kola-era Red + Blue pools; type strings must be confirmed via `dumpLateGroupUnits` — the Leopard-2 trap) and the `randomPointInZone` / ring-offset helper in `lib/spawner.lua` (port from Syria `spawner.lua`, keep `isOnLand` / `isFlatEnough`).
-3. **Ground spawner consumer** (`consumers/ground_spawner.lua`) — translates `plan.defenses` entries to `coalition.addGroup`, group name = plan id verbatim. First thing that actually spawns.
-4. Then stage 3 (fixed ground from zones + `TGT_` catalog → threat map), stage 4 (ground maneuver → contacts).
+---
 
-**Also pending:** ~90 more survey zones (§1.12); `data/statics.lua` parsing; runway-length table (§3); `dumpAirbases()` once to confirm all 37 names (gather already warns on mismatches — none seen today).
+## NEXT SESSION — base defenses  *(architecture agreed 2026-09-22; build exactly this, zones come after)*
 
-**Decide as we hit them:**
-- Runtime state table shape (§11.2) — what spawner/scheduler/tracker record, keyed to the plan.
-- ATO scheduler + scramble loop — tick rates, alive-cap policy, landing-despawn feeding the count (§1.9/§1.10).
-- Success model — binary per line vs score (§9 item 9).
-- Later phases: Skynet (ph 3), pydcs (ph 8), naval research (ph 2).
+**Goal:** every airbase gets a coalition-appropriate ground defense sized to how hard its owner would hold it. First thing in the project that actually spawns units. We need to decide what and how red units end up in the plan document because that is how missions get built, so we cannot simply spawn and forget about them. This may or may not include the airbase defense units, unknown -- to decide, but zone and Airbase units are potential targets.
+
+### Taxonomy (one question per term)
+
+| Term | Question it answers | Values | Set where |
+|---|---|---|---|
+| **`class`** | What *is* this base? | `hub` / `fighter` / `bomber` / `strip` / `heli` | `data/airbase_classes.lua`, hand, static fact |
+| **`echelon`** | Where does it sit relative to the enemy? | `front` ≤ 100 km · `mid` ≤ 200 km · `rear` | stage 1, from `nearest_enemy.km` (thresholds in CONFIG) |
+| **`defense_level`** | How heavily does its owner defend it? | `light` / `standard` / `heavy` | stage 2, `BASE_DEFENSE_LEVEL[class][echelon]` + one ±1-step nudge at ~20 % |
+| **component** | A kind of defensive element | `aaa_ring`, `aaa_mobile`, `manpads_team`, `shorad`, `security_infantry`, `security_armor`, `apc_patrol`, `logistics`, `fuel` | `data/base_defense_placement.lua` |
+| **composition** | Which components, how many, per level | count ranges | `data/base_defense_composition.lua` |
+| **placement** | Where a component goes around the field | ring distances, road snap, grouping, spread | `data/base_defense_placement.lua` |
+| **role** | The pool's unit tag | `aaa`, `aaa_sp`, `manpads`, `shorad`, `infantry`, `ifv`, `apc`, `truck`, `fuel` | `data/unit_pool.lua` (§1.13) |
+| **roster** | Which types a coalition fields per role | weighted type lists | `data/coalition_rosters.lua` — the **only** file that knows red from blue |
+
+`defense_level` matrix (starting values; tune by feel):
+```
+                 front      mid        rear
+   hub           heavy      heavy      standard
+   fighter       heavy      standard   standard
+   bomber        heavy      standard   light
+   strip         standard   light      light
+   heli          standard   light      light
+```
+
+### Files to write
+
+| File | Global | What it does |
+|---|---|---|
+| `data/airbase_classes.lua` | `AIRBASE_CLASS[name]` | 37 lines: what kind of base each airfield is |
+| `data/base_defense_levels.lua` | `BASE_DEFENSE_LEVEL[class][echelon]` | the matrix above |
+| `data/base_defense_composition.lua` | `BASE_DEFENSE_COMPOSITION[level]` | `{ component = {min, max}, … }` per level |
+| `data/base_defense_placement.lua` | `BASE_DEFENSE_PLACEMENT[component]` | `{ role, ring = {min_m, max_m}, road = bool, grouping = "single" \| "cluster", spread }` — ring ≥ 800 m (Airbase:getPoint() is the runway threshold, Syria lesson) |
+| `data/coalition_rosters.lua` | `COALITION_ROSTER[side][role]` | `{ {type, weight}, … }`; e.g. `blue.shorad = { {"M1097 Avenger", 3}, {"Roland ADS", 1}, {"Strela-10M3", 1} }` — Russian kit on Blue is just a line here. Only the roles the components use for now (~20 lines) |
+| `stages/roll_territory.lua` | `RollTerritory` | rename of `s1_territory.lua`; adds `echelon` to every base (and zone, for later) |
+| `stages/plan_base_defenses.lua` | `PlanBaseDefenses` | per base: level → roll composition → resolve roles via roster → place → `plan.base_defenses` |
+| `lib/placement.lua` | `Placement` | geometry only: ring point around an anchor, road snap, `isOnLand`, `isFlatEnough` (ported from Syria `spawner.lua`) |
+| `consumers/apply_territory.lua` | `ApplyTerritory` | rename of `territory.lua` |
+| `consumers/spawn_ground_groups.lua` | `SpawnGroundGroups` | `plan.base_defenses` entries → `coalition.addGroup` (CJTF_RED / CJTF_BLUE, group name = entry id); after each spawn compare `unit:getTypeName()` to the requested type and warn — the Leopard-2 trap caught automatically |
+
+Stage order stays in `init.lua`'s run sequence, not in filenames. Plan keys match the stage that writes them: `plan.territory`, `plan.base_defenses`.
+
+### Flow
+```
+for each base in plan.territory.bases:
+    level = BASE_DEFENSE_LEVEL[AIRBASE_CLASS[base]][echelon]   (+ nudge)
+    for component, {min,max} in BASE_DEFENSE_COMPOSITION[level]:
+        for i = 1 .. random(min,max):
+            type = weighted pick from COALITION_ROSTER[side][BASE_DEFENSE_PLACEMENT[component].role]
+            pos  = Placement.ringPoint(base pos, placement.ring, placement.road) with isOnLand retry
+            plan.base_defenses[#+1] = { id = "DEF_<Base>_<component>_<i>", base, side, level, component, role, type, pos, heading, skill }
+```
+`plan.base_defenses` is one flat list of spawn-ready entries; a `cluster` grouping spawns its units as one group with `spread`, `single` spawns one unit per group.
+
+### Load-time validation (fail loudly at init, never as a Leopard-2)
+- every `type` in `COALITION_ROSTER` exists in `UNIT_POOL.ground`
+- every `role` in `BASE_DEFENSE_PLACEMENT` has a non-empty roster entry for both sides
+- every component named in a composition exists in placement
+- every airbase in `AIRBASE_CLASS` exists in DCS (gather already checks the reverse)
+
+### Verify in DCS
+Debug map circles coloured by `defense_level`; log one line per base (`Olenya  RED  bomber/front → HEAVY  14 units`); grep dcs.log for `replaced with` (should be none) and for the spawner's own type-mismatch warning; plan dump shows `base_defenses` entries readable.
+
+### After this (not now)
+Zones: `defense_level`-style classification for zones, zone budget per side/echelon, SAM site recipes (`data/sam_site_recipes.lua` from the pool's `system` tag), garrisons, then stage 4 contacts. Also pending: ~90 more survey zones (§1.12), runway-length table (§3), statics.
+
+**Decide as we hit them:** runtime state table shape (§11.2); ATO scheduler + scramble loop (§1.9/§1.10); success model (§9); later phases: Skynet, pydcs pre-gen, naval.
 
 ---
 
@@ -421,12 +489,14 @@ Red defends what Red values, with no knowledge of which target is the player's. 
 ### 1.11 Weather as a planner input
 The runtime **can read** the mission's weather, time, and date — only *changing* them is impossible (that's §7). So weather is a first-class input to the plan, read once in the gather-inputs step (§11.3 step 3) and stored on `plan.world.weather` / `plan.world.date`. Even fixed ME weather becomes something the planner adapts to instead of ignoring.
 
-**Sources (all plain data, read at T+0):**
-- `env.mission.weather` — clouds (`base` / `preset` / `thickness` / `density` / `iprecptns`), `wind` (`atGround` / `at2000` / `at8000`, each `speed` + `dir`), `fog` / `enable_fog`, `visibility`, `dust_density` / `enable_dust`, `season.temperature`, `qnh`, `groundTurbulence`.
-- `env.mission.date` `{Year,Month,Day}` and `env.mission.start_time` (sec since midnight); `timer.getAbsTime()` for the running clock.
-- Point queries when needed: `atmosphere.getWind(pt)`, `atmosphere.getWindWithTurbulence(pt)`, `atmosphere.getTemperatureAndPressure(pt)` (returns K, Pa).
+**Sources (all plain data, read at T+0)** — field names *pinned from a real 2.9 plan dump* (2026-09-22):
+- `env.mission.weather`: `clouds{ base, thickness, density, iprecptns, preset }`, `wind{ atGround | at2000 | at8000 = { dir, speed } }`, `fog{ visibility, thickness }` + `enable_fog` (the legacy fields are what 2.9 still exposes — no `fog2` seen), `visibility{ distance }` (a table, not a number), `qnh` **in mmHg**, `season{ temperature }` °C, `dust_density` / `enable_dust`, `groundTurbulence`, `halo{ preset }`, `cyclones{}`, `atmosphere_type`, `type_weather`, `modifiedTime`, `name`.
+- **Preset weather stores only `clouds.preset` + `clouds.base`.** Coverage, layers and precipitation live in `DCS World\Config\Effects\clouds.lua`; `tools/cloud_presets.py` extracts them to `kola_f16/data/cloud_presets.lua` (34 presets: id, ME short name, ED's METAR text, coverage word, `precipitationPower`, base range, layers). Re-run after DCS updates.
+- **Wind `dir` convention:** the `.miz` stores the direction the wind blows *to*; the ME shows *from* (`dir + 180`). Gather also samples `atmosphere.getWind()` at the airbase centroid so the debug display can confirm this in-sim. **[verify on first run]**
+- `env.mission.date` `{Year,Month,Day}` and `env.mission.start_time` (local seconds since midnight; Kola clock is **UTC+3**, from pydcs `terrain/kola`); `timer.getAbsTime()` for the running clock.
+- Point queries: `atmosphere.getWind(pt)`, `atmosphere.getWindWithTurbulence(pt)`, `atmosphere.getTemperatureAndPressure(pt)` (returns K, Pa).
 
-**Verify first:** the fog namespace and cloud-preset structure changed with DCS 2.9's dynamic weather. Add a `Log.dumpWeather()` (same pattern as `dumpAirbases`) and run it once on the Kola `.miz` to pin the real field names before relying on them — Phase-0 item (§8).
+**What the plan holds** (`lib/weather.lua`, called from gather): `plan.world.weather = { clouds{ preset, name, metar, coverage, base_m/ft, ceiling_ft (only if BKN/OVC), precip }, visibility_m/sm (ME distance capped by fog and by a rain preset's stated VIS range), fog, flight_rules (VFR/MVFR/IFR/LIFR), wind{ ground/at2000/at8000 = { from_deg, to_deg, mps, kts }, measured_ground }, temp_c, qnh{ mmhg, hpa, inhg }, turbulence, dust, raw }` and `plan.world.time = { date, day_of_year, season, utc_offset_h, start_hhmm, start_utc_hhmm, abs_time, sun{ ref, elev_deg, condition (day / civil / nautical twilight / night), sunrise, sunset, civil_dawn, civil_dusk, polar ("midnight sun" / "polar night"), max/min_elev } }`. Sun is evaluated at the **airbase centroid** for now; per-base evaluation (launch/recovery light) is a stage-6/7 job using the same `Weather.sunElevation`.
 
 **Why it drives what gets created** — weather is a filter/weight applied through stages 1–6 and a brief section in stage 7:
 
@@ -487,6 +557,15 @@ draw trigger zones in survey .miz ─save─▶ khola_ground_zones.miz
 Committed data over a live read so the dataset is reviewable/diffable in git; regenerated whenever the survey changes (rarely — the survey is drawn once). Rich per-site detail lives in the companion catalog keyed by `zone_id`; most zones need no catalog entry and are populated from the generic `[side][role]` template.
 
 **Tooling (all under `tools/`, no external dependencies — pydcs is reference material only):** `dcslua.py` reads/writes DCS's Lua-table serialization; `kola_proj.py` is the Kola projection (WGS84 TM, CM 21°E, k₀ 0.9996, FE −62702, FN −7543625); `kola_airbases.json` holds the 37 Kola airbase positions + codes (extracted once from pydcs's airport data); `miz_zones.py` is the parser.
+
+### 1.13 Unit pool — every spawnable DCS unit  *(2026-09-22)*
+**What DCS needs to spawn a unit is one string.** `coalition.addGroup(country, category, { units = { { type = "BTR-80", … } } })` — the `type` string is the unit's whole identity; everything else per unit is placement (position, heading, skill). Country is always `CJTF_RED` / `CJTF_BLUE` (the scripting API doesn't restrict types by nation), category is per group. Statics add `shape_name`, aircraft add a payload of pylon CLSIDs. An unknown string doesn't error — DCS substitutes a Leopard-2 and logs `woCar: … replaced with Leopard-2`.
+
+**`data/unit_pool.lua`** — every AI-operable unit in base DCS (incl. the CoreMods packs: Currenthill `CHAP_*`, ColdWar, Massun92, HeavyMetal; nothing from `Saved Games\Mods`), generated by `tools/unit_pool.py` from pydcs's `vehicles.py` / `planes.py` / `helicopters.py` / `ships.py` (themselves generated from DCS's own database). Segmented `ground` / `plane` / `helicopter` / `ship`, keyed by exact type string. **Side-, country- and era-agnostic by design** — Blue may field Russian SAMs; which coalition uses what is a `coalition_rosters` decision, not a pool property. Per entry: `type`, `name`, `cat` (pydcs category), `role` (planner tag: `sam_sr / sam_tr / sam_ln / sam_cp / shorad / ewr / aaa / aaa_sp / manpads / mbt / ifv / apc / recon / atgm / arty_sp / mlrs / truck / fuel / c2 …`; air: `fighter / multirole / strike / awacs / tanker / transport / recon / attack`), `system` (SAM family for site recipes: `SA-10`, `Patriot`, `Hawk`, `SA-2/3/5` …), ED's `detection_m` / `threat_m` / `air_weapon_m` (the seed for CONFIRMED-ring radii, §1.5), and for aircraft `tasks` (DCS task names the AI can fly — the ATO's feasibility input), `task_default`, `fuel_max`, `chaff`/`flare`, `pylons`, `flyable`, `large_parking`, `tacan`. `static = {}` and `weapons = {}` are stubs for later passes. Roles come from name heuristics in the tool plus `tools/unit_role_overrides.json`; the tool reports anything unclassified. Re-run after a DCS update once pydcs has caught up.
+
+**`data/aircraft_pylons.lua`** — per-aircraft pylon → allowed weapon CLSIDs (1.1 MB). Deliberately *not* in the pool and *not* loaded by `init.lua`; it exists so hand-authored loadouts (`data/loadouts.lua`, later) can be validated offline before DCS sees them. Verified: the Syria F-16 CAS loadout validates on all four pylons.
+
+**Not in the pool:** side, nation, era, cost, loadouts, static-object flag (that's a spawn option — any vehicle/plane/ship type can be placed static), SAM site composition (→ `data/sam_site_recipes.lua`, later).
 
 ---
 
@@ -767,13 +846,20 @@ Saved Games\DCS\Scripts\kola_f16\
     zones.lua                  -- parsed from the .miz (§1.12)
     statics.lua                -- static templates (airfield targets, ships), parsed from the .miz
     catalog.lua                -- content catalog (§1.2): targets, success criteria, per-site templates
-    unit_pools.lua             -- [side][role] unit templates (§1.12)
+    unit_pool.lua              -- every spawnable DCS unit type, generated (§1.13)
+    aircraft_pylons.lua        -- pylon → CLSID compatibility, generated; offline validation only
+    coalition_rosters.lua      -- COALITION_ROSTER[side][role] weighted type picks (hand-authored; the only file that knows red from blue)
+    airbase_classes.lua        -- AIRBASE_CLASS[name]: hub / fighter / bomber / strip / heli (hand)
+    base_defense_levels.lua    -- BASE_DEFENSE_LEVEL[class][echelon] → light / standard / heavy
+    base_defense_composition.lua  -- BASE_DEFENSE_COMPOSITION[level]: components + count ranges
+    base_defense_placement.lua -- BASE_DEFENSE_PLACEMENT[component]: role, ring, road, grouping
+    sam_site_recipes.lua       -- SAM site recipes per system (later, zones)
     callsigns.lua              -- curated DCS enum pools per role (§11.7)
-  stages\
-    s1_territory.lua  …  s7_brief.lua
+  stages\                     -- named by verb; run order lives in init.lua
+    roll_territory.lua  plan_base_defenses.lua  …  write_brief.lua
   consumers\
-    ground_spawner.lua   ato_scheduler.lua   briefing.lua
-    objectives.lua       scramble.lua        history.lua
+    apply_territory.lua  spawn_ground_groups.lua  schedule_ato.lua  deliver_brief.lua
+    track_objectives.lua  run_scramble.lua  write_history.lua
 ```
 
 Load order in `init.lua`: `lib\*` → `data\*` → `stages\*` → `consumers\*`, then the run sequence (§11.3): gather inputs → stages 1–7 → optional plan dump → hand the finished plan to each consumer. Data files load before stages so a stage can reference a data global directly (Syria's global-module convention). **Statics and any hand-placed unit templates live in `data\` alongside zones** — all coordinate-driven and all parseable from the `.miz`, per the same offline-parse workflow (§1.12).
