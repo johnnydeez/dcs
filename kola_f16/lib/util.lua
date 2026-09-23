@@ -18,6 +18,18 @@ function Util.pick(tbl)
     return tbl[math.random(#tbl)]
 end
 
+-- Picks from { { value, weight }, ... }; returns the value.
+function Util.weightedPick(list)
+    local total = 0
+    for _, e in ipairs(list) do total = total + e[2] end
+    local r = math.random() * total
+    for _, e in ipairs(list) do
+        r = r - e[2]
+        if r <= 0 then return e[1] end
+    end
+    return list[#list][1]
+end
+
 function Util.shuffle(tbl)
     for i = #tbl, 2, -1 do
         local j = math.random(i)

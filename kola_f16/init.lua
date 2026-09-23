@@ -21,6 +21,7 @@ if not load("config.lua")                  then return end
 if not load("lib\\util.lua")               then return end
 if not load("lib\\logger.lua")             then return end
 if not load("lib\\weather.lua")            then return end
+if not load("lib\\placement.lua")          then return end
 
 Log.info("============================================")
 Log.info("  Kola F-16 generator loading")
@@ -31,9 +32,23 @@ if not load("data\\clusters.lua")          then return end
 if not load("data\\zones.lua")             then return end
 if not load("data\\cloud_presets.lua")     then return end
 if not load("data\\unit_pool.lua")         then return end
+if not load("data\\airbase_codes.lua")     then return end
+if not load("data\\airbase_classes.lua")   then return end
+if not load("data\\base_defense_levels.lua")      then return end
+if not load("data\\base_defense_composition.lua") then return end
+if not load("data\\base_defense_placement.lua")   then return end
+if not load("data\\coalition_rosters.lua")        then return end
+if not load("data\\airbase_footprints.lua")       then return end
 if not load("gather.lua")                  then return end
-if not load("stages\\s1_territory.lua")    then return end
+if not load("stages\\roll_territory.lua")  then return end
+if not load("stages\\plan_base_defenses.lua")     then return end
 if not load("consumers\\territory.lua")    then return end
+if not load("consumers\\spawn_ground_groups.lua") then return end
+if not load("consumers\\draw_base_defenses.lua")  then return end
+if CONFIG.SURVEY_FOOTPRINTS and not load("survey\\survey_airbase_footprints.lua") then return end
+
+-- Data files checked against each other and the unit pool before anything runs.
+PlanBaseDefenses.checkData()
 
 -- ── Run sequence ────────────────────────────────────────────────
 
@@ -47,13 +62,17 @@ local function run()
     if CONFIG.SHOW_WEATHER_DEBUG then Log.dumpWeather() end
 
     local plan = { world = Gather.run() }
-    Stage1.run(plan)
-    -- stages 2..7 go here
+    if CONFIG.SURVEY_FOOTPRINTS then SurveyAirbaseFootprints.run(plan.world) end
+    RollTerritory.run(plan)
+    PlanBaseDefenses.run(plan)
+    -- stages 3..7 go here
 
     dumpPlan(plan)
 
     Territory.apply(plan)
-    local text = Territory.summaryText(plan)
+    SpawnGroundGroups.run(plan.base_defenses.groups, "base defenses")
+    DrawBaseDefenses.apply(plan)
+    local text = Territory.summaryText(plan) .. "\n" .. DrawBaseDefenses.summaryText(plan)
     if CONFIG.SHOW_WEATHER_DEBUG then
         text = text .. "\n\n" .. Weather.summaryText(plan.world)
     end
