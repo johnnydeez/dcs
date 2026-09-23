@@ -75,12 +75,56 @@ function Placement.badSurface(p)
     return false
 end
 
+-- ── Zones ───────────────────────────────────────────────────────
+-- Surveyed zones (data/zones.lua via plan.world.zones): { pos = { x, z }, type, radius |
+-- verts = { { x, z }, ... } }. Circles have a radius; a quad's usable radius is the
+-- distance from its centre to its nearest edge, so a disc of it stays inside.
+
+local function distToSegment(p, a, b)
+    local vx, vz = b[1] - a[1], b[2] - a[2]
+    local wx, wz = p.x - a[1], p.z - a[2]
+    local len2 = vx * vx + vz * vz
+    local t = len2 > 0 and math.max(0, math.min(1, (wx * vx + wz * vz) / len2)) or 0
+    local dx, dz = wx - t * vx, wz - t * vz
+    return math.sqrt(dx * dx + dz * dz)
+end
+
+-- Radius of the disc around the zone's centre that lies inside the zone.
+function Placement.zoneRadius(zone)
+    if zone.type ~= "quad" then return zone.radius or 0 end
+    local vs, best = zone.verts or {}, math.huge
+    for i = 1, #vs do
+        best = math.min(best, distToSegment(zone.pos, vs[i], vs[i % #vs + 1]))
+    end
+    return best < math.huge and best or 0
+end
+
+-- True if p lies within `margin` m of any zone in the list (outer edge: the circle, or
+-- for a quad the circle through its farthest corner — generous on purpose).
+function Placement.nearZone(zones, p, margin)
+    for _, z in ipairs(zones or {}) do
+        local r = z.radius or 0
+        if z.type == "quad" then
+            for _, v in ipairs(z.verts or {}) do
+                r = math.max(r, Util.dist(z.pos, { x = v[1], z = v[2] }))
+            end
+        end
+        if Util.dist(z.pos, p) <= r + margin then return true end
+    end
+    return false
+end
+
+-- Zones are reserved for stage 3 onward (SAM sites, garrisons, targets): base defenses
+-- keep this far outside every zone near their base (base.zones).
+local ZONE_KEEP_OUT_M = 30
+
 -- The one question every spawn point must pass. base may be nil (no airfield nearby).
 -- Returns ok, reason.
 function Placement.isClear(base, p)
     if base then
         if Placement.onRunwayBox(base, p) then return false, "runway" end
         if Placement.nearParking(base, p) then return false, "parking" end
+        if Placement.nearZone(base.zones, p, ZONE_KEEP_OUT_M) then return false, "zone" end
     end
     if Placement.badSurface(p) then return false, "surface" end
     return true
@@ -91,6 +135,7 @@ end
 function Placement.isClearRoad(base, p)
     if Placement.onRunwayBox(base, p) then return false, "runway" end
     if Placement.nearParking(base, p) then return false, "parking" end
+    if Placement.nearZone(base.zones, p, ZONE_KEEP_OUT_M) then return false, "zone" end
     if blockedSurface()[land.getSurfaceType({ x = p.x, y = p.z })] then return false, "surface" end
     return true
 end

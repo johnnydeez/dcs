@@ -40,16 +40,21 @@ if not load("data\\base_defense_placement.lua")   then return end
 if not load("data\\coalition_rosters.lua")        then return end
 if not load("data\\airbase_footprints.lua")       then return end
 if not load("data\\forested_airfields.lua")       then return end
+if not load("data\\sam_site_recipes.lua")         then return end
+if not load("data\\sam_site_density.lua")         then return end
 if not load("gather.lua")                  then return end
 if not load("stages\\roll_territory.lua")  then return end
 if not load("stages\\plan_base_defenses.lua")     then return end
+if not load("stages\\plan_sam_sites.lua")         then return end
 if not load("consumers\\territory.lua")    then return end
 if not load("consumers\\spawn_ground_groups.lua") then return end
 if not load("consumers\\draw_base_defenses.lua")  then return end
+if not load("consumers\\draw_sam_sites.lua")      then return end
 if CONFIG.SURVEY_FOOTPRINTS and not load("survey\\survey_airbase_footprints.lua") then return end
 
 -- Data files checked against each other and the unit pool before anything runs.
 PlanBaseDefenses.checkData()
+PlanSamSites.checkData()
 
 -- ── Run sequence ────────────────────────────────────────────────
 
@@ -66,14 +71,18 @@ local function run()
     if CONFIG.SURVEY_FOOTPRINTS then SurveyAirbaseFootprints.run(plan.world) end
     RollTerritory.run(plan)
     PlanBaseDefenses.run(plan)
-    -- stages 3..7 go here
+    PlanSamSites.run(plan)
+    -- stages 3b..7 go here
 
     dumpPlan(plan)
 
     Territory.apply(plan)
     SpawnGroundGroups.run(plan.base_defenses.groups, "base defenses")
+    SpawnGroundGroups.run(plan.sam_sites.groups, "SAM sites")
     DrawBaseDefenses.apply(plan)
+    DrawSamSites.apply(plan)
     local text = Territory.summaryText(plan) .. "\n" .. DrawBaseDefenses.summaryText(plan)
+        .. "\n" .. DrawSamSites.summaryText(plan)
     if CONFIG.SHOW_WEATHER_DEBUG then
         text = text .. "\n\n" .. Weather.summaryText(plan.world)
     end

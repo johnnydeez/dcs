@@ -57,6 +57,8 @@ CONFIG = {
     DRAW_ZONE_LABELS = true,
     DRAW_DEFENSES    = true,    -- label every base-defense group + a level ring per base
     DRAW_ANCHORS     = false,   -- dot every placement anchor at defended bases (by kind)
+    DRAW_SAM_SITES   = true,    -- label every SAM / early-warning site
+    DRAW_SAM_RINGS   = true,    -- engagement ring per SAM site, detection ring per EW site
 
     -- One-off: survey every airfield's footprint (aprons, airfield buildings) and write
     -- Saved Games\DCS\kola_airbase_footprints.lua; copy it to data\airbase_footprints.lua
