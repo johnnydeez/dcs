@@ -47,3 +47,31 @@ COALITION_ROSTER = {
         infantry                  = { { "Soldier M4", 3 }, { "Soldier M249", 1 } },
     },
 }
+
+-- Which SAM and early-warning systems each coalition fields per layer: { recipe, weight }
+-- where recipe is a key of SAM_SITE_RECIPE (data/sam_site_recipes.lua) of that layer.
+-- Target feel: a lived-in, mixed-age network like the Ukraine war, from what DCS has.
+COALITION_SAM_SYSTEMS = {
+    red = {
+        -- S-300PS stands in for S-300/S-400; few sites, around what Russia values most
+        long_range    = { { "SA-10", 1 } },
+        -- Buk is the army workhorse; Kub is older stock out of storage
+        medium_range  = { { "SA-11", 3 }, { "SA-6", 1 } },
+        short_range   = { { "SA-8", 2 }, { "SA-15", 1 } },
+        early_warning = { { "1L13", 1 }, { "55G6", 1 } },
+    },
+    blue = {
+        -- Sweden fields Patriot, plus US deployments. SA-10: Ukraine fights with S-300,
+        -- and NATO's Greece, Bulgaria and Slovakia have operated it — and in DCS it holds
+        -- up where the Patriot (sector radar, launch logic) underperforms
+        long_range    = { { "Patriot", 2 }, { "SA-10", 1 } },
+        -- NASAMS: Norway's and Finland's backbone; IRIS-T for Sweden's systems; Buk is
+        -- real for Finland (ITO 96, to 2015) and Ukraine, and the most reliable medium
+        -- system Blue has in DCS; Hawk is older reserve stock
+        medium_range  = { { "NASAMS", 3 }, { "IRIS-T SLM", 2 }, { "SA-11", 2 }, { "Hawk", 1 } },
+        -- Osa and Tor: Greece (NATO) and Ukraine field both; Tor also shoots down
+        -- incoming missiles. Rapier left out: useless against low flyers in DCS
+        short_range   = { { "SA-8", 2 }, { "SA-15", 1 }, { "Roland", 1 } },
+        early_warning = { { "FPS-117", 1 } },
+    },
+}

@@ -148,6 +148,17 @@ local function baseFilter()
     return set
 end
 
+-- Zones within reach of a base's defenses (they're reserved for stage 3 onward).
+local ZONE_REACH_M = 5000
+local function zonesNear(world, pos)
+    local out = {}
+    for _, name in ipairs(world.zone_list) do
+        local z = world.zones[name]
+        if Util.dist(z.pos, pos) <= ZONE_REACH_M then out[#out + 1] = z end
+    end
+    return out
+end
+
 -- "parking=98 building=172 apron=3 runway_side=32"
 local function anchorText(anchors)
     local keys = {}
@@ -333,7 +344,8 @@ function PlanBaseDefenses.run(plan)
         -- the placement view of this base: its geometry plus whether its infield is
         -- forest (plan.world stays untouched)
         local ab = { anchor = wab.anchor, runways = wab.runways, parking = wab.parking,
-                     forested = FORESTED_AIRFIELDS[name] == true }
+                     forested = FORESTED_AIRFIELDS[name] == true,
+                     zones = zonesNear(world, wab.pos) }
         local class = AIRBASE_CLASS[name]
         if not class then
             Log.warn("no AIRBASE_CLASS for '" .. name .. "' — treating as strip")

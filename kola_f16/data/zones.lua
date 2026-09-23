@@ -38,6 +38,32 @@ ZONES = {
         z       = 131214.379,
         radius  = 152.4,
     },
+    -- N65°52'16"  E022°29'41"
+    {
+        name    = "ZONE_BODN_078_372",
+        zone_id = 1059,
+        cluster = "SWEDEN",
+        base    = "Boden Heli Base",
+        brg     = 78,
+        km      = 37.2,
+        type    = "circle",
+        x       = -237265.896,
+        z       = 5483.091,
+        radius  = 152.4,
+    },
+    -- N65°48'43"  E021°41'32"
+    {
+        name    = "ZONE_BODN_342_003",
+        zone_id = 1058,
+        cluster = "SWEDEN",
+        base    = "Boden Heli Base",
+        brg     = 342,
+        km      = 0.3,
+        type    = "circle",
+        x       = -244477.342,
+        z       = -31048.362,
+        radius  = 91.4,
+    },
     -- N67°17'41"  E015°11'22"
     {
         name    = "ZONE_BODO_091_357",
@@ -49,6 +75,19 @@ ZONES = {
         type    = "circle",
         x       = -67675.943,
         z       = -312675.779,
+        radius  = 152.4,
+    },
+    -- N68°26'35"  E022°27'01"
+    {
+        name    = "ZONE_ENON_281_410",
+        zone_id = 1055,
+        cluster = "LAPLAND_WEST",
+        base    = "Enontekio",
+        brg     = 281,
+        km      = 41.0,
+        type    = "circle",
+        x       = 49340.396,
+        z       = -3234.169,
         radius  = 152.4,
     },
     -- N65°57'35"  E016°13'08"
@@ -64,6 +103,32 @@ ZONES = {
         z       = -279863.177,
         radius  = 152.4,
     },
+    -- N65°09'49"  E015°53'20"
+    {
+        name    = "ZONE_HEMA_157_807",
+        zone_id = 1056,
+        cluster = "SWEDEN",
+        base    = "Hemavan",
+        brg     = 157,
+        km      = 80.7,
+        type    = "circle",
+        x       = -307235.058,
+        z       = -302033.517,
+        radius  = 152.4,
+    },
+    -- N68°33'13"  E027°25'05"
+    {
+        name    = "ZONE_IVAL_169_060",
+        zone_id = 985,
+        cluster = "LAPLAND_EAST",
+        base    = "Ivalo",
+        brg     = 169,
+        km      = 6.0,
+        type    = "circle",
+        x       = 74624.467,
+        z       = 198786.693,
+        radius  = 76.2,
+    },
     -- N66°49'18"  E020°32'58"
     {
         name    = "ZONE_JOKK_027_404",
@@ -77,6 +142,19 @@ ZONES = {
         z       = -82479.688,
         radius  = 152.4,
     },
+    -- N65°32'34"  E022°08'26"
+    {
+        name    = "ZONE_KALL_096_009",
+        zone_id = 1057,
+        cluster = "SWEDEN",
+        base    = "Kallax",
+        brg     = 96,
+        km      = 0.9,
+        type    = "circle",
+        x       = -274189.211,
+        z       = -10005.665,
+        radius  = 106.7,
+    },
     -- N65°28'56"  E021°55'44"
     {
         name    = "ZONE_KALL_232_112",
@@ -88,6 +166,32 @@ ZONES = {
         type    = "circle",
         x       = -281092.468,
         z       = -19686.206,
+        radius  = 152.4,
+    },
+    -- N69°16'05"  E032°20'02"
+    {
+        name    = "ZONE_KILP_342_196",
+        zone_id = 845,
+        cluster = "KOLA_CORE",
+        base    = "Kilpyavr",
+        brg     = 342,
+        km      = 19.6,
+        type    = "circle",
+        x       = 182040.038,
+        z       = 382869.058,
+        radius  = 91.4,
+    },
+    -- N69°44'06"  E029°50'32"
+    {
+        name    = "ZONE_KIRK_292_021",
+        zone_id = 915,
+        cluster = "FINNMARK_EAST",
+        base    = "Kirkenes",
+        brg     = 292,
+        km      = 2.1,
+        type    = "circle",
+        x       = 217444.617,
+        z       = 278067.090,
         radius  = 152.4,
     },
     -- N67°41'54"  E024°52'25"
@@ -116,6 +220,45 @@ ZONES = {
         z       = 333111.746,
         radius  = 152.4,
     },
+    -- N67°58'13"  E032°59'39"
+    {
+        name    = "ZONE_MONC_195_023",
+        zone_id = 775,
+        cluster = "KOLA_CORE",
+        base    = "Monchegorsk",
+        brg     = 195,
+        km      = 2.3,
+        type    = "circle",
+        x       = 44620.836,
+        z       = 436709.577,
+        radius  = 152.4,
+    },
+    -- N68°49'02"  E032°40'43"
+    {
+        name    = "ZONE_MURM_313_050",
+        zone_id = 704,
+        cluster = "KOLA_CORE",
+        base    = "Murmansk International",
+        brg     = 313,
+        km      = 5.0,
+        type    = "circle",
+        x       = 135091.369,
+        z       = 405837.543,
+        radius  = 152.4,
+    },
+    -- N68°09'25"  E033°26'54"
+    {
+        name    = "ZONE_OLEN_300_009",
+        zone_id = 705,
+        cluster = "KOLA_CORE",
+        base    = "Olenya",
+        brg     = 300,
+        km      = 0.9,
+        type    = "circle",
+        x       = 68827.016,
+        z       = 451228.885,
+        radius  = 61.0,
+    },
     -- N64°56'10"  E034°08'38"
     {
         name    = "ZONE_PODU_277_060",
@@ -141,6 +284,19 @@ ZONES = {
         x       = 173461.588,
         z       = 427362.776,
         radius  = 152.4,
+    },
+    -- N68°52'08"  E033°42'34"
+    {
+        name    = "ZONE_SEV3_289_004",
+        zone_id = 703,
+        cluster = "KOLA_CORE",
+        base    = "Severomorsk-3",
+        brg     = 289,
+        km      = 0.4,
+        type    = "circle",
+        x       = 148972.843,
+        z       = 445514.976,
+        radius  = 121.9,
     },
     -- N69°42'17"  E019°00'01"
     {

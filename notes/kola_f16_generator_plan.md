@@ -11,11 +11,18 @@
 
 ---
 
-## Where we are — pick up here  *(2026-09-23, end of session 3 — base defenses done)*
+## Where we are — pick up here  *(2026-09-23, end of session 4 — SAM network built, awaiting first DCS run)*
 
-**Status: stages 1–2 run in DCS and are verified at all 37 airfields.** Boot → gather (airbases incl. runways/parking/anchor, zones, weather + time) → `RollTerritory` (territory, front, echelon) → `PlanBaseDefenses` (every base, both coalitions) → plan dump → `Territory.apply` (coalitions + circles) → `SpawnGroundGroups` (base defenses) → `DrawBaseDefenses` (debug marks) + on-screen summary. The user's all-bases run looked right; placements at the cramped fields were acceptable. FPS is not a concern for standing ground units (John).
+**Status: stages 1–2 run in DCS and are verified at all 37 airfields; stage 3a (SAM sites) is built and tested offline, not yet run in DCS.** Boot → gather (airbases incl. runways/parking/anchor, zones, weather + time) → `RollTerritory` (territory, front, echelon) → `PlanBaseDefenses` (every base, both coalitions) → `PlanSamSites` (SAM + early-warning network in the zones) → plan dump → `Territory.apply` (coalitions + circles) → `SpawnGroundGroups` (base defenses, then SAM sites) → `DrawBaseDefenses` + `DrawSamSites` (debug marks) + on-screen summary. The user's all-bases run looked right; placements at the cramped fields were acceptable. FPS is not a concern for standing ground units (John).
 
-**Done this session (2026-09-23):**
+**Done in session 4 (2026-09-23):**
+- **Base defenses refined in DCS:** unit spacing; six fully named components (naming rule at the top of this doc); level matrix by base value; `dispersal` class; placement order most-important-first; road fallback so nothing is dropped; truck-mounted guns and along-road headings on roads; forested fields (Afrikanda) use runway ends. Details in "Base defenses — as built".
+- **SAM network (stage 3a)**: spec in "SAM sites — as built". 24 survey zones now (12 new).
+- **Researched DCS SAM performance** (table in "SAM sites — as built"). Blue re-balanced: Patriot sites get 2 radars aimed around the threat axis; SA-10 added to Blue long range; NASAMS 2 radars, Hawk 2 trackers; Blue short range is Osa / Tor / Roland (Rapier dropped).
+- **Next, John:** test the SAM network in DCS and draw more zones (priorities under "Volume vs target").
+- **Removed** the no-op RNG seeding (`rng advanced 93` every launch): DCS varies `math.random` between launches on its own.
+
+**Done in session 3 (2026-09-23):**
 - **Base defenses end to end** (spec below, "Base defenses — as built"): airbase classes + codes, level matrix + skill, composition, placement, coalition rosters, load-time data validation, planning stage, generic ground spawner with a per-unit type check (catches the Leopard-2 swap), debug drawing.
 - **Rename:** `stages/s1_territory.lua` → `stages/roll_territory.lua` (`RollTerritory`); adds `echelon` (front ≤ `ECHELON_FRONT_KM` 100 · mid ≤ `ECHELON_MID_KM` 200 · rear).
 - **Trees solved without seeing trees.** Probes at Monchegorsk / Rovaniemi / Ivalo / Kalevala proved what the API can and can't see:
@@ -37,7 +44,7 @@ kola_f16/
   lib/weather.lua            Weather.derive / deriveTime (§1.11), sun, flight rules, summaryText (TEMP debug)
   lib/placement.lua          isClear (runway boxes, parking, surface ring), findClear, ringPoint/discPoint,
                              buildAnchors (infield/apron/parking/building/runway_side), pickAnchorPoint
-  data/clusters.lua          11 clusters (§3)            data/zones.lua  12 zones, generated (§1.12)
+  data/clusters.lua          11 clusters (§3)            data/zones.lua  24 zones, generated (§1.12)
   data/cloud_presets.lua     34 presets, generated        data/unit_pool.lua  every AI-operable unit, generated (§1.13)
   data/aircraft_pylons.lua   generated, NOT loaded        data/airbase_codes.lua  4-letter code per base
   data/airbase_classes.lua   hub/fighter/bomber/heli/strip (DRAFT)
@@ -47,12 +54,16 @@ kola_f16/
   data/coalition_rosters.lua  COALITION_ROSTER[side][role] (DRAFT) — the only file that knows red from blue
   data/airbase_footprints.lua surveyed taxiway grid + airfield buildings, all 37 fields, generated in-sim
   data/forested_airfields.lua  fields whose infield is forest (Afrikanda): runway ends + roads only
+  data/sam_site_recipes.lua  what each SAM / EW system's site contains + layout (SAM_SITE_RECIPE, SAM_SITE_PLACE)
+  data/sam_site_density.lua  zone roles, chance + layer weights per role, zone share and per-layer caps
   gather.lua                 plan.world: airbases{pos, anchor, runways, parking, me_side}, zones, time, weather, checks
   stages/roll_territory.lua  plan.territory: clusters, bases{side, cluster, echelon}, zones, front, summary
   stages/plan_base_defenses.lua  plan.base_defenses: groups, bases (per-base summary), totals
+  stages/plan_sam_sites.lua  plan.sam_sites: sites, groups, zones_used, summary
   consumers/territory.lua    setCoalition + autoCapture(false); base/zone circles; summaryText
   consumers/spawn_ground_groups.lua  plan entries → coalition.addGroup + type check (generic: zones will reuse it)
   consumers/draw_base_defenses.lua   level ring per base, label per group, optional anchor dots; summaryText
+  consumers/draw_sam_sites.lua       label + engagement / detection ring per SAM site; summaryText
   survey/survey_airbase_footprints.lua  one-off survey (off)
 tools/                       miz_zones.py, cloud_presets.py, unit_pool.py (+ overrides), dcslua.py, kola_proj.py, kola_airbases.json
 kola_f16_random_tasking.miz  flyable mission (ONCE + TIME MORE 1 → DO SCRIPT dofile(lfs.writedir().."Scripts\\kola_f16\\init.lua"))
@@ -63,10 +74,11 @@ Plan dump: `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `python tools/
 
 ## NEXT SESSION — candidates  *(pick one with John)*
 
-1. **Zones + SAM sites** (the plan's next stage, §1.12 / §1.2): `defense_level`-style classification for zones, zone budget per side/echelon, `data/sam_site_recipes.lua` from the pool's `system` tag, garrisons; spawn through the existing `SpawnGroundGroups`. Needs more survey zones (12 drawn of ~100).
-2. **Base-defense polish** (deferred list): ±1 level nudge at ~20 %; logistics/fuel components as statics (cheap, targetable); `security_armor` / `apc_patrol` components; re-classify `airbase_classes.lua` and grow `coalition_rosters.lua` (Tor / Tunguska at heavy Red bases, etc.).
-3. **Housekeeping:** rename `consumers/territory.lua` → `apply_territory.lua` (`ApplyTerritory`); drop `SHOW_WEATHER_DEBUG` once the brief exists.
-4. **Proximity spawning** (unlikely to be needed: standing ground units barely affect FPS): spawn a base's defenses when a player gets within ~150 km — the plan already holds every unit, so briefs and targets stay truthful.
+1. **First DCS run of the SAM network** and tuning (density, systems, footprints). Check the Patriot's two-radar layout actually engages. More zones: Kola core (full size), front belt, Rovaniemi / Bodø / Evenes, Kuusamo, Sodankylä, Alakurtti. Then add the "minimum sites per layer" rule (Red always gets several long-range sites in the core).
+2. **Rest of stage 3:** garrisons and target sites in the zones SAM sites leave free (`plan.sam_sites.zones_used`). Consolidate spawning into `lib/dcs_groups.lua` + a `spawn_at_start` consumer once there's a third list (discussed 2026-09-23).
+3. **Base-defense polish** (deferred list): ±1 level nudge at ~20 %; logistics/fuel components as statics (cheap, targetable); `security_armor` / `apc_patrol` components; re-classify `airbase_classes.lua` and grow `coalition_rosters.lua` (Tor / Tunguska at heavy Red bases, etc.).
+4. **Housekeeping:** rename `consumers/territory.lua` → `apply_territory.lua` (`ApplyTerritory`); drop `SHOW_WEATHER_DEBUG` once the brief exists.
+5. **Proximity spawning** (unlikely to be needed: standing ground units barely affect FPS): spawn a base's defenses when a player gets within ~150 km — the plan already holds every unit, so briefs and targets stay truthful.
 
 **Open decision, settled for now:** base-defense units live in the plan (`plan.base_defenses`, ids = DCS group names) so they can later be mission targets or brief info, but they are **not** in the target catalog yet.
 
@@ -154,6 +166,73 @@ Every roster type exists in `UNIT_POOL.ground` with a positive weight; every pla
 
 ### Verify in DCS
 Per-base log line: `Olenya RED bomber/front → HEAVY 8 groups 22 units (anchors: …; rejects: …; no room for: …)`, then a total. Spawner line: `spawned N groups / M units; 0 failed; 0 type mismatches`. Grep `asked for` for type swaps. F10: level ring per base + a label per group; `DRAW_ANCHORS = true` adds anchor dots (use with `DEFENSE_TEST_BASES` set to a few bases — tens of thousands of marks otherwise).
+
+---
+
+## SAM sites — as built  *(2026-09-23, stage 3a, not yet run in DCS)*
+
+Both coalitions get a SAM and early-warning network sized to what they hold. Target feel (John): **Ukraine-war density with mixed-age kit**. It should feel lived-in, not 1985 and not pure SA-10, built from what DCS has; coverage matters more than exact type. All scripted; the only manual input is the survey zones.
+
+### How a site is decided
+Every zone a coalition holds this roll (it inherits its cluster's side) gets one **role**, first match wins (`data/sam_site_density.lua`):
+
+| Role | Question it answers | Rule |
+|---|---|---|
+| `asset_ring` | Is it guarding something the owner values? | ≤ 40 km from an own base whose defense level is `heavy` (stage 2) |
+| `front_belt` | Is it on the front? | ≤ 100 km from an enemy-held base |
+| `rear_area` | Anything else | early warning, the odd medium site |
+
+Then: `chance` (asset 0.9 · front 0.8 · rear 0.6) → a **layer** picked by weight (asset: long 3 / medium 5 / short 2 · front: medium 5 / short 4 / EW 1 · rear: EW 3 / medium 2 / short 1) → a **system** of that layer from `COALITION_SAM_SYSTEMS[side][layer]` that **fits the zone** (recipe `footprint_m` ≤ zone radius; else the next smaller layer) → the site laid out inside the zone. Caps: at most 75 % of a side's zones become SAM sites (the rest stay for garrisons and targets); at most 2 early-warning sites per side. Asset-ring zones fill first.
+
+### Systems (`COALITION_SAM_SYSTEMS` in `data/coalition_rosters.lua`)
+
+| Layer | Red: Russian, layered, mixed age | Blue: western + Soviet-made, like Ukraine |
+|---|---|---|
+| long_range | SA-10 (for S-300/S-400) + Pantsir/Tor escort | Patriot (2) + Avenger escort, SA-10 (1) + Roland/Tor escort |
+| medium_range | SA-11 Buk (3), SA-6 Kub (1, old stock) | NASAMS (3), IRIS-T SLM (2), SA-11 (2, Finland's former ITO 96, Ukraine's Buks), Hawk (1, reserve) |
+| short_range | SA-8 Osa (2), SA-15 Tor (1) | SA-8 Osa (2), SA-15 Tor (1): Greece (NATO) and Ukraine field both; Roland (1) |
+| early_warning | 1L13, 55G6 | FPS-117 |
+
+SA-2/3/5 left out (Russia doesn't field them); one roster line brings an S-200 back if wanted. Blue fields Soviet-made systems on purpose (John: coverage and realism over exact type): Ukraine fights with S-300, Buk, Osa and Tor, and NATO's Greece, Bulgaria and Slovakia have operated S-300, Osa or Tor.
+
+### How the systems perform in DCS (researched 2026-09-23)
+Real-world figures vs DCS (Airgoons DCS reference; ED forum reports). Engagement ranges are high altitude / low altitude.
+
+| System | Real (vs aircraft) | DCS | DCS behaviour, and what the recipe does about it |
+|---|---|---|---|
+| SA-10 | ~75–90 km | 5–120 km / 5–40 km | Strongest SAM in DCS: remade with better guidance and missile flight, 360° radars, 15 targets × 2 missiles, shoots down incoming missiles. |
+| Patriot | ~160 km | 3–120 km / **3–30 km** | Radar sees a **fixed ~120° sector**; fires at about twice the S-300's range (wasted long shots); tracking and anti-munition reliability complaints. Recipe: **2 radars aimed exactly 30° either side of the threat axis** (~180° covered; `aim` in the part), 6 launchers. Blue also gets SA-10 as a long-range option. |
+| NASAMS | 40 km (60 km ER) | 0.7–57 km / **0.7–14 km** | Limited by DCS's AMRAAM. Recipe: 2 search radars (ED's template uses several). |
+| Hawk | ~45 km | 1.5–45 km / 1.5–22 km | Solid, but depends on its tracking radar illuminating the target, so beaming defeats it. Recipe: 2 tracking radars (ED's template). |
+| IRIS-T SLM | 40 km | mod data 40 km | Currenthill mod; no reliability reports found. Unverified. |
+| SA-11 | ~35 km | 3.3–35 km / 25 km | Radar on every launcher: robust and well-regarded. Weighted up for Blue. |
+| SA-15 Tor | 12 km | 1.5–12 km | Strong; very good at shooting down incoming missiles. |
+| SA-8 Osa | 10 km | 1.5–10.3 km | Decent; optical fallback if its radar is suppressed. |
+| Roland | 8 km | 0.5–8 km | Radar-only in DCS; short range. |
+| Rapier | 6.8 km | 0.4–6.8 km, 3 km ceiling | **Can't engage low flyers without the missile hitting the ground.** Recipe kept, not rostered. |
+
+**For the brief (stage 7):** rings drawn now use ED's high-altitude figure; the low-altitude reach is much shorter (Patriot 30 km, NASAMS 14 km, SA-10 40 km). The threat picture should give both.
+
+Sources: [Patriot launch range](https://forum.dcs.world/topic/317951-patriot-has-grossly-overestimated-launch-range/), [Patriot STR](https://forum.dcs.world/topic/280250-patriot-str-doesnt-work-properly/), [Patriot vs munitions](https://forum.dcs.world/topic/313261-patriot-extremely-unreliable-at-intercepting-incoming-munitions/), [DCS Liberation #1531](https://github.com/dcs-liberation/dcs_liberation/issues/1531), [Airgoons Western](https://www.airgoons.com/w/DCS_Reference/Air_Defences/Western), [Airgoons Eastern](https://www.airgoons.com/w/DCS_Reference/Air_Defences/Eastern), [AIM-120 range](https://forum.dcs.world/topic/318993-aim-120-range/).
+
+### Recipes (`data/sam_site_recipes.lua`)
+Per system: `layer`, `footprint_m` (SA-10/Patriot 150, SA-11/Hawk 120, SA-6/NASAMS/IRIS-T 100, SA-8/Rapier 60, Tor/Roland 50, EW 40), `unit_spacing`, `parts = { type, min, max, place, aim }` and optional `escort_role`. `aim` (degrees off the threat axis, one per unit) gives a unit an exact heading. It exists for sector radars like the Patriot's. Places, as fractions of the footprint: `centre` 0–35 % (radars, command post), `launchers` 45–95 %, `edge` 60–100 % (support trucks, which make the site look occupied). Radars and launchers face the nearest enemy base; support vehicles face anywhere. **One DCS group per site** (a system's radars and launchers must share a group); the escort is its own group `<id>_escort`. Engagement and detection radii come from UNIT_POOL (ED's data).
+
+### Placement
+Units stay inside their zone (a quad uses its inscribed circle). Each unit passes `Placement.isClear` against the zone's nearest airfield (runways and parking stay clear), then retries at half spacing, then with only the point itself checked (the zone was surveyed as open). A site whose radar or command post can't be placed is dropped with a warning. **Zones are reserved for stage 3 onward:** base defenses keep 30 m outside every zone within 5 km of their base (`base.zones` in the placement view).
+
+### Plan shape and naming
+`plan.sam_sites = { sites = { { id, side, system, layer, role, zone, defends, pos, engage_m, detect_m, group_ids } }, groups = { spawn-ready, same shape as base defenses + purpose = "air_defense", site }, zones_used = { [zone] = site id }, summary = { [side] = { zones_held, sites, by_layer } } }`. Group id `SAM_<CODE>_<system>_<n>` (code of the zone's nearest base, system without punctuation: `SAM_OLEN_SA10_1`, `SAM_BODO_NASAMS_1`); escort `<id>_escort`. Spawned by the same `SpawnGroundGroups` after all planning.
+
+### Load-time validation (`PlanSamSites.checkData`)
+Every recipe part is in `UNIT_POOL.ground` with a known place; every escort role has a roster on both sides; every `COALITION_SAM_SYSTEMS` entry names a recipe of that layer with a positive weight; every density role lists known layers.
+
+### Verify in DCS
+Log: one line per site (`SAM_SEV1_SA10_1  RED  SA-10  long_range  asset_ring  Severomorsk-1  11 units + escort  engage 120 km (ZONE_SEV1_341_097)`), then per side `N sites in N of M zones held`. F10: a label per site; engagement rings (solid, side colour) and early-warning detection rings (dashed), switched by `DRAW_SAM_SITES` and `DRAW_SAM_RINGS`. Offline (24 zones, 200 rolls): Red ≈ 7.5 sites/roll (SA-10 0.8, SA-11 2.0, SA-6 0.8, SA-8 1.7, Tor 1.0, EW 1.2), Blue ≈ 6 (NASAMS 0.9, SA-11 0.6, IRIS-T 0.6, Hawk 0.3, Patriot 0.2, SA-10 0.1, Osa 0.8, Tor 0.4, Roland 0.5, EW 1.8); no two site units under 10 m; no base-defense unit inside a zone. A Patriot site came out with radars at 80° and 140° (60° apart around the threat axis) and 6 launchers.
+
+**Volume vs target (reviewed 2026-09-23):** about a quarter to a third of the Ukraine-like target. For scale, the Kola core realistically holds something like 6–10 long-range battalions, and an active 400–600 km front has a medium site every 30–50 km. The code scales with zones; the limit is zone count and size (only 152 m zones fit SA-10/Patriot). Needed: about 10–12 full-size zones ringing Severomorsk / Kola Bay / Murmansk / Olenya, 2–3 per contested cluster 20–60 km behind the border, and 3–4 each at Rovaniemi, Bodø and Evenes, so about 40–50 for SAMs and ~100 overall. Planned: a "minimum sites per layer" rule so the Kola core always gets several long-range sites, and short-range units attached to garrisons and ground forces (stage 3b/4) rather than taking zones.
+
+**Known gaps:** no zones yet at Rovaniemi, Evenes, Kuusamo, Sodankylä or Alakurtti, so Blue's network is Swedish-heavy. The 152 m default zone is the largest drawn, which is exactly the SA-10/Patriot footprint. No alarm-state or ROE orders yet (DCS defaults engage); Skynet later keys on the group ids.
 
 ---
 
@@ -832,6 +911,7 @@ Recommendation: **option 1 now** (fixed ME weather/time, all randomness in-sim) 
 The 7 stages of §1.1 build **one accumulating Lua table**. Stage 1 writes `plan.territory`; stage 2 reads it and writes `plan.base_defenses`; and so on. Each stage is one module that takes the table, reads the keys of earlier stages, and adds its own key. "Stage N only reads earlier stages" is a convention, not enforced.
 
 - **Nothing spawns until all 7 stages are done.** Unlike Syria, where each module decides and spawns in the same function, here the stages only produce data. This is a much larger setup; deciding everything first and spawning afterwards is the only way the later stages (ATOs, brief) can see the complete picture. *v1 (2026-09-23):* only stages 1–2 exist, so the consumers run after stage 2. As later stages land they slot in before the consumers, and spawning stays last.
+- **Stages may ask the terrain, never the live sim** (agreed 2026-09-23). Read-only questions about fixed map geometry (`land.getSurfaceType`, `land.getClosestPointOnRoads`, heights) are allowed during planning; reading or creating DCS objects is not (that's gather and the consumers). Offline replay of a stage stubs those calls.
 - **Plain data only.** Strings, numbers, nested tables. No DCS object handles, no functions. Anything needed from the sim (airbase positions, ME zone positions, late-activation group names) is read into plain values as part of building the plan. Consequence: the plan can be written to a file (`Saved Games\DCS\kola_last_plan.lua`, behind a config flag) and read when debugging, instead of reconstructing what was planned from `dcs.log`.
 - **Each entry carries everything its consumer needs.** Since spawning happens later, a defense entry holds unit types, positions, headings; an ATO line holds its route; an ME-placed target holds its late-activation group names. In Syria these live in locals right before the spawn call — here they go in the table.
 - **Immutable once built** (not enforced). Consumers — spawner, mission reporter/briefing, ATO scheduler, objective tracker — all read the plan; none write to it.
@@ -922,15 +1002,17 @@ Saved Games\DCS\Scripts\kola_f16\
     base_defense_composition.lua  -- BASE_DEFENSE_COMPOSITION[level]: components + count ranges
     base_defense_placement.lua -- BASE_DEFENSE_PLACEMENT[component]: role, anchors { kind = { weight, min_m, max_m } },
                                --   ring fallback, units per group, spread, mixed_types; group spacing
-    sam_site_recipes.lua       -- (later) SAM site recipes per system, for zones
+    sam_site_recipes.lua       -- SAM / early-warning site recipes per system
+    sam_site_density.lua       -- zone roles, layer weights, caps
     callsigns.lua              -- (later) curated DCS enum pools per role (§11.7)
   gather.lua                   -- all DCS reads → plan.world
   stages\                      -- named by verb; run order lives in init.lua
-    roll_territory.lua  plan_base_defenses.lua  …  (later) write_brief.lua
+    roll_territory.lua  plan_base_defenses.lua  plan_sam_sites.lua  …  (later) write_brief.lua
   consumers\
     territory.lua              -- to be renamed apply_territory.lua (housekeeping)
     spawn_ground_groups.lua    -- generic: plan entries → coalition.addGroup + per-unit type check
     draw_base_defenses.lua     -- debug F10 marks
+    draw_sam_sites.lua         -- debug F10 marks + rings
     (later) schedule_ato.lua  deliver_brief.lua  track_objectives.lua  run_scramble.lua  write_history.lua
   survey\
     survey_airbase_footprints.lua  -- one-off, behind CONFIG.SURVEY_FOOTPRINTS
@@ -966,6 +1048,7 @@ Load order in `init.lua`: `lib\*` → `data\*` → `stages\*` → `consumers\*`,
 | ATO air line | `MSN<msn>` | `MSN2041` → `blue.ato[2041]` |
 | Ground group from a zone | `<zonename>__<n>` | `ZONE_KITT_100_012__1` → that ground entry |
 | Base defense | `DEF_<CODE>_<component>_<n>`; units `<id>_<n>` | `DEF_OLEN_towed_anti_aircraft_guns_1` → `base_defenses.groups` entry |
+| SAM / EW site | `SAM_<CODE>_<system>_<n>`; escort `<id>_escort` | `SAM_SEV1_SA10_1` → `sam_sites.sites` entry |
 | Activated ME target | its `TGT_…` name | directly |
 
 The **player line** has no pre-named group (dynamic spawn) — its objective is keyed off the player unit (`getPlayerName()`) plus the frag's `msn`/target, the same way `cost_logic` attributes kills to a human.
