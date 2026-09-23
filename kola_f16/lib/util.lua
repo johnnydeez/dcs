@@ -5,14 +5,10 @@ Util = {}
 
 -- ── RNG ─────────────────────────────────────────────────────────
 
--- math.randomseed is unavailable in DCS mission Lua. Advance the generator by a
--- time-dependent number of steps so each session differs.
-function Util.seedRandom()
-    local t = timer and math.floor(timer.getAbsTime()) or 0
-    local steps = (t % 97) + 1
-    for _ = 1, steps do math.random() end
-    return steps
-end
+-- No seeding: math.randomseed is unavailable in DCS mission Lua, and DCS already gives
+-- math.random a different sequence each launch (verified: rolls differ between runs).
+-- A time-based advance was tried and removed — the mission clock at gather time is the
+-- same every launch, so it always advanced the same number of steps.
 
 function Util.pick(tbl)
     return tbl[math.random(#tbl)]

@@ -39,6 +39,7 @@ if not load("data\\base_defense_composition.lua") then return end
 if not load("data\\base_defense_placement.lua")   then return end
 if not load("data\\coalition_rosters.lua")        then return end
 if not load("data\\airbase_footprints.lua")       then return end
+if not load("data\\forested_airfields.lua")       then return end
 if not load("gather.lua")                  then return end
 if not load("stages\\roll_territory.lua")  then return end
 if not load("stages\\plan_base_defenses.lua")     then return end

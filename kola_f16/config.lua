@@ -41,6 +41,15 @@ CONFIG = {
     CLEAR_RUNWAY_END_M  = 400,
     CLEAR_PARKING_M     = 60,
     CLEAR_SAMPLE_M      = 40,
+    -- Forested fields only (data/forested_airfields.lua): past each runway end, only the
+    -- approach lane — runway width plus this either side — is kept clear; units spread
+    -- at most FORESTED_SPREAD_M from their group centre (the cleared overrun is narrow).
+    CLEAR_APPROACH_LANE_M = 15,
+    FORESTED_SPREAD_M     = 30,
+    -- Road fallback: a group that finds no clear open ground goes onto an airfield road
+    -- instead — a road within this distance of a runway's box (the field's own
+    -- perimeter and access roads). Roads are open by construction; trees aren't.
+    ROAD_FALLBACK_RUNWAY_M = 800,
 
     -- Map drawing (debug view of the plan).
     DRAW_BASE_RADIUS = 10000,   -- m, territory circle at each base

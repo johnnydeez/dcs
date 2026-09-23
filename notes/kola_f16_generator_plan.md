@@ -5,13 +5,15 @@
 >
 > **Layout:** *Where we are* (pick up here) → *Next session* candidates → *Base defenses — as built* → *Plan* (§1–10, concept and research) → *Architecture* (§11, code structure decisions).
 >
+> **Naming rule:** name things by what they are or what they do, in full words. No abbreviations in code names: `mobile_anti_aircraft_guns`, not `aaa_sp`; `shoulder_launched_missile_teams`, not `manpads_team`. Each name answers one question. Prose may still use common terms (AAA, SHORAD, MANPADS).
+>
 > **Working rules:** commits are always done by John, on his own schedule — never ask about or perform a commit. After any edit under `kola_f16\`, copy the tree to `Saved Games\DCS\Scripts\kola_f16\` immediately; DCS is the only test environment.
 
 ---
 
 ## Where we are — pick up here  *(2026-09-23, end of session 3 — base defenses done)*
 
-**Status: stages 1–2 run in DCS and are verified at all 37 airfields.** Boot → gather (airbases incl. runways/parking/anchor, zones, weather + time) → `RollTerritory` (territory, front, echelon) → `PlanBaseDefenses` (every base, both coalitions) → plan dump → `Territory.apply` (coalitions + circles) → `SpawnGroundGroups` (base defenses) → `DrawBaseDefenses` (debug marks) + on-screen summary. The user's all-bases run looked right; placements at the cramped fields were acceptable. FPS with all bases defended not yet measured.
+**Status: stages 1–2 run in DCS and are verified at all 37 airfields.** Boot → gather (airbases incl. runways/parking/anchor, zones, weather + time) → `RollTerritory` (territory, front, echelon) → `PlanBaseDefenses` (every base, both coalitions) → plan dump → `Territory.apply` (coalitions + circles) → `SpawnGroundGroups` (base defenses) → `DrawBaseDefenses` (debug marks) + on-screen summary. The user's all-bases run looked right; placements at the cramped fields were acceptable. FPS is not a concern for standing ground units (John).
 
 **Done this session (2026-09-23):**
 - **Base defenses end to end** (spec below, "Base defenses — as built"): airbase classes + codes, level matrix + skill, composition, placement, coalition rosters, load-time data validation, planning stage, generic ground spawner with a per-unit type check (catches the Leopard-2 swap), debug drawing.
@@ -30,7 +32,7 @@ kola_f16/
   init.lua                   load order + run sequence (above); checkData() at load
   config.lua                 START_DELAY, PLAN_DUMP, UTC_OFFSET_H=3, SHOW_WEATHER_DEBUG, FRONT_RANGE_KM, FORCE_CLUSTER,
                              ECHELON_*_KM, DEFENSE_TEST_BASES ({} = all), CLEAR_* margins, DRAW_*, SURVEY_FOOTPRINTS=false
-  lib/util.lua               seedRandom, pick/weightedPick/shuffle, dist/bearing, toVec3, withLatLon, formatLL, serialize, writeFile
+  lib/util.lua               pick/weightedPick/shuffle, dist/bearing, toVec3, withLatLon, formatLL, serialize, writeFile
   lib/logger.lua             Log.* + dumpAirbases/dumpGroups/dumpLateGroupUnits/dumpWeather
   lib/weather.lua            Weather.derive / deriveTime (§1.11), sun, flight rules, summaryText (TEMP debug)
   lib/placement.lua          isClear (runway boxes, parking, surface ring), findClear, ringPoint/discPoint,
@@ -44,6 +46,7 @@ kola_f16/
   data/base_defense_placement.lua    role, anchors spec, ring fallback, units, spread, mixed_types; group spacing
   data/coalition_rosters.lua  COALITION_ROSTER[side][role] (DRAFT) — the only file that knows red from blue
   data/airbase_footprints.lua surveyed taxiway grid + airfield buildings, all 37 fields, generated in-sim
+  data/forested_airfields.lua  fields whose infield is forest (Afrikanda): runway ends + roads only
   gather.lua                 plan.world: airbases{pos, anchor, runways, parking, me_side}, zones, time, weather, checks
   stages/roll_territory.lua  plan.territory: clusters, bases{side, cluster, echelon}, zones, front, summary
   stages/plan_base_defenses.lua  plan.base_defenses: groups, bases (per-base summary), totals
@@ -62,8 +65,8 @@ Plan dump: `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `python tools/
 
 1. **Zones + SAM sites** (the plan's next stage, §1.12 / §1.2): `defense_level`-style classification for zones, zone budget per side/echelon, `data/sam_site_recipes.lua` from the pool's `system` tag, garrisons; spawn through the existing `SpawnGroundGroups`. Needs more survey zones (12 drawn of ~100).
 2. **Base-defense polish** (deferred list): ±1 level nudge at ~20 %; logistics/fuel components as statics (cheap, targetable); `security_armor` / `apc_patrol` components; re-classify `airbase_classes.lua` and grow `coalition_rosters.lua` (Tor / Tunguska at heavy Red bases, etc.).
-3. **Housekeeping:** rename `consumers/territory.lua` → `apply_territory.lua` (`ApplyTerritory`); drop `SHOW_WEATHER_DEBUG` once the brief exists; measure FPS with all bases defended.
-4. **Proximity spawning** (only if FPS demands it): spawn a base's defenses when a player gets within ~150 km — the plan already holds every unit, so briefs and targets stay truthful.
+3. **Housekeeping:** rename `consumers/territory.lua` → `apply_territory.lua` (`ApplyTerritory`); drop `SHOW_WEATHER_DEBUG` once the brief exists.
+4. **Proximity spawning** (unlikely to be needed: standing ground units barely affect FPS): spawn a base's defenses when a player gets within ~150 km — the plan already holds every unit, so briefs and targets stay truthful.
 
 **Open decision, settled for now:** base-defense units live in the plan (`plan.base_defenses`, ids = DCS group names) so they can later be mission targets or brief info, but they are **not** in the target catalog yet.
 
@@ -79,26 +82,53 @@ Every airbase gets a coalition-appropriate ground defense sized to how hard its 
 
 | Term | Question it answers | Values | Set where |
 |---|---|---|---|
-| **`class`** | What *is* this base? | `hub` / `fighter` / `bomber` / `strip` / `heli` | `data/airbase_classes.lua` (draft) |
+| **`class`** | What *is* this base? | `hub` / `fighter` / `bomber` / `dispersal` / `strip` / `heli` | `data/airbase_classes.lua` (draft) |
 | **`echelon`** | Where does it sit relative to the enemy? | `front` ≤ 100 km · `mid` ≤ 200 km · `rear` | `RollTerritory`, from `nearest_enemy.km` |
 | **`defense_level`** | How heavily does its owner defend it? | `light` / `standard` / `heavy` | `BASE_DEFENSE_LEVEL[class][echelon]` (nudge not built) |
-| **component** | A kind of defensive element | `aaa`, `shorad`, `manpads_team`, `security_infantry` | `data/base_defense_placement.lua` |
+| **component** | A kind of defensive element | `towed_anti_aircraft_guns`, `mobile_anti_aircraft_guns`, `infrared_missile_launchers`, `radar_missile_launchers`, `shoulder_launched_missile_teams`, `security_infantry` | `data/base_defense_placement.lua` |
 | **composition** | How many groups of each component, per level | `{ component, min, max }` | `data/base_defense_composition.lua` |
 | **placement** | Where a component's groups go | anchors spec, ring fallback, units per group, spread | `data/base_defense_placement.lua` |
 | **anchor kind** | What open ground a group starts from | `infield`, `apron`, `parking`, `building`, `runway_side` | `Placement.buildAnchors` |
-| **role** | Which roster list types come from | `aaa`, `shorad`, `manpads`, `infantry` | placement `role` |
+| **role** | Which roster list types come from | `towed_anti_aircraft_gun`, `mobile_anti_aircraft_gun`, `infrared_missile_launcher`, `radar_missile_launcher`, `shoulder_launched_missile`, `infantry` | placement `role` |
 | **roster** | Which types a coalition fields per role | weighted `{ type, weight }` | `data/coalition_rosters.lua` |
 
-`defense_level` matrix (starting values; tune by feel):
+`defense_level` matrix. What a base is matters more than where it sits: hubs and bomber bases are strategic and defended heavily anywhere (long-range strikes reach the rear), fighter bases ease off only deep in the rear, small fields scale with the front.
 ```
                  front      mid        rear
-   hub           heavy      heavy      standard
-   fighter       heavy      standard   standard
-   bomber        heavy      standard   light
+   hub           heavy      heavy      heavy
+   bomber        heavy      heavy      heavy
+   fighter       heavy      heavy      standard
+   dispersal     heavy      standard   standard
    strip         standard   light      light
    heli          standard   light      light
 ```
-Rough size: heavy 5–9 groups / ~21 units, standard 3–5 / ~13, light 1–3 / ~6. Skill: heavy `Good`, else `Average`.
+`dispersal` = a secondary field the air force flies fighters from in wartime (Finnish and Swedish dispersal doctrine), so it gets an Army air-defense detachment: Kittilä, Ivalo, Sodankylä, Kuusamo, Enontekiö, Jokkmokk, Vidsel, Kalixfors. `strip` is now only civil or disused fields with no wartime flying role. Always heavy: Murmansk, Olenya, Severomorsk-1 (Red); Bodø, Evenes (Blue). Class changes 2026-09-23: Andøya bomber → strip (maritime patrol left in 2023), Evenes fighter → bomber (P-8 base since 2023, plus F-35 alert). Offline over 1,000 territory rolls: Red averages 4.2 heavy bases per roll (never 0), Blue 2.8. Monchegorsk heavy in 24 % of rolls, Kilpyavr and Severomorsk-3 in 47 %, Rovaniemi in 75 %. Kallax (always rear) stays standard. The old matrix left Red with no heavy base in 52 % of rolls.
+Rough size: heavy 6–9 groups / ~20 units, standard 3–6 / ~13, light 2–3 / ~9. About 430 units per mission. FPS is not a concern: standing ground units barely register (John, 2026-09-23). Skill: heavy `Good`, else `Average`.
+
+Groups per level (`data/base_defense_composition.lua`). Layered by how much the owner values the base:
+```
+                                   heavy   standard   light
+   towed_anti_aircraft_guns         1–2      1–2       1
+   mobile_anti_aircraft_guns        1        0–1       —
+   infrared_missile_launchers       1        0–1       —
+   radar_missile_launchers          1        —         —
+   shoulder_launched_missile_teams  1–2      1         1
+   security_infantry                1–2      1         0–1
+   (light towed_anti_aircraft_guns is 1, not 0–1: no used field is left with a lone MANPADS pair)
+```
+
+Rosters (`data/coalition_rosters.lua`, weights in brackets). Coverage and realism beat exact type: Blue uses Russian or Chinese stand-ins where they match the real Nordic system better. Only single-vehicle systems; multi-vehicle SAM sites (NASAMS, IRIS-T SLM, Rapier) belong to stage 3's site recipes.
+
+| Role | Red: modern Russian Northern Fleet | Blue: Nordic, closest DCS stand-ins |
+|---|---|---|
+| towed_anti_aircraft_gun | ZU-23 Emplacement (3), ZU-23 Emplacement Closed (2) | ZU-23 Emplacement (3), Closed (1): Finland's 23 ItK 61 is a ZU-23-2 |
+| mobile_anti_aircraft_gun | ZSU-23-4 Shilka (2), Ural-375 ZU-23 (1) | Gepard (3), Vulcan (1): for Sweden's CV90 AA and Finland's 35 mm Skyguard guns |
+| infrared_missile_launcher | Strela-10M3 | M1097 Avenger (2), M6 Linebacker (1): for ASRAD-R and vehicle RBS 70 |
+| radar_missile_launcher | Pantsir-S1 (3), Tor M2 (2), Tor (1), Tunguska (1) | Roland ADS (2) for Finland's Crotale NG; Tor M2 (1) for IRIS-T SLS. HQ-7B left out: in DCS its launcher has no search radar of its own and is unreliable without the separate HQ-7 search radar vehicle. It comes back as a two-vehicle group with stage 3's site recipes. |
+| shoulder_launched_missile | SA-18 Igla-S (3), SA-18 Igla (1) | Stinger (3), Igla-S (1): RBS 70 isn't in DCS; Finland fielded Igla |
+| infantry | Soldier AK (2), Infantry AK ver2 (1), ver3 (1), Soldier RPG (1) | Soldier M4 (3), Soldier M249 (1) |
+
+Left out on purpose: Strela-1 and Chaparral (retired), Osa (older army system), S-60, the WWII-era Bofors model. Vulcan is retired too but stays at low weight, since Blue has few gun options.
 
 ### Placement rules
 - **Anchors** (derived at startup from `data/airbase_footprints.lua` + live runways/parking):
@@ -106,14 +136,18 @@ Rough size: heavy 5–9 groups / ~21 units, standard 3–5 / ~13, light 1–3 / 
   - `apron`: taxiway cells whose 4 neighbours are also taxiway. Thin taxiway lines can cross forest, so they are exclusions only.
   - `parking`, `building`.
   - `runway_side`: only at fields with no taxiway surface at all. Elsewhere the sides without taxiways are the tree lines.
+  - `runway_end`: only at **forested fields** (`data/forested_airfields.lua`, read off the F10 map: Afrikanda). Their infield, aprons and parking edges are forest, so this is their only anchor kind: the cleared overrun beside each runway end, 80–380 m past the threshold and 50–70 m off the centreline. There, only the approach lane (runway width + `CLEAR_APPROACH_LANE_M` 15 either side) is kept clear past the ends, and units spread at most `FORESTED_SPREAD_M` 30 m.
 - **Per component** `anchors = { kind = { weight, min_m, max_m } }`:
-  - Guns and SHORAD: infield first (0–40 m), apron/parking 40–100 m, **never buildings** (they can stand in forest).
-  - MANPADS and infantry: wider, and buildings are allowed.
-- **Checks:** every group centre and every unit must pass `Placement.isClear`: outside runway boxes (`CLEAR_RUNWAY_SIDE_M` 100 beside the edge, `CLEAR_RUNWAY_END_M` 400 past each end), ≥ `CLEAR_PARKING_M` 60 from parking spots, and no runway/taxiway/water in 9 surface samples (`CLEAR_SAMPLE_M` 40 ring). Group centres keep ≥ `BASE_DEFENSE_GROUP_SPACING_M` 150 apart.
-- **No room:** a group that finds no clear ground in 80 tries is dropped and logged as "no room for" (fewer guns beats guns in the trees). Cramped fields (Alta, Boden, Enontekio, Hemavan, Ivalo, Kalevala, Kiruna, Kittila, Kuusamo, Sodankyla, Tromso) lose 1–3 gun groups at HEAVY. Hosio has no parking/taxiway/objects in DCS (runway_side only). Kalevala is a real 568 m helo strip.
+  - Guns and vehicle-mounted missile launchers: infield first (0–40 m), apron/parking 40–100 m, **never buildings** (they can stand in forest).
+  - Shoulder-launched missile teams and infantry: wider, and buildings are allowed.
+- **Checks:** every group centre and every unit must pass `Placement.isClear`: outside runway boxes (`CLEAR_RUNWAY_SIDE_M` 100 beside the edge, `CLEAR_RUNWAY_END_M` 400 past each end), ≥ `CLEAR_PARKING_M` 60 from parking spots, and no runway/taxiway/water in 9 surface samples (`CLEAR_SAMPLE_M` 40 ring). Group centres keep ≥ `BASE_DEFENSE_GROUP_SPACING_M` 150 apart. Units in a group keep ≥ `unit_spacing` apart (towed guns 25, mobile guns 30, infrared and radar missile launchers 40, shoulder-launched missile teams 10, infantry 6 m) inside the same `spread` disc. A unit that can't fit in 30 tries is dropped, not pushed outward toward the trees (offline, 20 seeds: ~2 units per run).
+- **Placement order:** the composition lists the most important layer first (radar missiles → infrared → mobile guns → towed guns → MANPADS → infantry). Groups claim ground in that order, so a cramped field loses towed guns, never its radar or infrared missile launchers.
+- **Road fallback:** a group that finds no clear open ground in 80 tries goes onto one of the airfield's own roads instead (`anchor_kind = "road"`): a spot within `ROAD_FALLBACK_RUNWAY_M` 800 of a runway's box, snapped with `land.getClosestPointOnRoads`, checked off runway boxes, parking, runway/taxiway and water (no 40 m surface ring, so a road may run beside a taxiway or lake). Its units snap along the road inside `spread`. Roads are open by construction, and vehicles on a road are normal. Hand-drawn zones for base defenses were rejected: no manual work (John, 2026-09-23). The per-base log shows `N on roads`.
+- **Road units:** a towed-gun unit that ends up on a road becomes its truck-mounted version (`road_role = "truck_mounted_anti_aircraft_gun"`: Ural-375 ZU-23, both sides) — a dug-in emplacement on a road looks wrong. Road units face along the road (`Placement.roadHeading`), either way round.
+- **Nothing is dropped:** if the airfield roads are full, a group widens its road search to 2,000 m from the runways. A unit that can't fit in its group's circle retries at **half** unit spacing (keeps the group compact; offline ~2 % of towed-gun pairs end up 12–25 m apart, none under 5 m), then goes onto a road within 300 m, and only then 1,000 m, of its group centre. Only if all of that fails is a group dropped, logged as a `DROPPED` warning (it shouldn't happen). Offline, 20 runs: 0 dropped groups, 0 dropped units, about 7 road groups per mission, all at the cramped fields. Cramped fields (Alta, Boden, Enontekio, Hemavan, Ivalo, Kalevala, Kiruna, Kittila, Kuusamo, Sodankyla, Tromso) lose 1–3 gun groups at HEAVY. Hosio has no parking/taxiway/objects in DCS (runway_side only). Kalevala is a real 568 m helo strip.
 
 ### Plan shape and naming
-`plan.base_defenses = { groups = { { id, base, side, class, echelon, level, component, role, skill, anchor_kind, pos = { x, z, lat, lon }, units = { { type, x, z, heading_deg } } } }, bases = { [name] = { code, side, class, echelon, level, groups, units, anchors, rejects, dropped } }, totals }`. Group id `DEF_<CODE>_<component>_<n>` (e.g. `DEF_OLEN_aaa_1`) is the DCS group name; units are `<id>_<n>`. Headings face outward from the field.
+`plan.base_defenses = { groups = { { id, base, side, class, echelon, level, component, role, skill, anchor_kind, pos = { x, z, lat, lon }, units = { { type, x, z, heading_deg } } } }, bases = { [name] = { code, side, class, echelon, level, groups, units, anchors, rejects, dropped, on_roads } }, totals }`. Group id `DEF_<CODE>_<component>_<n>` (e.g. `DEF_OLEN_towed_anti_aircraft_guns_1`) is the DCS group name; units are `<id>_<n>`. Headings face outward from the field.
 
 ### Load-time validation (`PlanBaseDefenses.checkData`, fails loudly, nothing spawns)
 Every roster type exists in `UNIT_POOL.ground` with a positive weight; every placement role has a roster for both sides; every placement has `anchors` (`{ weight, min, max }`) + `ring`; every composition component has a placement; every level has a skill and every matrix cell a composition; every `AIRBASE_CLASS` value is in the matrix. At run time, classes naming unknown airdromes warn.
@@ -376,14 +410,15 @@ Sections map 1:1 to F10 **Briefing >** `Frag` / `Steerpoints` / `Support` / `Thr
 #### In-flight updates
 Event-driven `outText`: "MAGIC: bandits airborne Monchegorsk, 2-ship, heading 270", "TEXACO on station", "Secondary: convoy sighted moving S on E105", objective met/failed, score delta. Result + "Roll next tasking" (phase 7) via F10 **Briefing > Status**.
 
-### 1.6 Spawn timingTarget, point defense, and ambient Red base defenses spawn at T+0 (Syria pattern — proven). Red CAP and QRA are **event-driven** (timer after player takeoff, or player crossing the front line) so they aren't bingo before the player arrives.
+### 1.6 Spawn timing
+Target, point defense, and base defenses (both coalitions) spawn at T+0 (Syria pattern — proven). Red CAP and QRA are **event-driven** (timer after player takeoff, or player crossing the front line) so they aren't bingo before the player arrives.
 
 ### 1.7 Ground layer at T+0
 
 The ATO (§1.9) covers the **air** picture. The **ground** picture is spawned at mission start, Syria-style, and is a first-class part of the battlefield:
 
 1. **Airfield coalitions** — every base set per the cluster roll (`setCoalition`, `autoCapture(false)`, F10 circles, dynamic-spawn slots follow).
-2. **Airfield defenses** — randomized ground defenses at every Red base (Syria `defense_setup` pattern; Kola unit pools).
+2. **Airfield defenses** — ground defenses at every base, both coalitions, sized by class × echelon and placed on surveyed open ground. **Built** — see "Base defenses — as built".
 3. **Surveyed ground zones** — clearings drawn once in a survey `.miz` and committed as `data/zones.lua` (§1.12). A zone carries no side and no role; it inherits its cluster's rolled side in stage 1, and stages 3–4 decide what (if anything) to put in it this session from its size, its distance to bases and to the front, and road proximity. At T+0 the ground spawner places those units *inside their zones*. Zones can also be **movement corridors**: a unit group spawns in one zone and routes to another, giving Red armor pushing toward a Blue border town, Blue reinforcing a defensive line, convoys on real roads.
 
 Why zones instead of Syria's ring-around-the-airbase random offsets: Kola is lakes, marsh, and forest the API can't see. Hand-placed zones in known clearings/along roads sidestep the whole terrain-validation problem (§6) and give the planner a real **GOB** to brief — "Red mechanized battalion assessed vic. Pechenga moving W" is true because a zone spawned it.
@@ -396,7 +431,8 @@ How the ground layer feeds the ATO:
 
 Zone mechanics — generated naming, the survey-file pipeline, cluster-based side assignment, plan-side role assignment, and the `[side][role]` templates — are specified in **§1.12**. Still deferred to their own pass: force-level scaling (Syria `FORCE_LEVELS` pattern), how many zones per cluster, and whether opposing zones can be paired into "fronts" that fight each other without the player. **[LATER — own design pass]**
 
-### 1.8 Session historyWrite `Saved Games\DCS\kola_f16_history.lua` (or JSON-ish) after each plan: date, mission type, target id, launch base, outcome. Roller down-weights recent types. Controlled by a config flag: `HISTORY_ENABLED = true/false`, plus `FORCE_MISSION_TYPE = "sead"` / `FORCE_TARGET = "SAM_OLENYA_SA10"` overrides for testing.
+### 1.8 Session history
+Write `Saved Games\DCS\kola_f16_history.lua` (or JSON-ish) after each plan: date, mission type, target id, launch base, outcome. Roller down-weights recent types. Controlled by a config flag: `HISTORY_ENABLED = true/false`, plus `FORCE_MISSION_TYPE = "sead"` / `FORCE_TARGET = "SAM_OLENYA_SA10"` overrides for testing.
 
 ### 1.9 The ATO model
 
@@ -607,18 +643,20 @@ The A-10/F-16/F-18 Syria mission is really an A-10 mission with other slots. The
 - Lighting: high latitude. Polar night in winter, midnight sun in summer. Time-of-day randomization matters more here than on Syria (see §7 — can't be done in Lua at runtime).
 
 ### Airbases — exact DCS name strings
-Source: MOOSE `AIRBASE.Kola` enumeration ([Airbase.lua](https://github.com/FlightControl-Master/MOOSE/blob/master/Moose%20Development/Moose/Wrapper/Airbase.lua)). **Verify in-game with `Log.dumpAirbases()` before relying on these** — the Syria project caught several mismatches.
+Source: MOOSE `AIRBASE.Kola` enumeration ([Airbase.lua](https://github.com/FlightControl-Master/MOOSE/blob/master/Moose%20Development/Moose/Wrapper/Airbase.lua)). **Verified in-sim** (2026-09-23): all 37 names in `data/clusters.lua` resolve in gather, and the base-defense run covered every one. Gather warns on any name that stops resolving after a map update.
 
 | Country | Bases (DCS string) | Notes |
 |---|---|---|
-| **Norway** | `Bodo`, `Bardufoss`, `Evenes`, `Andoya`, `Banak`, `Alta`, `Kirkenes` | Bodø = premier Blue hub (long runway, far from threat). Banak/Kirkenes are right on the Russian border. |
+| **Norway** | `Bodo`, `Bardufoss`, `Evenes`, `Andoya`, `Tromso`, `Banak`, `Alta`, `Kirkenes` | Bodø = premier Blue hub (long runway, far from threat). Banak/Kirkenes are right on the Russian border. |
 | **Sweden** | `Kallax`, `Vidsel`, `Kiruna`, `Jokkmokk`, `Kalixfors`, `Arvidsjaur`, `Hemavan`, `Boden Heli Base` | Kallax (Luleå) = second Blue hub. Vidsel = test range. Jokkmokk/Kalixfors are Swedish dispersal strips — check runway length. |
 | **Finland** | `Rovaniemi`, `Kemi Tornio`, `Kuusamo`, `Ivalo`, `Kittila`, `Enontekio`, `Sodankyla`, `Hosio`, `Vuojarvi` | Rovaniemi = Finnish AF fighter base, closest big Blue base to Kola. Ivalo/Sodankylä are within ~200 km of the border. |
 | **Russia** | `Murmansk International`, `Severomorsk-1`, `Severomorsk-3`, `Olenya`, `Monchegorsk`, `Afrikanda`, `Kilpyavr`, `Koshka Yavr`, `Luostari Pechenga`, `Alakurtti`, `Kalevala`, `Poduzhemye` | Olenya = long-range aviation (Tu-22M/Tu-95 statics = great strike targets). Monchegorsk = fighters. Severomorsk-3 = naval aviation. Kalevala/Poduzhemye are far south in Karelia. |
 
 High-detail airports per Orbx: Rovaniemi, Kemi-Tornio, Kuusamo, Ivalo, Severomorsk-1/-3, Murmansk, Bodø, Kirkenes, Banak, Kiruna, Jokkmokk, Luleå, Vidsel, Kalixfors ([Threshold preview](https://www.thresholdx.net/news/tekola)).
 
-**[TODO research]** Runway lengths for the F-16 viability table (Syria has `research_runway_lengths.md`; need a Kola equivalent). Known/likely: Bodø ~3,400m, Kallax ~3,350m, Rovaniemi ~3,000m, Evenes ~2,800m, Banak ~2,800m; suspect short: Jokkmokk, Kalixfors, Hemavan, Hosio, Enontekiö.
+8 + 8 + 9 + 12 = 37 airdromes.
+
+**[TODO]** F-16 launch-base viability. Runway lengths are no longer a research item: gather reads them live (`plan.world.airbases[name].runways[].length`). What's still missing is the rule that turns length into "can launch a loaded F-16" (Syria's `research_runway_lengths.md` uses 2,500 m+ / marginal / too short), applied when stage 6 picks a launch base. Suspect short: Jokkmokk, Kalixfors, Hemavan, Hosio, Enontekiö, Kalevala (568 m helo strip).
 
 ### Proposed clusters (Syria-style, for `coalition_setup`)
 
@@ -742,7 +780,8 @@ Recommendation: **option 1 now** (fixed ME weather/time, all randomness in-sim) 
 | Phase | Deliverable | Reuses | New |
 |---|---|---|---|
 | **0** | Kola `.miz` with dynamic-spawn F-16 slots at Blue bases, de-sanitize check, `dumpAirbases()` confirming all names, `dumpWeather()` pinning weather field names (§1.11), runway table; survey zones drawn + parsed into `data/zones.lua` (§1.12) — **done for the first 12** | Install flow, `dumpGroups`/`dumpLateGroupUnits` | Runway research, weather dump, zone parser |
-| **1** | Kola `init.lua` + gather-inputs + stage 1 (territory/front); `coalition_setup` with clusters; F10 skeleton | logger, spawner, cost_* | cluster table, stage pipeline |
+| **1** | Kola `init.lua` + gather-inputs + stage 1 (territory/front); `coalition_setup` with clusters; F10 skeleton — **done** except the F10 skeleton | logger, spawner, cost_* | cluster table, stage pipeline |
+| **1b** | Stage 2 base defenses at all 37 bases, both coalitions; footprint survey; generic ground spawner — **done 2026-09-23** | — | anchors placement, rosters, level matrix |
 | **2** | **Strike primary (P3/P4)** against ME-placed statics at Red airfields + point defense; objective tracking; mission card | sam threat tiers | catalog roller, objective tracker, card |
 | **3** | **SEAD/DEAD (P1/P2)** with 3–4 hand-placed batteries; Skynet prototype on one site | sam_setup pattern | Skynet integration, HARM scoring |
 | **4** | Support package: tanker + AWACS with TACAN/freqs in the card | blue_air_support | beacon/freq commands |
@@ -790,9 +829,9 @@ Recommendation: **option 1 now** (fixed ME weather/time, all randomness in-sim) 
 **Completely separate.** No shared `lib/`, no refactor of the Syria scripts, nothing in the Syria tree is touched. Kola is its own script directory with its own copies of whatever it borrows (logger, spawner, cost tracker patterns). The Syria mission must keep working exactly as it does today, and sharing code would put that at risk.
 
 ### 11.2 The plan is one table
-The 7 stages of §1.1 build **one accumulating Lua table**. Stage 1 writes `plan.territory`; stage 2 reads it and writes `plan.defenses`; and so on. Each stage is one module that takes the table, reads the keys of earlier stages, and adds its own key. "Stage N only reads earlier stages" is a convention, not enforced.
+The 7 stages of §1.1 build **one accumulating Lua table**. Stage 1 writes `plan.territory`; stage 2 reads it and writes `plan.base_defenses`; and so on. Each stage is one module that takes the table, reads the keys of earlier stages, and adds its own key. "Stage N only reads earlier stages" is a convention, not enforced.
 
-- **Nothing spawns until all 7 stages are done.** Unlike Syria, where each module decides and spawns in the same function, here the stages only produce data. This is a much larger setup; deciding everything first and spawning afterwards is the only way the later stages (ATOs, brief) can see the complete picture.
+- **Nothing spawns until all 7 stages are done.** Unlike Syria, where each module decides and spawns in the same function, here the stages only produce data. This is a much larger setup; deciding everything first and spawning afterwards is the only way the later stages (ATOs, brief) can see the complete picture. *v1 (2026-09-23):* only stages 1–2 exist, so the consumers run after stage 2. As later stages land they slot in before the consumers, and spawning stays last.
 - **Plain data only.** Strings, numbers, nested tables. No DCS object handles, no functions. Anything needed from the sim (airbase positions, ME zone positions, late-activation group names) is read into plain values as part of building the plan. Consequence: the plan can be written to a file (`Saved Games\DCS\kola_last_plan.lua`, behind a config flag) and read when debugging, instead of reconstructing what was planned from `dcs.log`.
 - **Each entry carries everything its consumer needs.** Since spawning happens later, a defense entry holds unit types, positions, headings; an ATO line holds its route; an ME-placed target holds its late-activation group names. In Syria these live in locals right before the spawn call — here they go in the table.
 - **Immutable once built** (not enforced). Consumers — spawner, mission reporter/briefing, ATO scheduler, objective tracker — all read the plan; none write to it.
@@ -802,7 +841,7 @@ The 7 stages of §1.1 build **one accumulating Lua table**. Stage 1 writes `plan
 1. **ME trigger fires `init.lua`** at mission start. Loads the script files, nothing else.
 2. **Wait a few seconds** (`timer.scheduleFunction`) — airbase queries return empty at T+0 (the Syria issue noted in §6).
 3. **Gather inputs — one step, up front.** All DCS reads happen here and are converted to plain values: airbase list with positions and current coalition, trigger zones, late-activation group names and positions, mission time/date. Plus the static data files (cluster table, content catalog, unit pools) and the session history file. Every stage then works from the same snapshot; the stages never see a DCS object. Cost: what the stages need has to be known ahead of time — for airbases/zones/groups that's clear enough.
-4. **Stages 1–7 run back-to-back** in one call. All data, milliseconds.
+4. **Stages 1–7 run back-to-back** in one call. All data, milliseconds. (v1: stages 1–2 only; see §11.2.)
 5. **Plan dump** to file if the config flag is set.
 6. **Hand off** to spawner, briefing, ATO scheduler, objective tracker.
 
@@ -813,7 +852,7 @@ Who reads the plan and what they pull from it:
 
 | Consumer | When | Reads | Needs per entry |
 |---|---|---|---|
-| **Ground spawner** | T+0 | `defenses`, `fixed` (targets, garrisons, IADS), `ground` (moving units) | ME late-activation group name to activate, *or* country + unit types + positions + headings (+ route if it moves). Doesn't care why anything is there. |
+| **Ground spawner** | T+0 | `base_defenses`, `fixed` (targets, garrisons, IADS), `ground` (moving units) | ME late-activation group name to activate, *or* country + unit types + positions + headings (+ route if it moves). Doesn't care why anything is there. |
 | **ATO scheduler** | on the clock | `red.ato`, `blue.ato` (skips the player's line) | `t_start`, aircraft type + count, base, loadout, steerpoints, role → DCS task (CAP orbit / SEAD / bombing target / escort target / tanker track + TACAN + freq / AWACS orbit + freq), callsign. Alive-aircraft cap from config. |
 | **Scramble loop** (per side) | periodic | posture: alert bases, fighter count/type, cooldown, detection radius | everything else is runtime state |
 | **Briefing** | T+0, F10 on demand | player's line, support lines, `fixed.threat_map` + fidelity, `ground.contacts`, Red posture (AOB), full ATO for the F10 view | coordinates in DMS + MGRS — stored in the plan or converted on the way out |
@@ -824,19 +863,28 @@ Who reads the plan and what they pull from it:
 Two kinds of need show up: spawner and scheduler need **spawn-ready detail** (unit types, exact positions, routes); briefing/tracker/history need **mission-level meaning** (target name, TOT, threat type + confidence). Both are in the one table. Group names, mission numbers, and target ids are **assigned by the planner**, not invented at spawn time — the tracker has to match DCS event names back to plan entries.
 
 ### 11.5 One table — what's in it and what isn't
-**The plan holds every decision, in our own vocabulary.** What, where, who, when, how it's named, what counts as success. Example, a stage-2 defense entry:
+**The plan holds every decision, in our own vocabulary.** What, where, who, when, how it's named, what counts as success. Example, a stage-2 entry from `plan.base_defenses.groups` (as built):
 
 ```lua
 {
-    id     = "DEF_Olenya_SA15",
-    base   = "Olenya",
-    side   = "red",
-    kind   = "shorad",
-    pos    = { x = 123456, z = 654321, lat = 68.15, lon = 33.46 },
-    units  = { { type = "Tor 9A331", heading = 90 }, { type = "Ural-375", heading = 90 } },
-    spread = 60,
+    id          = "DEF_OLEN_infrared_missile_launchers_1",
+    base        = "Olenya",
+    side        = "red",
+    class       = "bomber",
+    echelon     = "front",
+    level       = "heavy",
+    component   = "infrared_missile_launchers",
+    role        = "infrared_missile_launcher",
+    skill       = "Good",
+    anchor_kind = "infield",
+    pos         = { x = 123456, z = 654321, lat = 68.15, lon = 33.46 },
+    units       = {
+        { type = "Strela-10M3", x = 123470, z = 654330, heading_deg = 90 },
+        { type = "Strela-10M3", x = 123440, z = 654310, heading_deg = 95 },
+    },
 }
 ```
+Each unit carries its own position, since placement already checked every unit against `Placement.isClear`. The spawner doesn't scatter them.
 
 **Consumers own the DCS formats.** The `coalition.addGroup` table, waypoint + task tables, `outText` strings, F10 menu structures, map-mark calls — all built on the fly from plan entries at the moment they're used, and thrown away afterwards. Going from the entry above to an `addGroup` table is a *translation*, not a decision; nothing new is chosen, so nothing new is stored. There is no separate "spawn table" or "mission table" — the ATO lines and targets *are* the mission data, the defense and ground entries *are* the battlefield data; they're different keys of the same table, and the briefing can walk `plan.blue.ato[msn].target → plan.fixed.targets[id] → plan.fixed.threat_map` without crossing structures.
 
@@ -847,31 +895,45 @@ Net effect: all the planning is pure logic over plain data — fast, and segment
 ### 11.6 Script layout and load order
 Install path `Saved Games\DCS\Scripts\kola_f16\`, loaded by one ME trigger (`MISSION START → DO SCRIPT → dofile(lfs.writedir() .. "Scripts\\kola_f16\\init.lua")`), de-sanitized `MissionScripting.lua`, and a separate `Hooks\slotblock.lua` for the F-16 dynamic slots — the same install shape as Syria (§ INSTALL.md), fully separate tree (§11.1). This is the standard DCS pattern; there isn't a meaningfully different one.
 
+Files marked *(later)* don't exist yet. The "What exists" tree at the top of this doc is the as-built list.
+
 ```
 Saved Games\DCS\Scripts\kola_f16\
   init.lua                     -- entry: load order + run sequence
   lib\
-    logger.lua                 -- + dumpWeather(), dumpZones()   (ported from Syria)
-    spawner.lua                -- + randomPointInZone(), LLtoMGRS (ported)
+    util.lua                   -- RNG, picks, geometry, serialize, writeFile
+    logger.lua                 -- + dumpAirbases/Groups/Weather   (ported from Syria)
+    weather.lua                -- weather + time/sun derivation (§1.11)
+    placement.lua              -- isClear, findClear, ring/disc points, buildAnchors, pickAnchorPoint
+                               --   (later: randomPointInZone for zones; LLtoMGRS goes with the brief)
   data\                        -- static plain-data tables, no logic; hand- or parse-authored
     clusters.lua               -- cluster table (§3), bases per cluster
     zones.lua                  -- parsed from the .miz (§1.12)
-    statics.lua                -- static templates (airfield targets, ships), parsed from the .miz
-    catalog.lua                -- content catalog (§1.2): targets, success criteria, per-site templates
+    statics.lua                -- (later) static templates (airfield targets, ships), parsed from the .miz
+    catalog.lua                -- (later) content catalog (§1.2): targets, success criteria, per-site templates
+    cloud_presets.lua          -- DCS cloud presets, generated (§1.11)
     unit_pool.lua              -- every spawnable DCS unit type, generated (§1.13)
     aircraft_pylons.lua        -- pylon → CLSID compatibility, generated; offline validation only
     coalition_rosters.lua      -- COALITION_ROSTER[side][role] weighted type picks (hand-authored; the only file that knows red from blue)
     airbase_classes.lua        -- AIRBASE_CLASS[name]: hub / fighter / bomber / strip / heli (hand)
-    base_defense_levels.lua    -- BASE_DEFENSE_LEVEL[class][echelon] → light / standard / heavy
+    airbase_codes.lua          -- 4-letter code per base (group names, zone names)
+    airbase_footprints.lua     -- surveyed taxiway grid + airfield buildings, generated in-sim
+    base_defense_levels.lua    -- BASE_DEFENSE_LEVEL[class][echelon] → light / standard / heavy; BASE_DEFENSE_SKILL
     base_defense_composition.lua  -- BASE_DEFENSE_COMPOSITION[level]: components + count ranges
-    base_defense_placement.lua -- BASE_DEFENSE_PLACEMENT[component]: role, ring, road, grouping
-    sam_site_recipes.lua       -- SAM site recipes per system (later, zones)
-    callsigns.lua              -- curated DCS enum pools per role (§11.7)
-  stages\                     -- named by verb; run order lives in init.lua
-    roll_territory.lua  plan_base_defenses.lua  …  write_brief.lua
+    base_defense_placement.lua -- BASE_DEFENSE_PLACEMENT[component]: role, anchors { kind = { weight, min_m, max_m } },
+                               --   ring fallback, units per group, spread, mixed_types; group spacing
+    sam_site_recipes.lua       -- (later) SAM site recipes per system, for zones
+    callsigns.lua              -- (later) curated DCS enum pools per role (§11.7)
+  gather.lua                   -- all DCS reads → plan.world
+  stages\                      -- named by verb; run order lives in init.lua
+    roll_territory.lua  plan_base_defenses.lua  …  (later) write_brief.lua
   consumers\
-    apply_territory.lua  spawn_ground_groups.lua  schedule_ato.lua  deliver_brief.lua
-    track_objectives.lua  run_scramble.lua  write_history.lua
+    territory.lua              -- to be renamed apply_territory.lua (housekeeping)
+    spawn_ground_groups.lua    -- generic: plan entries → coalition.addGroup + per-unit type check
+    draw_base_defenses.lua     -- debug F10 marks
+    (later) schedule_ato.lua  deliver_brief.lua  track_objectives.lua  run_scramble.lua  write_history.lua
+  survey\
+    survey_airbase_footprints.lua  -- one-off, behind CONFIG.SURVEY_FOOTPRINTS
 ```
 
 Load order in `init.lua`: `lib\*` → `data\*` → `stages\*` → `consumers\*`, then the run sequence (§11.3): gather inputs → stages 1–7 → optional plan dump → hand the finished plan to each consumer. Data files load before stages so a stage can reference a data global directly (Syria's global-module convention). **Statics and any hand-placed unit templates live in `data\` alongside zones** — all coordinate-driven and all parseable from the `.miz`, per the same offline-parse workflow (§1.12).
@@ -903,7 +965,7 @@ Load order in `init.lua`: `lib\*` → `data\*` → `stages\*` → `consumers\*`,
 |---|---|---|
 | ATO air line | `MSN<msn>` | `MSN2041` → `blue.ato[2041]` |
 | Ground group from a zone | `<zonename>__<n>` | `ZONE_KITT_100_012__1` → that ground entry |
-| Base defense | `DEF_<Base>_<n>` | → defense entry |
+| Base defense | `DEF_<CODE>_<component>_<n>`; units `<id>_<n>` | `DEF_OLEN_towed_anti_aircraft_guns_1` → `base_defenses.groups` entry |
 | Activated ME target | its `TGT_…` name | directly |
 
 The **player line** has no pre-named group (dynamic spawn) — its objective is keyed off the player unit (`getPlayerName()`) plus the frag's `msn`/target, the same way `cost_logic` attributes kills to a human.
