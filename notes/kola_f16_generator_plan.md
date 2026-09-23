@@ -1,6 +1,6 @@
 # Kola F-16 Randomized Mission Generator — Planning Doc
 
-> **Status:** v1 — stages 1–2 (territory + base defenses at all 37 airfields) + world inputs running in DCS (2026-09-23). Planning sections §1–10 are the concept; §11, "Where we are" and "Base defenses — as built" are the spec.
+> **Status:** v1 — stages 1–2 (territory + base defenses at all 37 airfields) + stage 3a (SAM network, 100 zones) + world inputs running in DCS (2026-09-23). Planning sections §1–10 are the concept; §11, "Where we are" and "Base defenses — as built" are the spec.
 > Companion to the Syria project (`notes/notes.md`). Open questions are marked **[Q]** — answer them inline and the doc becomes the spec.
 >
 > **Layout:** *Where we are* (pick up here) → *Next session* candidates → *Base defenses — as built* → *Plan* (§1–10, concept and research) → *Architecture* (§11, code structure decisions).
@@ -11,15 +11,23 @@
 
 ---
 
-## Where we are — pick up here  *(2026-09-23, end of session 4 — SAM network built, awaiting first DCS run)*
+## Where we are — pick up here  *(2026-09-23, end of session 4 — SAM network done for now; 100 zones)*
 
-**Status: stages 1–2 run in DCS and are verified at all 37 airfields; stage 3a (SAM sites) is built and tested offline, not yet run in DCS.** Boot → gather (airbases incl. runways/parking/anchor, zones, weather + time) → `RollTerritory` (territory, front, echelon) → `PlanBaseDefenses` (every base, both coalitions) → `PlanSamSites` (SAM + early-warning network in the zones) → plan dump → `Territory.apply` (coalitions + circles) → `SpawnGroundGroups` (base defenses, then SAM sites) → `DrawBaseDefenses` + `DrawSamSites` (debug marks) + on-screen summary. The user's all-bases run looked right; placements at the cramped fields were acceptable. FPS is not a concern for standing ground units (John).
+**Status: stages 1–2 run in DCS and are verified at all 37 airfields; stage 3a (SAM sites) ran in DCS five times with 90–100 zones and was tuned between runs (below); John called it done for now ("perfection isn't necessary").** Boot → gather (airbases incl. runways/parking/anchor, zones, weather + time) → `RollTerritory` (territory, front, echelon) → `PlanBaseDefenses` (every base, both coalitions) → `PlanSamSites` (SAM + early-warning network in the zones) → plan dump → `Territory.apply` (coalitions + circles) → `SpawnGroundGroups` (base defenses, then SAM sites) → `DrawBaseDefenses` + `DrawSamSites` (debug marks) + on-screen summary. The user's all-bases run looked right; placements at the cramped fields were acceptable. FPS is not a concern for standing ground units (John).
 
 **Done in session 4 (2026-09-23):**
+- **First DCS run of the SAM network** (90 zones): 0 failed groups, 0 type swaps; 47 SAM groups / 239 units on top of 167 / 494 base-defense ones. The spawn stalls DCS ~30 s at start (both spawns together). Found: Red had no long-range site (only 3 core zones ≥ 150 m, each ~30 % to roll long); 16 rear zones left empty because an early-warning pick over its cap had nowhere to go; Blue's Patriots all land in the rear (Bodø/Evenes), and **Rovaniemi has no zones**.
+- **Second DCS run** (100 zones; 10 new, 150 m+, in the Kola core, at Rovaniemi, Ivalo, Vuojärvi and Kallax): 0 failed, 0 swaps; 76 SAM groups / 437 units. Minimum rule put SA-10s in three new core zones (Olenya, Murmansk, Severomorsk-1); Rovaniemi got a Patriot + SA-11. But the sides sat ≥ 159 km apart, so almost no zone was `front_belt`, and the early-warning → medium fallback crowded the rear (6 sites at Banak, 4 at Jokkmokk). **Fixed:** front belt measured from this roll's front gap (+ 60 km), rear chance 0.6 → 0.35, rear cap of 2 sites per base. Offline on that territory, 300 rolls: Red ≈ 28 sites (asset 10.2, front 16.2, rear 1.9; long 4.1), Blue ≈ 33 (asset 7.3, front 16.9, rear 8.8; long 1.6). Front-line areas can still stack up to 6 (Ivalo, Banak) — not capped, by design for now.
+- **Third DCS run** (Kola South fell to Blue; front gap 59 km → belt 119 km): 0 failed, 0 swaps, spawn ~5 s total. Front belts and the rear cap worked; SA-10s at Monchegorsk / Murmansk / Olenya. But **Red had no early warning** (rear too sparse now) and Blue's long range was only at Evenes. **Fixed:** minimums extended (above), random tie-break instead of biggest zone, early warning placed rear-first. Offline on that territory, 300 rolls: Red ≈ 26 sites (long 4.6, EW 2 every roll: Kilpyavr, Luostari, Koshka Yavr, Karelia), Blue ≈ 25 (long 2.5: Evenes 1.2, Rovaniemi 0.9, Bodø 0.4; EW 2 spread over Norway/Sweden).
+- **Fourth DCS run** (Blue held both Finnmark and both Lapland clusters): Patriots at Bodø, Rovaniemi and Evenes; early warning in the rear. But **6 SA-10s in the core, 3 guarding Olenya**, and both Red early-warning radars in neighbouring Kilpyavr zones a few hundred metres apart. **Fixed:** area cap, 3 km spacing, minimum pass spreads by area (see "Spreading"). Offline on that territory, 300 rolls: Red ≈ 20 sites (long 3.4, one each at Murmansk, Severomorsk-1, Severomorsk-3 and Olenya's area; EW 2 at Kilpyavr / Kalevala / Poduzhemye), Blue ≈ 28 (long 1.8, EW 2 spread over Norway/Sweden); 0 warnings.
+- **Fifth DCS run** (Red took Finnmark East, Lapland East, Kuusamo, Kola South): 0 failed, 0 swaps, spawn ~5 s. Red 21 sites (SA-10s at Olenya, Murmansk, Severomorsk-1 — one each; EW at Kilpyavr and Poduzhemye), Blue 27 (SA-10 Evenes, SA-10 Rovaniemi, Patriot Kittilä; EW Jokkmokk, Bardufoss); spacing left the extra Kilpyavr/Bardufoss zones free. Blue has more rear (13) than front (4) sites because it holds many rear bases — accepted.
+- **Scale check (John's target: Ukraine-war scale, substantial but not WWIII):** ~20–30 SAM sites per side per roll (~300 SAM units + ~470 base-defense units) is judged about right. Blue is denser than today's Nordic inventories — read as allied reinforcement; one-line change (rear chance) if it should be sparser. What will add more Ukraine feel than more sites: emissions behaviour (Skynet: go dark, relocate, ambush), SHORAD travelling with ground units (stages 3b/4), and PROBABLE/POSSIBLE threat intel in the brief (§1.5).
+- **Offline test harness note:** luae's `math.random` is the C `rand()`; after `math.randomseed(1..N)` the first values are nearly linear in the seed, which skewed earlier per-zone shares (totals were fine). Seed with `seed * 7919` and discard ~50 values.
+- **Fixed after the first run:** `SAM_SITE_MIN_PER_LAYER` (Red: 3 long-range sites every roll, placed before the random pass in asset-ring zones of clusters the side always holds, one per base, biggest zone first); `SAM_SITE_OVER_CAP_LAYER` (an early-warning pick over its cap becomes medium range); the "left free" log line now says why. John is drawing more zones: 150 m+ in the Murmansk–Severomorsk–Olenya–Monchegorsk triangle, and around Rovaniemi.
 - **Base defenses refined in DCS:** unit spacing; six fully named components (naming rule at the top of this doc); level matrix by base value; `dispersal` class; placement order most-important-first; road fallback so nothing is dropped; truck-mounted guns and along-road headings on roads; forested fields (Afrikanda) use runway ends. Details in "Base defenses — as built".
-- **SAM network (stage 3a)**: spec in "SAM sites — as built". 24 survey zones now (12 new).
+- **SAM network (stage 3a)**: spec in "SAM sites — as built". Survey grew from 12 to 100 zones this session.
 - **Researched DCS SAM performance** (table in "SAM sites — as built"). Blue re-balanced: Patriot sites get 2 radars aimed around the threat axis; SA-10 added to Blue long range; NASAMS 2 radars, Hawk 2 trackers; Blue short range is Osa / Tor / Roland (Rapier dropped).
-- **Next, John:** test the SAM network in DCS and draw more zones (priorities under "Volume vs target").
+- ~~Next, John: test the SAM network in DCS and draw more zones~~ — done (100 zones, five runs).
 - **Removed** the no-op RNG seeding (`rng advanced 93` every launch): DCS varies `math.random` between launches on its own.
 
 **Done in session 3 (2026-09-23):**
@@ -44,7 +52,7 @@ kola_f16/
   lib/weather.lua            Weather.derive / deriveTime (§1.11), sun, flight rules, summaryText (TEMP debug)
   lib/placement.lua          isClear (runway boxes, parking, surface ring), findClear, ringPoint/discPoint,
                              buildAnchors (infield/apron/parking/building/runway_side), pickAnchorPoint
-  data/clusters.lua          11 clusters (§3)            data/zones.lua  24 zones, generated (§1.12)
+  data/clusters.lua          11 clusters (§3)            data/zones.lua  100 zones, generated (§1.12)
   data/cloud_presets.lua     34 presets, generated        data/unit_pool.lua  every AI-operable unit, generated (§1.13)
   data/aircraft_pylons.lua   generated, NOT loaded        data/airbase_codes.lua  4-letter code per base
   data/airbase_classes.lua   hub/fighter/bomber/heli/strip (DRAFT)
@@ -74,11 +82,20 @@ Plan dump: `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `python tools/
 
 ## NEXT SESSION — candidates  *(pick one with John)*
 
-1. **First DCS run of the SAM network** and tuning (density, systems, footprints). Check the Patriot's two-radar layout actually engages. More zones: Kola core (full size), front belt, Rovaniemi / Bodø / Evenes, Kuusamo, Sodankylä, Alakurtti. Then add the "minimum sites per layer" rule (Red always gets several long-range sites in the core).
+**Chosen (2026-09-23): build linearly, stage by stage.** Next is **stage 3b: the ground units that will be targets** (candidate 2 below), then stage 4 (moving units), and only then tasking/missions (stages 5–7). John isn't in a rush to fly; a thin "fly one SEAD mission first" slice was offered and declined. To settle at the start of stage 3b:
+- **Garrisons** in free zones (`plan.sam_sites.zones_used` excluded): composition by role and distance to the front; SHORAD/MANPADS travelling with them (instead of taking zones); later CAS targets and stage-4 start points.
+- **Target sites**: depots, fuel farms, HQ / command posts, radar and comms sites, ammo dumps, mostly in rear zones.
+- **Airfield targets** at Red bases (parked aircraft, fuel tanks, shelters): script-spawned statics on the existing footprint anchors (leaning this way) vs ME late-activation groups (§1.2's original assumption).
+- **Naval**: Kola Bay moored ships — still open (§9).
+- **Target catalog shape**: id, kind, position, group/static names, success criterion (§1.2), so the tasking stages choose from what really exists.
+
+1. ~~First DCS run of the SAM network and tuning~~ — done 2026-09-23 (five runs, minimum-per-layer rule, spreading). Still open: fly against it and check the Patriot's two-radar layout actually engages; optionally a Blue rear-density tweak.
 2. **Rest of stage 3:** garrisons and target sites in the zones SAM sites leave free (`plan.sam_sites.zones_used`). Consolidate spawning into `lib/dcs_groups.lua` + a `spawn_at_start` consumer once there's a third list (discussed 2026-09-23).
 3. **Base-defense polish** (deferred list): ±1 level nudge at ~20 %; logistics/fuel components as statics (cheap, targetable); `security_armor` / `apc_patrol` components; re-classify `airbase_classes.lua` and grow `coalition_rosters.lua` (Tor / Tunguska at heavy Red bases, etc.).
 4. **Housekeeping:** rename `consumers/territory.lua` → `apply_territory.lua` (`ApplyTerritory`); drop `SHOW_WEATHER_DEBUG` once the brief exists.
 5. **Proximity spawning** (unlikely to be needed: standing ground units barely affect FPS): spawn a base's defenses when a player gets within ~150 km — the plan already holds every unit, so briefs and targets stay truthful.
+
+**Unit budget (researched 2026-09-23, rules of thumb, not measured):** standing ground units ~1,000–1,500 total (now ~770 per roll); moving ground groups ~10–20 at once, short on-road routes (stage 4 is the risk); AI aircraft 12–20 alive. Cost order: moving ground > AI aircraft > standing units with sensors > idle units / statics. Levers: `controller:setOnOff(false)` for far ground groups, statics for non-shooting targets, few infantry, wreck cleanup, proximity spawning. Check with RCtrl+Pause FPS over the Kola core; a per-run unit census log line was offered.
 
 **Open decision, settled for now:** base-defense units live in the plan (`plan.base_defenses`, ids = DCS group names) so they can later be mission targets or brief info, but they are **not** in the target catalog yet.
 
@@ -169,7 +186,7 @@ Per-base log line: `Olenya RED bomber/front → HEAVY 8 groups 22 units (anchors
 
 ---
 
-## SAM sites — as built  *(2026-09-23, stage 3a, not yet run in DCS)*
+## SAM sites — as built  *(2026-09-23, stage 3a, run in DCS five times; done for now)*
 
 Both coalitions get a SAM and early-warning network sized to what they hold. Target feel (John): **Ukraine-war density with mixed-age kit**. It should feel lived-in, not 1985 and not pure SA-10, built from what DCS has; coverage matters more than exact type. All scripted; the only manual input is the survey zones.
 
@@ -179,10 +196,14 @@ Every zone a coalition holds this roll (it inherits its cluster's side) gets one
 | Role | Question it answers | Rule |
 |---|---|---|
 | `asset_ring` | Is it guarding something the owner values? | ≤ 40 km from an own base whose defense level is `heavy` (stage 2) |
-| `front_belt` | Is it on the front? | ≤ 100 km from an enemy-held base |
-| `rear_area` | Anything else | early warning, the odd medium site |
+| `front_belt` | Is it on the front? | ≤ 100 km from an enemy-held base, or ≤ this roll's front gap (shortest distance between opposing bases) + 60 km, whichever is farther |
+| `rear_area` | Anything else | early warning, the odd medium site; none once 2 sites stand in zones named after the same base (`SAM_REAR_SITES_PER_BASE_MAX`) |
 
-Then: `chance` (asset 0.9 · front 0.8 · rear 0.6) → a **layer** picked by weight (asset: long 3 / medium 5 / short 2 · front: medium 5 / short 4 / EW 1 · rear: EW 3 / medium 2 / short 1) → a **system** of that layer from `COALITION_SAM_SYSTEMS[side][layer]` that **fits the zone** (recipe `footprint_m` ≤ zone radius; else the next smaller layer) → the site laid out inside the zone. Caps: at most 75 % of a side's zones become SAM sites (the rest stay for garrisons and targets); at most 2 early-warning sites per side. Asset-ring zones fill first.
+Then: `chance` (asset 0.9 · front 0.8 · rear 0.35) → a **layer** picked by weight (asset: long 3 / medium 5 / short 2 · front: medium 5 / short 4 / EW 1 · rear: EW 3 / medium 2 / short 1) → a **system** of that layer from `COALITION_SAM_SYSTEMS[side][layer]` that **fits the zone** (recipe `footprint_m` ≤ zone radius; else the next smaller layer) → the site laid out inside the zone. Caps: at most 75 % of a side's zones become SAM sites (the rest stay for garrisons and targets); at most 2 early-warning sites per side — a pick over that cap becomes medium range (`SAM_SITE_OVER_CAP_LAYER`). Asset-ring zones fill first.
+
+**Minimum per layer** (`SAM_SITE_MIN_PER_LAYER`: Red 3 long range + 2 early warning, Blue 1 long range + 2 early warning): placed before the random pass, largest layer first. Candidates are ranked by role order (`SAM_SITE_MIN_ROLE_ORDER`: early warning goes rear → front → asset ring, since its radars see 300 km+ and shouldn't take a SAM battery's zone; other layers use asset ring first), then zones in a cluster the side always holds (so the Kola core, not a captured Finnish base), then an area without a site of this layer yet, then at random, so sites move between rolls.
+
+**Spreading** (after the fourth run): a zone's **area** is the heavy base it guards (asset ring), otherwise the base its zone is named after. At most 1 long-range site per area (`SAM_SITE_MAX_PER_AREA`; a second long-range pick drops to medium), at most 2 sites per area in the rear (`SAM_REAR_SITES_PER_BASE_MAX`), and no two sites of one side within 3 km (`SAM_SITE_MIN_SPACING_KM`), so overlapping zones (the three at Kilpyavr, the Ivalo pair) hold one site between them. The minimum pass skips zones that break either rule. If too few zones fit the layer's systems, it logs a warning and places fewer.
 
 ### Systems (`COALITION_SAM_SYSTEMS` in `data/coalition_rosters.lua`)
 
@@ -228,11 +249,11 @@ Units stay inside their zone (a quad uses its inscribed circle). Each unit passe
 Every recipe part is in `UNIT_POOL.ground` with a known place; every escort role has a roster on both sides; every `COALITION_SAM_SYSTEMS` entry names a recipe of that layer with a positive weight; every density role lists known layers.
 
 ### Verify in DCS
-Log: one line per site (`SAM_SEV1_SA10_1  RED  SA-10  long_range  asset_ring  Severomorsk-1  11 units + escort  engage 120 km (ZONE_SEV1_341_097)`), then per side `N sites in N of M zones held`. F10: a label per site; engagement rings (solid, side colour) and early-warning detection rings (dashed), switched by `DRAW_SAM_SITES` and `DRAW_SAM_RINGS`. Offline (24 zones, 200 rolls): Red ≈ 7.5 sites/roll (SA-10 0.8, SA-11 2.0, SA-6 0.8, SA-8 1.7, Tor 1.0, EW 1.2), Blue ≈ 6 (NASAMS 0.9, SA-11 0.6, IRIS-T 0.6, Hawk 0.3, Patriot 0.2, SA-10 0.1, Osa 0.8, Tor 0.4, Roland 0.5, EW 1.8); no two site units under 10 m; no base-defense unit inside a zone. A Patriot site came out with radars at 80° and 140° (60° apart around the threat axis) and 6 launchers.
+Log: one line per site (`SAM_SEV1_SA10_1  RED  SA-10  long_range  asset_ring  Severomorsk-1  11 units + escort  engage 120 km (ZONE_SEV1_341_097)`), then per side `N sites in N of M zones held`. A zone that rolled a site but got none logs `left free (<radius>, <why>)`. F10: a label per site; engagement rings (solid, side colour) and early-warning detection rings (dashed), switched by `DRAW_SAM_SITES` and `DRAW_SAM_RINGS`. Offline (24 zones, 200 rolls): Red ≈ 7.5 sites/roll (SA-10 0.8, SA-11 2.0, SA-6 0.8, SA-8 1.7, Tor 1.0, EW 1.2), Blue ≈ 6 (NASAMS 0.9, SA-11 0.6, IRIS-T 0.6, Hawk 0.3, Patriot 0.2, SA-10 0.1, Osa 0.8, Tor 0.4, Roland 0.5, EW 1.8); no two site units under 10 m; no base-defense unit inside a zone. A Patriot site came out with radars at 80° and 140° (60° apart around the threat axis) and 6 launchers. Offline after the fixes (90 zones, the DCS run's territory, 300 rolls): Red ≈ 27 sites of 40 zones (long 3.3: Murmansk, Monchegorsk, Severomorsk-1 every roll, Sodankylä 26 %; medium 9.3, short 12.7, EW 2), Blue ≈ 31 of 50 (long 1.1, medium 19.4, short 8.6, EW 2); 0 warnings.
 
-**Volume vs target (reviewed 2026-09-23):** about a quarter to a third of the Ukraine-like target. For scale, the Kola core realistically holds something like 6–10 long-range battalions, and an active 400–600 km front has a medium site every 30–50 km. The code scales with zones; the limit is zone count and size (only 152 m zones fit SA-10/Patriot). Needed: about 10–12 full-size zones ringing Severomorsk / Kola Bay / Murmansk / Olenya, 2–3 per contested cluster 20–60 km behind the border, and 3–4 each at Rovaniemi, Bodø and Evenes, so about 40–50 for SAMs and ~100 overall. Planned: a "minimum sites per layer" rule so the Kola core always gets several long-range sites, and short-range units attached to garrisons and ground forces (stage 3b/4) rather than taking zones.
+**Volume vs target (reviewed 2026-09-23, before the zone survey grew to 100 — now judged about right, see "Scale check" under Where we are):** about a quarter to a third of the Ukraine-like target. For scale, the Kola core realistically holds something like 6–10 long-range battalions, and an active 400–600 km front has a medium site every 30–50 km. The code scales with zones; the limit is zone count and size (only 152 m zones fit SA-10/Patriot). Needed: about 10–12 full-size zones ringing Severomorsk / Kola Bay / Murmansk / Olenya, 2–3 per contested cluster 20–60 km behind the border, and 3–4 each at Rovaniemi, Bodø and Evenes, so about 40–50 for SAMs and ~100 overall. Planned: a "minimum sites per layer" rule so the Kola core always gets several long-range sites, and short-range units attached to garrisons and ground forces (stage 3b/4) rather than taking zones.
 
-**Known gaps:** no zones yet at Rovaniemi, Evenes, Kuusamo, Sodankylä or Alakurtti, so Blue's network is Swedish-heavy. The 152 m default zone is the largest drawn, which is exactly the SA-10/Patriot footprint. No alarm-state or ROE orders yet (DCS defaults engage); Skynet later keys on the group ids.
+**Known gaps:** no zones yet at Rovaniemi (Blue's front-line fighter base gets no SAM cover). Blue has no long-range minimum, and its long-range sites land at Bodø/Evenes in the rear. Kola-core zones are mostly 84–122 m, which only fits short- and medium-range systems. No alarm-state or ROE orders yet (DCS defaults engage); Skynet later keys on the group ids.
 
 ---
 
@@ -879,7 +900,11 @@ Recommendation: **option 1 now** (fixed ME weather/time, all randomness in-sim) 
 3. `outText` length limits and DTC-on-dynamic-spawn behaviour — test items, not decisions *(§1.5 caveats)*.
 
 **Architecture**
-1. Skynet IADS as a dependency for SEAD? *(§5.3, §6)*
+1. Skynet IADS as a dependency for SEAD? *(§5.3, §6)* — **open, leaning yes, later** (John, 2026-09-23: "sounds really cool"; if adopted, its code ships with the mission). Findings (README, 2026-09-23):
+   - **Needs MIST** (not dependency-free as §5.3 says); MOOSE optional. Both would load unmodified alongside `kola_f16`.
+   - Early-warning radars search and share one picture; SAM sites stay dark until a tracked target is inside their go-live range (`setGoLiveRangeInPercent`) → ambushes, little RWR warning. HARMs are detected by speed and path, and radars within ~15° of the path, out to ~20 nm, shut down. `addPointDefence` for SHORAD guarding a long-range site; `setActAsEW(true)` lets e.g. an SA-10 search for the network; command centres, power sources, connection nodes can be destroyed → sites go autonomous (dark or plain DCS AI).
+   - Fit with our plan: register each `plan.sam_sites.sites` entry by id (`addSAMSite` / `addEarlyWarningRadar` by `layer` — not by prefix, since EW ids also start `SAM_`); each `<id>_escort` group → `addPointDefence`; one network per coalition.
+   - To test first: the README covers only ME-placed groups; registering script-spawned groups right after `coalition.addGroup` should work but is unverified. Prototype on one SA-11 + one EW radar and fly a HARM at it.
 2. Python (pydcs) pre-generation for weather/time — now, later, or never? *(§7)*
 3. Naval strike — worth the ship-spawn research? *(§4.1 P5)*
 4. Success criteria — binary pass/fail, or a score tied to the cost tracker? *(§5.3)*
