@@ -1,9 +1,10 @@
--- Stage 1: roll cluster sides, derive base and zone ownership, compute the front.
+-- Stage 1 (roll territory): roll cluster sides, derive base and zone ownership, compute
+-- the front and each base's echelon.
 -- Reads plan.world + CLUSTERS + CONFIG. Writes plan.territory. Pure data.
 --
 -- plan.territory = {
 --   clusters   = { [id] = { id, name, side, fixed, bases = {...} } },
---   bases      = { [name] = { side, cluster } },
+--   bases      = { [name] = { side, cluster, echelon } },   echelon = front | mid | rear
 --   zones      = { [name] = { side, cluster } },
 --   front      = {
 --     range_km      = CONFIG.FRONT_RANGE_KM,
@@ -14,7 +15,7 @@
 --   summary    = { blue = { cluster names }, red = { cluster names } },
 -- }
 
-Stage1 = {}
+RollTerritory = {}
 
 local function opposite(side)
     return side == "blue" and "red" or "blue"
@@ -136,14 +137,32 @@ local function computeFront(world, clusters, bases)
     return front
 end
 
-function Stage1.run(plan)
-    Log.info("--- Stage 1: territory ---")
+-- front ≤ ECHELON_FRONT_KM < mid ≤ ECHELON_MID_KM < rear, by distance to the nearest
+-- enemy base. A base with no enemy at all is rear.
+local function assignEchelons(bases, front)
+    for name, b in pairs(bases) do
+        local ne = front.nearest_enemy[name]
+        if not ne then
+            b.echelon = "rear"
+        elseif ne.km <= CONFIG.ECHELON_FRONT_KM then
+            b.echelon = "front"
+        elseif ne.km <= CONFIG.ECHELON_MID_KM then
+            b.echelon = "mid"
+        else
+            b.echelon = "rear"
+        end
+    end
+end
+
+function RollTerritory.run(plan)
+    Log.info("--- Stage 1: roll territory ---")
     local world = plan.world
 
     local clusters = rollClusters(world)
     local bases    = assignBases(world, clusters)
     local zones    = assignZones(world, clusters)
     local front    = computeFront(world, clusters, bases)
+    assignEchelons(bases, front)
 
     local summary = { blue = {}, red = {} }
     for _, c in ipairs(CLUSTERS) do

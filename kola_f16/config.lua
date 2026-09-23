@@ -25,8 +25,32 @@ CONFIG = {
     -- Force a contested cluster to a side for testing: { LAPLAND_NORTH = "red" }.
     FORCE_CLUSTER    = {},
 
+    -- Stage 1 echelon by distance to the nearest enemy base: front ≤ FRONT, mid ≤ MID,
+    -- rear beyond.
+    ECHELON_FRONT_KM = 100,
+    ECHELON_MID_KM   = 200,
+
+    -- Stage 2: plan base defenses only at these bases (testing). Empty = every base.
+    DEFENSE_TEST_BASES = {},
+
+    -- Placement exclusions (lib/placement.lua). A spawn point is rejected if it lies
+    -- inside a runway box (runway + SIDE either side, + END past each end), within
+    -- PARKING of any parking spot, or if any of 9 surface samples on a SAMPLE-radius
+    -- ring around it is runway or water.
+    CLEAR_RUNWAY_SIDE_M = 100,
+    CLEAR_RUNWAY_END_M  = 400,
+    CLEAR_PARKING_M     = 60,
+    CLEAR_SAMPLE_M      = 40,
+
     -- Map drawing (debug view of the plan).
     DRAW_BASE_RADIUS = 10000,   -- m, territory circle at each base
     DRAW_ZONE_RADIUS = 3000,    -- m, zones are 30-150 m wide and invisible at map scale
     DRAW_ZONE_LABELS = true,
+    DRAW_DEFENSES    = true,    -- label every base-defense group + a level ring per base
+    DRAW_ANCHORS     = false,   -- dot every placement anchor at defended bases (by kind)
+
+    -- One-off: survey every airfield's footprint (aprons, airfield buildings) and write
+    -- Saved Games\DCS\kola_airbase_footprints.lua; copy it to data\airbase_footprints.lua
+    -- and set this back to false. See survey/survey_airbase_footprints.lua.
+    SURVEY_FOOTPRINTS = false,
 }

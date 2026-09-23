@@ -1,60 +1,93 @@
 # Kola F-16 Randomized Mission Generator — Planning Doc
 
-> **Status:** v1 — stage 1 + world inputs running in DCS (2026-09-22). Planning sections §1–10 are the concept; §11 and "Where we are" are the spec.
+> **Status:** v1 — stages 1–2 (territory + base defenses at all 37 airfields) + world inputs running in DCS (2026-09-23). Planning sections §1–10 are the concept; §11, "Where we are" and "Base defenses — as built" are the spec.
 > Companion to the Syria project (`notes/notes.md`). Open questions are marked **[Q]** — answer them inline and the doc becomes the spec.
 >
-> **Layout:** *Where we are* (pick up here) → *Plan* (§1–10, concept and research) → *Architecture* (§11, code structure decisions).
+> **Layout:** *Where we are* (pick up here) → *Next session* candidates → *Base defenses — as built* → *Plan* (§1–10, concept and research) → *Architecture* (§11, code structure decisions).
 >
 > **Working rules:** commits are always done by John, on his own schedule — never ask about or perform a commit. After any edit under `kola_f16\`, copy the tree to `Saved Games\DCS\Scripts\kola_f16\` immediately; DCS is the only test environment.
 
 ---
 
-## Where we are — pick up here  *(2026-09-22, session 2 — planning done, no code for stage 2 yet)*
+## Where we are — pick up here  *(2026-09-23, end of session 3 — base defenses done)*
 
-**Status: stage 1 + all world inputs run in DCS and are verified.** Boot → gather (airbases, zones, **weather + time**) → stage 1 (territory + front) → plan dump → `Territory.apply` sets all base coalitions and draws base/zone circles by side. Settled: the 7-stage plain-data plan (§11.1–11.5), weather as a planner input with pinned field names (§1.11), the survey-zone dataset (§1.12), the side-agnostic unit pool (§1.13), the 11-cluster table (§3), the script tree + load order (§11.6), naming/ids (§11.7).
+**Status: stages 1–2 run in DCS and are verified at all 37 airfields.** Boot → gather (airbases incl. runways/parking/anchor, zones, weather + time) → `RollTerritory` (territory, front, echelon) → `PlanBaseDefenses` (every base, both coalitions) → plan dump → `Territory.apply` (coalitions + circles) → `SpawnGroundGroups` (base defenses) → `DrawBaseDefenses` (debug marks) + on-screen summary. The user's all-bases run looked right; placements at the cramped fields were acceptable. FPS with all bases defended not yet measured.
 
-**Done this session (2026-09-22):**
-- `lib/weather.lua` + gather: `plan.world.weather` (clouds/preset/coverage/ceiling, visibility, fog, flight rules, wind per level as from/to, temp, QNH) and `plan.world.time` (date, local/Zulu, season, sun elevation/condition, sunrise/sunset, polar day/night). Verified against a live run: the `.miz` wind `dir` is the direction the wind blows **to** (`atmosphere.getWind()` agrees); ME shows *from*. Kola clock is UTC+3. `CONFIG.SHOW_WEATHER_DEBUG` prints the block on screen — drop once the brief owns it.
-- `tools/cloud_presets.py` → `data/cloud_presets.lua` (34 ED presets: coverage word, precip, base range, layers).
-- `tools/unit_pool.py` (+ `unit_role_overrides.json`) → `data/unit_pool.lua` (361 ground / 144 planes / 26 helos / 57 ships, roles + SAM `system` tags + ED ranges; loaded by init) and `data/aircraft_pylons.lua` (pylon → CLSIDs; offline validation only, not loaded). Both parse with `tools/dcslua.py`; the Syria F-16 loadout validates.
-- Plan dump audited field by field — bases, clusters, zones, front, weather, time all correct and readable.
+**Done this session (2026-09-23):**
+- **Base defenses end to end** (spec below, "Base defenses — as built"): airbase classes + codes, level matrix + skill, composition, placement, coalition rosters, load-time data validation, planning stage, generic ground spawner with a per-unit type check (catches the Leopard-2 swap), debug drawing.
+- **Rename:** `stages/s1_territory.lua` → `stages/roll_territory.lua` (`RollTerritory`); adds `echelon` (front ≤ `ECHELON_FRONT_KM` 100 · mid ≤ `ECHELON_MID_KM` 200 · rear).
+- **Trees solved without seeing trees.** Probes at Monchegorsk / Rovaniemi / Ivalo / Kalevala proved what the API can and can't see:
+  - **Trees: invisible to every API.** `world.searchObjects` returns nothing in forest; `land.isVisible` matched a terrain-only line of sight 16/16 at all four bases. Don't re-investigate.
+  - **Taxiways + aprons: visible** — `land.getSurfaceType` reports them as `RUNWAY`.
+  - **Buildings: visible** — `searchObjects(SCENERY)`; within 250 m of the taxiway/parking/runway footprint = the airfield's own; towns sit farther out. No statics on these fields.
+  - So placement starts from ground that is open by construction: the **infield** (grass between the runway keep-clear edge and the first taxiway), apron interiors, parking, buildings.
+- **One-off footprint survey** (`survey/survey_airbase_footprints.lua`, `CONFIG.SURVEY_FOOTPRINTS`) run for all 37 airdromes → `data/airbase_footprints.lua` (4,680 taxiway cells, 4,851 buildings). Raw facts only; anchors are derived at startup so placement tunes without re-surveying. Re-run only after a Kola map update.
+- **Offline test harness:** DCS ships Lua 5.1 as `DCS World\bin\luae.exe`. Stubbing the mission API and running the real `init.lua` (or one stage on real geometry from a plan dump) catches load errors and logic bugs before a DCS run.
 
 **What exists (deployed to `Saved Games\DCS\Scripts\kola_f16\`):**
 ```
 kola_f16/
-  init.lua                  load order; after CONFIG.START_DELAY: Gather.run → Stage1.run → plan dump → Territory.apply + on-screen summary (+ weather block)
-  config.lua                START_DELAY, PLAN_DUMP(+file), UTC_OFFSET_H=3, SHOW_WEATHER_DEBUG, FRONT_RANGE_KM=200, FORCE_CLUSTER, draw radii
-  lib/util.lua              seedRandom, pick/shuffle, dist/bearing, toVec3, withLatLon, formatLL, serialize, writeFile
-  lib/logger.lua            Log.* + dumpAirbases/dumpGroups/dumpLateGroupUnits/dumpWeather
-  lib/weather.lua           Weather.derive / deriveTime (§1.11), sunElevation/sunTimes (NOAA), flightRules, summaryText (TEMP debug)
-  data/clusters.lua         11 clusters (§3)   data/zones.lua  12 zones, generated   data/cloud_presets.lua  34 DCS presets, generated
-  data/unit_pool.lua        every AI-operable DCS unit, generated (§1.13)   data/aircraft_pylons.lua  generated, NOT loaded
-  gather.lua                plan.world: airbases{pos+lat/lon, me_side}, zones{pos+lat/lon}, time{…sun}, weather{…raw}, base_cluster, unknown/unlisted checks
-  stages/s1_territory.lua   plan.territory: clusters{side,how}, bases{side,cluster}, zones{side,cluster}, front{nearest_enemy, frontline, adjacency}, summary
-  consumers/territory.lua   setCoalition + autoCapture(false) per base; base/zone circles + labels; Territory.summaryText
-tools/                      miz_zones.py, cloud_presets.py, unit_pool.py (+ unit_role_overrides.json), dcslua.py, kola_proj.py, kola_airbases.json (stdlib only)
-kola_f16_random_tasking.miz the flyable mission (ONCE + TIME MORE 1 → DO SCRIPT dofile(lfs.writedir().."Scripts\\kola_f16\\init.lua"); dynamic-spawn F-16 slots at Blue bases)
+  init.lua                   load order + run sequence (above); checkData() at load
+  config.lua                 START_DELAY, PLAN_DUMP, UTC_OFFSET_H=3, SHOW_WEATHER_DEBUG, FRONT_RANGE_KM, FORCE_CLUSTER,
+                             ECHELON_*_KM, DEFENSE_TEST_BASES ({} = all), CLEAR_* margins, DRAW_*, SURVEY_FOOTPRINTS=false
+  lib/util.lua               seedRandom, pick/weightedPick/shuffle, dist/bearing, toVec3, withLatLon, formatLL, serialize, writeFile
+  lib/logger.lua             Log.* + dumpAirbases/dumpGroups/dumpLateGroupUnits/dumpWeather
+  lib/weather.lua            Weather.derive / deriveTime (§1.11), sun, flight rules, summaryText (TEMP debug)
+  lib/placement.lua          isClear (runway boxes, parking, surface ring), findClear, ringPoint/discPoint,
+                             buildAnchors (infield/apron/parking/building/runway_side), pickAnchorPoint
+  data/clusters.lua          11 clusters (§3)            data/zones.lua  12 zones, generated (§1.12)
+  data/cloud_presets.lua     34 presets, generated        data/unit_pool.lua  every AI-operable unit, generated (§1.13)
+  data/aircraft_pylons.lua   generated, NOT loaded        data/airbase_codes.lua  4-letter code per base
+  data/airbase_classes.lua   hub/fighter/bomber/heli/strip (DRAFT)
+  data/base_defense_levels.lua  BASE_DEFENSE_LEVEL[class][echelon] + BASE_DEFENSE_SKILL[level]
+  data/base_defense_composition.lua  groups per component per level
+  data/base_defense_placement.lua    role, anchors spec, ring fallback, units, spread, mixed_types; group spacing
+  data/coalition_rosters.lua  COALITION_ROSTER[side][role] (DRAFT) — the only file that knows red from blue
+  data/airbase_footprints.lua surveyed taxiway grid + airfield buildings, all 37 fields, generated in-sim
+  gather.lua                 plan.world: airbases{pos, anchor, runways, parking, me_side}, zones, time, weather, checks
+  stages/roll_territory.lua  plan.territory: clusters, bases{side, cluster, echelon}, zones, front, summary
+  stages/plan_base_defenses.lua  plan.base_defenses: groups, bases (per-base summary), totals
+  consumers/territory.lua    setCoalition + autoCapture(false); base/zone circles; summaryText
+  consumers/spawn_ground_groups.lua  plan entries → coalition.addGroup + type check (generic: zones will reuse it)
+  consumers/draw_base_defenses.lua   level ring per base, label per group, optional anchor dots; summaryText
+  survey/survey_airbase_footprints.lua  one-off survey (off)
+tools/                       miz_zones.py, cloud_presets.py, unit_pool.py (+ overrides), dcslua.py, kola_proj.py, kola_airbases.json
+kola_f16_random_tasking.miz  flyable mission (ONCE + TIME MORE 1 → DO SCRIPT dofile(lfs.writedir().."Scripts\\kola_f16\\init.lua"))
 ```
-Plan dump lands in `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `python tools/miz_zones.py "<survey .miz>"` after drawing zones; `python tools/unit_pool.py` after a DCS update once pydcs has caught up. DCS updates re-sanitize `MissionScripting.lua` → `python desanitize_dcs.py` from an admin shell + full DCS restart.
+Plan dump: `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `python tools/miz_zones.py "<survey .miz>"` after drawing zones; `python tools/unit_pool.py` after a DCS update once pydcs has caught up; the footprint survey after a map update. DCS updates re-sanitize `MissionScripting.lua` → `python desanitize_dcs.py` from an admin shell + full DCS restart.
 
 ---
 
-## NEXT SESSION — base defenses  *(architecture agreed 2026-09-22; build exactly this, zones come after)*
+## NEXT SESSION — candidates  *(pick one with John)*
 
-**Goal:** every airbase gets a coalition-appropriate ground defense sized to how hard its owner would hold it. First thing in the project that actually spawns units. We need to decide what and how red units end up in the plan document because that is how missions get built, so we cannot simply spawn and forget about them. This may or may not include the airbase defense units, unknown -- to decide, but zone and Airbase units are potential targets.
+1. **Zones + SAM sites** (the plan's next stage, §1.12 / §1.2): `defense_level`-style classification for zones, zone budget per side/echelon, `data/sam_site_recipes.lua` from the pool's `system` tag, garrisons; spawn through the existing `SpawnGroundGroups`. Needs more survey zones (12 drawn of ~100).
+2. **Base-defense polish** (deferred list): ±1 level nudge at ~20 %; logistics/fuel components as statics (cheap, targetable); `security_armor` / `apc_patrol` components; re-classify `airbase_classes.lua` and grow `coalition_rosters.lua` (Tor / Tunguska at heavy Red bases, etc.).
+3. **Housekeeping:** rename `consumers/territory.lua` → `apply_territory.lua` (`ApplyTerritory`); drop `SHOW_WEATHER_DEBUG` once the brief exists; measure FPS with all bases defended.
+4. **Proximity spawning** (only if FPS demands it): spawn a base's defenses when a player gets within ~150 km — the plan already holds every unit, so briefs and targets stay truthful.
+
+**Open decision, settled for now:** base-defense units live in the plan (`plan.base_defenses`, ids = DCS group names) so they can later be mission targets or brief info, but they are **not** in the target catalog yet.
+
+**Decide as we hit them:** runtime state table shape (§11.2); ATO scheduler + scramble loop (§1.9/§1.10); success model (§9); later phases: Skynet, pydcs pre-gen, naval.
+
+---
+
+## Base defenses — as built  *(2026-09-23)*
+
+Every airbase gets a coalition-appropriate ground defense sized to how hard its owner holds it. First thing in the project that spawns units.
 
 ### Taxonomy (one question per term)
 
 | Term | Question it answers | Values | Set where |
 |---|---|---|---|
-| **`class`** | What *is* this base? | `hub` / `fighter` / `bomber` / `strip` / `heli` | `data/airbase_classes.lua`, hand, static fact |
-| **`echelon`** | Where does it sit relative to the enemy? | `front` ≤ 100 km · `mid` ≤ 200 km · `rear` | stage 1, from `nearest_enemy.km` (thresholds in CONFIG) |
-| **`defense_level`** | How heavily does its owner defend it? | `light` / `standard` / `heavy` | stage 2, `BASE_DEFENSE_LEVEL[class][echelon]` + one ±1-step nudge at ~20 % |
-| **component** | A kind of defensive element | `aaa_ring`, `aaa_mobile`, `manpads_team`, `shorad`, `security_infantry`, `security_armor`, `apc_patrol`, `logistics`, `fuel` | `data/base_defense_placement.lua` |
-| **composition** | Which components, how many, per level | count ranges | `data/base_defense_composition.lua` |
-| **placement** | Where a component goes around the field | ring distances, road snap, grouping, spread | `data/base_defense_placement.lua` |
-| **role** | The pool's unit tag | `aaa`, `aaa_sp`, `manpads`, `shorad`, `infantry`, `ifv`, `apc`, `truck`, `fuel` | `data/unit_pool.lua` (§1.13) |
-| **roster** | Which types a coalition fields per role | weighted type lists | `data/coalition_rosters.lua` — the **only** file that knows red from blue |
+| **`class`** | What *is* this base? | `hub` / `fighter` / `bomber` / `strip` / `heli` | `data/airbase_classes.lua` (draft) |
+| **`echelon`** | Where does it sit relative to the enemy? | `front` ≤ 100 km · `mid` ≤ 200 km · `rear` | `RollTerritory`, from `nearest_enemy.km` |
+| **`defense_level`** | How heavily does its owner defend it? | `light` / `standard` / `heavy` | `BASE_DEFENSE_LEVEL[class][echelon]` (nudge not built) |
+| **component** | A kind of defensive element | `aaa`, `shorad`, `manpads_team`, `security_infantry` | `data/base_defense_placement.lua` |
+| **composition** | How many groups of each component, per level | `{ component, min, max }` | `data/base_defense_composition.lua` |
+| **placement** | Where a component's groups go | anchors spec, ring fallback, units per group, spread | `data/base_defense_placement.lua` |
+| **anchor kind** | What open ground a group starts from | `infield`, `apron`, `parking`, `building`, `runway_side` | `Placement.buildAnchors` |
+| **role** | Which roster list types come from | `aaa`, `shorad`, `manpads`, `infantry` | placement `role` |
+| **roster** | Which types a coalition fields per role | weighted `{ type, weight }` | `data/coalition_rosters.lua` |
 
 `defense_level` matrix (starting values; tune by feel):
 ```
@@ -65,49 +98,28 @@ Plan dump lands in `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `pytho
    strip         standard   light      light
    heli          standard   light      light
 ```
+Rough size: heavy 5–9 groups / ~21 units, standard 3–5 / ~13, light 1–3 / ~6. Skill: heavy `Good`, else `Average`.
 
-### Files to write
+### Placement rules
+- **Anchors** (derived at startup from `data/airbase_footprints.lua` + live runways/parking):
+  - `infield`: grass between each runway's keep-clear edge and the first taxiway within 600 m.
+  - `apron`: taxiway cells whose 4 neighbours are also taxiway. Thin taxiway lines can cross forest, so they are exclusions only.
+  - `parking`, `building`.
+  - `runway_side`: only at fields with no taxiway surface at all. Elsewhere the sides without taxiways are the tree lines.
+- **Per component** `anchors = { kind = { weight, min_m, max_m } }`:
+  - Guns and SHORAD: infield first (0–40 m), apron/parking 40–100 m, **never buildings** (they can stand in forest).
+  - MANPADS and infantry: wider, and buildings are allowed.
+- **Checks:** every group centre and every unit must pass `Placement.isClear`: outside runway boxes (`CLEAR_RUNWAY_SIDE_M` 100 beside the edge, `CLEAR_RUNWAY_END_M` 400 past each end), ≥ `CLEAR_PARKING_M` 60 from parking spots, and no runway/taxiway/water in 9 surface samples (`CLEAR_SAMPLE_M` 40 ring). Group centres keep ≥ `BASE_DEFENSE_GROUP_SPACING_M` 150 apart.
+- **No room:** a group that finds no clear ground in 80 tries is dropped and logged as "no room for" (fewer guns beats guns in the trees). Cramped fields (Alta, Boden, Enontekio, Hemavan, Ivalo, Kalevala, Kiruna, Kittila, Kuusamo, Sodankyla, Tromso) lose 1–3 gun groups at HEAVY. Hosio has no parking/taxiway/objects in DCS (runway_side only). Kalevala is a real 568 m helo strip.
 
-| File | Global | What it does |
-|---|---|---|
-| `data/airbase_classes.lua` | `AIRBASE_CLASS[name]` | 37 lines: what kind of base each airfield is |
-| `data/base_defense_levels.lua` | `BASE_DEFENSE_LEVEL[class][echelon]` | the matrix above |
-| `data/base_defense_composition.lua` | `BASE_DEFENSE_COMPOSITION[level]` | `{ component = {min, max}, … }` per level |
-| `data/base_defense_placement.lua` | `BASE_DEFENSE_PLACEMENT[component]` | `{ role, ring = {min_m, max_m}, road = bool, grouping = "single" \| "cluster", spread }` — ring ≥ 800 m (Airbase:getPoint() is the runway threshold, Syria lesson) |
-| `data/coalition_rosters.lua` | `COALITION_ROSTER[side][role]` | `{ {type, weight}, … }`; e.g. `blue.shorad = { {"M1097 Avenger", 3}, {"Roland ADS", 1}, {"Strela-10M3", 1} }` — Russian kit on Blue is just a line here. Only the roles the components use for now (~20 lines) |
-| `stages/roll_territory.lua` | `RollTerritory` | rename of `s1_territory.lua`; adds `echelon` to every base (and zone, for later) |
-| `stages/plan_base_defenses.lua` | `PlanBaseDefenses` | per base: level → roll composition → resolve roles via roster → place → `plan.base_defenses` |
-| `lib/placement.lua` | `Placement` | geometry only: ring point around an anchor, road snap, `isOnLand`, `isFlatEnough` (ported from Syria `spawner.lua`) |
-| `consumers/apply_territory.lua` | `ApplyTerritory` | rename of `territory.lua` |
-| `consumers/spawn_ground_groups.lua` | `SpawnGroundGroups` | `plan.base_defenses` entries → `coalition.addGroup` (CJTF_RED / CJTF_BLUE, group name = entry id); after each spawn compare `unit:getTypeName()` to the requested type and warn — the Leopard-2 trap caught automatically |
+### Plan shape and naming
+`plan.base_defenses = { groups = { { id, base, side, class, echelon, level, component, role, skill, anchor_kind, pos = { x, z, lat, lon }, units = { { type, x, z, heading_deg } } } }, bases = { [name] = { code, side, class, echelon, level, groups, units, anchors, rejects, dropped } }, totals }`. Group id `DEF_<CODE>_<component>_<n>` (e.g. `DEF_OLEN_aaa_1`) is the DCS group name; units are `<id>_<n>`. Headings face outward from the field.
 
-Stage order stays in `init.lua`'s run sequence, not in filenames. Plan keys match the stage that writes them: `plan.territory`, `plan.base_defenses`.
-
-### Flow
-```
-for each base in plan.territory.bases:
-    level = BASE_DEFENSE_LEVEL[AIRBASE_CLASS[base]][echelon]   (+ nudge)
-    for component, {min,max} in BASE_DEFENSE_COMPOSITION[level]:
-        for i = 1 .. random(min,max):
-            type = weighted pick from COALITION_ROSTER[side][BASE_DEFENSE_PLACEMENT[component].role]
-            pos  = Placement.ringPoint(base pos, placement.ring, placement.road) with isOnLand retry
-            plan.base_defenses[#+1] = { id = "DEF_<Base>_<component>_<i>", base, side, level, component, role, type, pos, heading, skill }
-```
-`plan.base_defenses` is one flat list of spawn-ready entries; a `cluster` grouping spawns its units as one group with `spread`, `single` spawns one unit per group.
-
-### Load-time validation (fail loudly at init, never as a Leopard-2)
-- every `type` in `COALITION_ROSTER` exists in `UNIT_POOL.ground`
-- every `role` in `BASE_DEFENSE_PLACEMENT` has a non-empty roster entry for both sides
-- every component named in a composition exists in placement
-- every airbase in `AIRBASE_CLASS` exists in DCS (gather already checks the reverse)
+### Load-time validation (`PlanBaseDefenses.checkData`, fails loudly, nothing spawns)
+Every roster type exists in `UNIT_POOL.ground` with a positive weight; every placement role has a roster for both sides; every placement has `anchors` (`{ weight, min, max }`) + `ring`; every composition component has a placement; every level has a skill and every matrix cell a composition; every `AIRBASE_CLASS` value is in the matrix. At run time, classes naming unknown airdromes warn.
 
 ### Verify in DCS
-Debug map circles coloured by `defense_level`; log one line per base (`Olenya  RED  bomber/front → HEAVY  14 units`); grep dcs.log for `replaced with` (should be none) and for the spawner's own type-mismatch warning; plan dump shows `base_defenses` entries readable.
-
-### After this (not now)
-Zones: `defense_level`-style classification for zones, zone budget per side/echelon, SAM site recipes (`data/sam_site_recipes.lua` from the pool's `system` tag), garrisons, then stage 4 contacts. Also pending: ~90 more survey zones (§1.12), runway-length table (§3), statics.
-
-**Decide as we hit them:** runtime state table shape (§11.2); ATO scheduler + scramble loop (§1.9/§1.10); success model (§9); later phases: Skynet, pydcs pre-gen, naval.
+Per-base log line: `Olenya RED bomber/front → HEAVY 8 groups 22 units (anchors: …; rejects: …; no room for: …)`, then a total. Spawner line: `spawned N groups / M units; 0 failed; 0 type mismatches`. Grep `asked for` for type swaps. F10: level ring per base + a label per group; `DRAW_ANCHORS = true` adds anchor dots (use with `DEFENSE_TEST_BASES` set to a few bases — tens of thousands of marks otherwise).
 
 ---
 
