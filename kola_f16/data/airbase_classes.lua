@@ -5,15 +5,17 @@
 --   fighter  fighter / interceptor base
 --   bomber   long-range aviation, maritime patrol, other large aircraft
 --   heli     helicopter base
---   strip    secondary / civil / dispersal field
+--   dispersal  secondary field the air force flies fighters from in wartime (Finnish
+--            and Swedish dispersal doctrine): gets an Army air-defense detachment
+--   strip    civil or disused field with no wartime flying role
 --
 -- DRAFT (2026-09-23): first pass from each field's real-world role; re-classify freely.
 
 AIRBASE_CLASS = {
     -- Norway
     ["Bodo"]                   = "hub",
-    ["Evenes"]                 = "fighter",
-    ["Andoya"]                 = "bomber",
+    ["Evenes"]                 = "bomber",    -- P-8 maritime patrol base since 2023, plus F-35 alert
+    ["Andoya"]                 = "strip",     -- maritime patrol moved to Evenes in 2023
     ["Bardufoss"]              = "heli",
     ["Tromso"]                 = "strip",
     ["Banak"]                  = "strip",
@@ -22,10 +24,10 @@ AIRBASE_CLASS = {
 
     -- Sweden
     ["Kallax"]                 = "fighter",
-    ["Vidsel"]                 = "strip",
+    ["Vidsel"]                 = "dispersal",
     ["Kiruna"]                 = "strip",
-    ["Jokkmokk"]               = "strip",
-    ["Kalixfors"]              = "strip",
+    ["Jokkmokk"]               = "dispersal",
+    ["Kalixfors"]              = "dispersal",
     ["Arvidsjaur"]             = "strip",
     ["Hemavan"]                = "strip",
     ["Boden Heli Base"]        = "heli",
@@ -33,11 +35,11 @@ AIRBASE_CLASS = {
     -- Finland
     ["Rovaniemi"]              = "fighter",
     ["Kemi Tornio"]            = "strip",
-    ["Kuusamo"]                = "strip",
-    ["Ivalo"]                  = "strip",
-    ["Kittila"]                = "strip",
-    ["Enontekio"]              = "strip",
-    ["Sodankyla"]              = "strip",
+    ["Kuusamo"]                = "dispersal",
+    ["Ivalo"]                  = "dispersal",
+    ["Kittila"]                = "dispersal",
+    ["Enontekio"]              = "dispersal",
+    ["Sodankyla"]              = "dispersal",
     ["Hosio"]                  = "strip",
     ["Vuojarvi"]               = "strip",
 

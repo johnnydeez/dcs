@@ -8,11 +8,14 @@
 -- component's `anchors` spec (data/airbase_footprints.lua + live parking/runways), at least
 -- BASE_DEFENSE_GROUP_SPACING_M from the base's other groups, and passes
 -- Placement.isClear. Bases with no anchors fall back to the ring around the base anchor.
+-- A group that finds no clear open ground goes onto one of the airfield's own roads
+-- (anchor_kind "road"), units snapped along the road, instead of being dropped.
 --
 -- plan.base_defenses = {
 --   groups = { { id, base, side, class, echelon, level, component, role, skill, anchor_kind,
 --                pos = { x, z, lat, lon }, units = { { type, x, z, heading_deg } } } },
---   bases  = { [name] = { code, side, class, echelon, level, groups, units, anchors, rejects } },
+--   bases  = { [name] = { code, side, class, echelon, level, groups, units, anchors, rejects,
+--                         dropped, on_roads } },
 --   totals = { groups, units, dropped_groups, dropped_units, red = {groups, units}, blue = {...} },
 -- }
 -- Each group entry is spawn-ready; `id` is used verbatim as the DCS group name.
@@ -20,7 +23,13 @@
 PlanBaseDefenses = {}
 
 local TRIES_GROUP = 80   -- attempts to find a clear group centre
-local TRIES_UNIT  = 12   -- attempts per unit around that centre
+local TRIES_UNIT  = 30   -- attempts per unit around that centre
+local TRIES_ROAD  = 60   -- attempts to find an airfield road spot once open ground runs out
+-- Last resorts, so nothing is dropped: a group whose airfield roads are full widens the
+-- search to roads this far from the runways; a unit that can't fit near its group goes
+-- onto a road this far from the group centre.
+local ROAD_WIDE_RUNWAY_M = 2000
+local UNIT_ROAD_RADII_M  = { 300, 1000 }   -- 1000 only if nothing within 300 m
 
 local COALITIONS = { "red", "blue" }
 local ECHELONS   = { "front", "mid", "rear" }
@@ -59,10 +68,15 @@ function PlanBaseDefenses.validate()
                 end
             end
         end
+        if type(pl.unit_spacing) ~= "number" or pl.unit_spacing < 0 or pl.unit_spacing >= pl.spread then
+            bad(string.format("placement '%s' needs unit_spacing >= 0 and < spread", comp))
+        end
         for _, side in ipairs(COALITIONS) do
-            local list = COALITION_ROSTER[side] and COALITION_ROSTER[side][pl.role]
-            if not list or #list == 0 then
-                bad(string.format("placement '%s' needs role '%s' but roster %s has none", comp, pl.role, side))
+            for _, role in ipairs({ pl.role, pl.road_role }) do
+                local list = COALITION_ROSTER[side] and COALITION_ROSTER[side][role]
+                if not list or #list == 0 then
+                    bad(string.format("placement '%s' needs role '%s' but roster %s has none", comp, role, side))
+                end
             end
         end
     end
@@ -109,8 +123,11 @@ end
 
 local function round(v) return math.floor(v + 0.5) end
 
-local function addRejects(into, from)
-    for k, n in pairs(from) do into[k] = (into[k] or 0) + n end
+local function addRejects(into, from, prefix)
+    for k, n in pairs(from) do
+        k = (prefix or "") .. k
+        into[k] = (into[k] or 0) + n
+    end
 end
 
 local function rejectText(r)
@@ -165,29 +182,90 @@ local function planGroup(ab, ctx, comp, pl, index, rejects)
     end
     local centre, rj = Placement.findClear(ab, candidate, TRIES_GROUP, spaced)
     addRejects(rejects, rj)
-    if not centre then return nil, 0 end
+    local onRoad = false
+    if not centre then
+        -- open ground ran out: an airfield road beats being dropped
+        centre, rj = Placement.findClear(ab, function() return Placement.airfieldRoadPoint(ab) end,
+            TRIES_ROAD, spaced, Placement.isClearRoad)
+        addRejects(rejects, rj, "road_")
+        if not centre then
+            centre, rj = Placement.findClear(ab, function() return Placement.airfieldRoadPoint(ab, ROAD_WIDE_RUNWAY_M) end,
+                TRIES_ROAD, spaced, Placement.isClearRoad)
+            addRejects(rejects, rj, "road_wide_")
+        end
+        if not centre then return nil, 0 end
+        onRoad, kindUsed = true, "road"
+    end
     ctx.centres[#ctx.centres + 1] = centre
 
-    local roster    = COALITION_ROSTER[ctx.side][pl.role]
-    local groupType = Util.weightedPick(roster)
-    local outward   = math.atan2(centre.z - ab.anchor.z, centre.x - ab.anchor.x)
+    local roster     = COALITION_ROSTER[ctx.side][pl.role]
+    local groupType  = Util.weightedPick(roster)
+    -- a unit that ends up on a road can use a different role (a dug-in gun becomes its
+    -- truck-mounted version: an emplacement on a road looks wrong)
+    local roadRoster = pl.road_role and COALITION_ROSTER[ctx.side][pl.road_role] or roster
+    local roadType   = pl.road_role and Util.weightedPick(roadRoster) or groupType
+    local outward    = math.atan2(centre.z - ab.anchor.z, centre.x - ab.anchor.x)
 
+    -- Groupmates keep unit_spacing apart inside the spread disc. A unit that can't fit
+    -- retries at half spacing, then goes onto a road near the group — never dropped,
+    -- never pushed toward the trees.
     local units, dropped = {}, 0
+    local function unitSpacedBy(factor)
+        local sp2 = (pl.unit_spacing * factor) ^ 2
+        return function(p)
+            for _, v in ipairs(units) do
+                local dx, dz = p.x - v.x, p.z - v.z
+                if dx * dx + dz * dz < sp2 then return false, "unit_spacing" end
+            end
+            return true
+        end
+    end
+    local function roadNear(r)
+        return function()
+            local q = Placement.snapToRoad(Placement.discPoint(centre, r))
+            if q and Util.dist(q, centre) <= r then return q end
+        end
+    end
+    local spread = ab.forested and math.min(pl.spread, CONFIG.FORESTED_SPREAD_M) or pl.spread
+    local function openNear()
+        return Placement.discPoint(centre, spread)
+    end
+    -- { pointFn, spacing factor, clear check, on road?, reject prefix }, tried in order
+    local steps = {}
+    if onRoad then
+        steps[#steps + 1] = { roadNear(spread), 1,   Placement.isClearRoad, true, "road_" }
+        steps[#steps + 1] = { roadNear(spread), 0.5, Placement.isClearRoad, true, "road_half_" }
+    else
+        steps[#steps + 1] = { openNear,            1,   nil,                   false, "" }
+        steps[#steps + 1] = { openNear,            0.5, nil,                   false, "half_" }
+    end
+    for _, r in ipairs(UNIT_ROAD_RADII_M) do
+        steps[#steps + 1] = { roadNear(r), 1, Placement.isClearRoad, true, "unit_road_" }
+    end
+
     for u = 1, math.random(pl.units[1], pl.units[2]) do
-        local p
+        local p, unitOnRoad
         if u == 1 then
-            p = centre
+            p, unitOnRoad = centre, onRoad
         else
-            local rju
-            p, rju = Placement.findClear(ab, function()
-                return Placement.discPoint(centre, pl.spread)
-            end, TRIES_UNIT)
-            addRejects(rejects, rju)
+            for _, st in ipairs(steps) do
+                local rju
+                p, rju = Placement.findClear(ab, st[1], TRIES_UNIT, unitSpacedBy(st[2]), st[3])
+                addRejects(rejects, rju, st[5])
+                if p then unitOnRoad = st[4]; break end
+            end
         end
         if p then
             local h = outward + (math.random() - 0.5) * 0.8
+            local unitType = pl.mixed_types and Util.weightedPick(roster) or groupType
+            if unitOnRoad then
+                -- parked along the road, either way round
+                local along = Placement.roadHeading(p)
+                if along then h = along + (math.random() < 0.5 and math.pi or 0) end
+                unitType = pl.mixed_types and Util.weightedPick(roadRoster) or roadType
+            end
             units[#units + 1] = {
-                type        = pl.mixed_types and Util.weightedPick(roster) or groupType,
+                type        = unitType,
                 x           = round(p.x),
                 z           = round(p.z),
                 heading_deg = round(math.deg(h)) % 360,
@@ -237,6 +315,11 @@ function PlanBaseDefenses.run(plan)
             Log.warn("airbase_classes.lua lists '" .. name .. "' but DCS has no such airdrome")
         end
     end
+    for name in pairs(FORESTED_AIRFIELDS) do
+        if not world.airbases[name] then
+            Log.warn("forested_airfields.lua lists '" .. name .. "' but DCS has no such airdrome")
+        end
+    end
 
     local only  = baseFilter()
     local names = {}
@@ -246,7 +329,11 @@ function PlanBaseDefenses.run(plan)
     table.sort(names)
 
     for _, name in ipairs(names) do
-        local b, ab = terr.bases[name], world.airbases[name]
+        local b, wab = terr.bases[name], world.airbases[name]
+        -- the placement view of this base: its geometry plus whether its infield is
+        -- forest (plan.world stays untouched)
+        local ab = { anchor = wab.anchor, runways = wab.runways, parking = wab.parking,
+                     forested = FORESTED_AIRFIELDS[name] == true }
         local class = AIRBASE_CLASS[name]
         if not class then
             Log.warn("no AIRBASE_CLASS for '" .. name .. "' — treating as strip")
@@ -274,7 +361,7 @@ function PlanBaseDefenses.run(plan)
         for k, list in pairs(anchors) do anchorCounts[k] = #list end
         local summary = { code = code, side = b.side, class = class, echelon = b.echelon,
                           level = level, groups = 0, units = 0, anchors = anchorCounts, rejects = {},
-                          dropped = {} }
+                          dropped = {}, on_roads = 0 }
         for _, c in ipairs(BASE_DEFENSE_COMPOSITION[level]) do
             local comp, lo, hi = c[1], c[2], c[3]
             local pl = BASE_DEFENSE_PLACEMENT[comp]
@@ -286,9 +373,12 @@ function PlanBaseDefenses.run(plan)
                     index = index + 1
                     out.groups[#out.groups + 1] = entry
                     summary.groups = summary.groups + 1
+                    if entry.anchor_kind == "road" then summary.on_roads = summary.on_roads + 1 end
                     summary.units  = summary.units + #entry.units
                 else
-                    -- no open ground left for it: fewer guns beats guns in the trees
+                    -- no open ground and no road within reach — should not happen
+                    Log.warn(string.format("DROPPED %s group at %s: no open ground and no road within %d m of the runways",
+                        comp, name, ROAD_WIDE_RUNWAY_M))
                     out.totals.dropped_groups = out.totals.dropped_groups + 1
                     summary.dropped[comp] = (summary.dropped[comp] or 0) + 1
                 end
@@ -301,9 +391,9 @@ function PlanBaseDefenses.run(plan)
         t[b.side].groups = t[b.side].groups + summary.groups
         t[b.side].units  = t[b.side].units + summary.units
 
-        Log.info(string.format("  %-22s %-4s %s/%s → %-8s %d groups %d units  (anchors: %s; rejects: %s; no room for: %s)",
+        Log.info(string.format("  %-22s %-4s %s/%s → %-8s %d groups %d units, %d on roads  (anchors: %s; rejects: %s; no room for: %s)",
             name, b.side:upper(), class, b.echelon, level:upper(), summary.groups, summary.units,
-            anchorText(anchors), rejectText(summary.rejects), rejectText(summary.dropped)))
+            summary.on_roads, anchorText(anchors), rejectText(summary.rejects), rejectText(summary.dropped)))
     end
 
     local t = out.totals

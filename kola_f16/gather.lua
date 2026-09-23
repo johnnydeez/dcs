@@ -184,13 +184,12 @@ end
 function Gather.run()
     Log.info("--- Gather inputs ---")
     local w = {}
-    w.rng_steps = Util.seedRandom()
     gatherAirbases(w)
     gatherZones(w)
     gatherWeather(w)
     checkClusters(w)
-    Log.info(string.format("  %d airdromes, %d zones, %d clusters, rng advanced %d",
-        #w.airbase_list, #w.zone_list, #CLUSTERS, w.rng_steps))
+    Log.info(string.format("  %d airdromes, %d zones, %d clusters",
+        #w.airbase_list, #w.zone_list, #CLUSTERS))
     local nRw, nPark, unverified = 0, 0, {}
     for _, name in ipairs(w.airbase_list) do
         local ab = w.airbases[name]

@@ -30,16 +30,22 @@ function Placement.discPoint(centre, radius)
     return { x = centre.x + d * math.cos(a), z = centre.z + d * math.sin(a) }
 end
 
--- True if p is inside any runway's keep-clear box.
+-- True if p is inside any runway's keep-clear box: the runway plus CLEAR_RUNWAY_SIDE_M
+-- either side, extended CLEAR_RUNWAY_END_M past each end. At a forested field
+-- (base.forested) only the approach lane past each end is kept clear — the runway width
+-- plus CLEAR_APPROACH_LANE_M either side — so the cleared overrun beside it is usable.
 function Placement.onRunwayBox(base, p)
     for _, rw in ipairs(base.runways or {}) do
         local h  = math.rad(rw.heading_deg)
         local dx, dz = p.x - rw.x, p.z - rw.z
-        local along  = dx * math.cos(h) + dz * math.sin(h)
-        local across = -dx * math.sin(h) + dz * math.cos(h)
-        if math.abs(along)  <= rw.length / 2 + CONFIG.CLEAR_RUNWAY_END_M
-       and math.abs(across) <= rw.width  / 2 + CONFIG.CLEAR_RUNWAY_SIDE_M then
-            return true
+        local along  = math.abs(dx * math.cos(h) + dz * math.sin(h))
+        local across = math.abs(-dx * math.sin(h) + dz * math.cos(h))
+        local side   = rw.width / 2 + CONFIG.CLEAR_RUNWAY_SIDE_M
+        if along <= rw.length / 2 + CONFIG.CLEAR_RUNWAY_END_M then
+            if along > rw.length / 2 and base.forested then
+                side = rw.width / 2 + CONFIG.CLEAR_APPROACH_LANE_M
+            end
+            if across <= side then return true end
         end
     end
     return false
@@ -80,14 +86,25 @@ function Placement.isClear(base, p)
     return true
 end
 
--- Tries `pointFn()` up to `tries` times until a point passes isClear and, if given,
--- `extraCheck(p)` (returns ok, reason). Returns point or nil, plus a
--- { reason = count } tally of rejections.
-function Placement.findClear(base, pointFn, tries, extraCheck)
+-- The check for a point on an airfield road: off runway boxes and parking, and not on
+-- runway/taxiway or water. No surface ring — a road may run beside a taxiway or a lake.
+function Placement.isClearRoad(base, p)
+    if Placement.onRunwayBox(base, p) then return false, "runway" end
+    if Placement.nearParking(base, p) then return false, "parking" end
+    if blockedSurface()[land.getSurfaceType({ x = p.x, y = p.z })] then return false, "surface" end
+    return true
+end
+
+-- Tries `pointFn()` up to `tries` times until a point passes `clearFn` (default isClear)
+-- and, if given, `extraCheck(p)` (returns ok, reason). pointFn may return nil (counted
+-- as "no_point"). Returns point or nil, plus a { reason = count } tally of rejections.
+function Placement.findClear(base, pointFn, tries, extraCheck, clearFn)
+    clearFn = clearFn or Placement.isClear
     local rejects = {}
     for _ = 1, tries do
         local p = pointFn()
-        local ok, why = Placement.isClear(base, p)
+        local ok, why = false, "no_point"
+        if p then ok, why = clearFn(base, p) end
         if ok and extraCheck then ok, why = extraCheck(p) end
         if ok then return p, rejects end
         rejects[why] = (rejects[why] or 0) + 1
@@ -108,6 +125,9 @@ end
 --   runway_side  just outside the runway keep-clear box, ONLY at fields with no taxiway
 --                surface at all (short strips); elsewhere the sides without taxiways
 --                are where the tree lines are.
+--   runway_end   the cleared overrun beside each runway end's approach lane, ONLY at
+--                forested fields (data/forested_airfields.lua), where it is the only
+--                anchor kind: their infield, aprons and parking edges are forest.
 
 local INFIELD_WALK_M     = 600   -- m beyond the keep-clear edge to look for a taxiway
 local INFIELD_WALK_STEP  = 25    -- m per step of that walk
@@ -116,6 +136,9 @@ local INFIELD_POINT_STEP = 50    -- m between infield points across the band
 local INFIELD_TAXI_PAD   = 40    -- m kept clear of the taxiway at the band's outer end
 local RUNWAY_SIDE_STEP   = 150   -- m between runway_side anchors
 local RUNWAY_SIDE_PAD    = 30    -- m beyond the runway keep-clear box
+local RUNWAY_END_ALONG   = { 80, 380, 60 }   -- m past the threshold: from, to, step
+local RUNWAY_END_ACROSS  = { 25, 45 }        -- m beyond the runway edge, either side:
+                                             -- inside the ~±80 m cleared overrun
 
 local function runwayPoint(rw, along, across)
     local h = math.rad(rw.heading_deg)
@@ -123,8 +146,80 @@ local function runwayPoint(rw, along, across)
              z = rw.z + along * math.sin(h) + across * math.cos(h) }
 end
 
+-- ── Road fallback ───────────────────────────────────────────────
+-- When a group finds no clear open ground, it goes onto one of the airfield's own roads
+-- (perimeter and access roads): open by construction, and vehicles parked on a road
+-- are normal.
+
+-- Nearest point on the road network to p, or nil.
+function Placement.snapToRoad(p)
+    local rx, rz = land.getClosestPointOnRoads("roads", p.x, p.z)
+    if not rx then return nil end
+    return { x = rx, z = rz }
+end
+
+-- Direction the road runs at p (radians, atan2(dz, dx) like every heading here), or
+-- nil. Snaps points 30 m out in 8 directions: the ones along the road come back ~30 m
+-- away, the ones across it snap back to p.
+function Placement.roadHeading(p)
+    local best, bestD
+    for i = 0, 7 do
+        local a = i * math.pi / 4
+        local q = Placement.snapToRoad({ x = p.x + 30 * math.cos(a), z = p.z + 30 * math.sin(a) })
+        if q then
+            local d = Util.dist(p, q)
+            if not bestD or d > bestD then best, bestD = q, d end
+        end
+    end
+    if not best or bestD < 5 then return nil end
+    return math.atan2(best.z - p.z, best.x - p.x)
+end
+
+-- True if p is within `margin` m (default CONFIG.ROAD_FALLBACK_RUNWAY_M) of any runway's box.
+function Placement.onAirfieldGround(base, p, margin)
+    local m = margin or CONFIG.ROAD_FALLBACK_RUNWAY_M
+    for _, rw in ipairs(base.runways or {}) do
+        local h  = math.rad(rw.heading_deg)
+        local dx, dz = p.x - rw.x, p.z - rw.z
+        local along  = dx * math.cos(h) + dz * math.sin(h)
+        local across = -dx * math.sin(h) + dz * math.cos(h)
+        if math.abs(along) <= rw.length / 2 + m and math.abs(across) <= rw.width / 2 + m then
+            return true
+        end
+    end
+    return false
+end
+
+-- A random point on an airfield road: a random spot within `margin` m (default
+-- CONFIG.ROAD_FALLBACK_RUNWAY_M) of a random runway's box, snapped to the nearest road.
+-- nil if the snap lands outside that area.
+function Placement.airfieldRoadPoint(base, margin)
+    if not base.runways or #base.runways == 0 then return nil end
+    local rw = Util.pick(base.runways)
+    local m  = margin or CONFIG.ROAD_FALLBACK_RUNWAY_M
+    local p  = Placement.snapToRoad(runwayPoint(rw, (math.random() - 0.5) * (rw.length + 2 * m),
+                                                    (math.random() - 0.5) * (rw.width + 2 * m)))
+    if p and Placement.onAirfieldGround(base, p, m) then return p end
+    return nil
+end
+
 -- Returns { [kind] = { {x, z}, ... } } — only kinds that have points.
 function Placement.buildAnchors(base, footprint)
+    if base.forested then
+        local ends = {}
+        for _, rw in ipairs(base.runways or {}) do
+            for _, dir in ipairs({ -1, 1 }) do
+                for d = RUNWAY_END_ALONG[1], RUNWAY_END_ALONG[2], RUNWAY_END_ALONG[3] do
+                    for _, c in ipairs(RUNWAY_END_ACROSS) do
+                        for _, side in ipairs({ -1, 1 }) do
+                            ends[#ends + 1] = runwayPoint(rw, dir * (rw.length / 2 + d), side * (rw.width / 2 + c))
+                        end
+                    end
+                end
+            end
+        end
+        return #ends > 0 and { runway_end = ends } or {}
+    end
     local a = { infield = {}, apron = {}, parking = {}, building = {}, runway_side = {} }
     for _, s in ipairs(base.parking or {}) do a.parking[#a.parking + 1] = { x = s[1], z = s[2] } end
 
