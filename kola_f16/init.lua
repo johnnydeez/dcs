@@ -42,19 +42,31 @@ if not load("data\\airbase_footprints.lua")       then return end
 if not load("data\\forested_airfields.lua")       then return end
 if not load("data\\sam_site_recipes.lua")         then return end
 if not load("data\\sam_site_density.lua")         then return end
+if not load("data\\fixed_ground_target_recipes.lua") then return end
+if not load("data\\fixed_ground_target_density.lua") then return end
+if not load("data\\convoy_recipes.lua")           then return end
 if not load("gather.lua")                  then return end
 if not load("stages\\roll_territory.lua")  then return end
 if not load("stages\\plan_base_defenses.lua")     then return end
 if not load("stages\\plan_sam_sites.lua")         then return end
+if not load("stages\\plan_fixed_ground_targets.lua") then return end
+if not load("stages\\plan_convoys.lua")           then return end
+if not load("stages\\catalog_targets.lua")        then return end
 if not load("consumers\\territory.lua")    then return end
 if not load("consumers\\spawn_ground_groups.lua") then return end
 if not load("consumers\\draw_base_defenses.lua")  then return end
 if not load("consumers\\draw_sam_sites.lua")      then return end
+if not load("consumers\\spawn_static_objects.lua") then return end
+if not load("consumers\\draw_fixed_ground_targets.lua") then return end
+if not load("consumers\\draw_convoys.lua")        then return end
 if CONFIG.SURVEY_FOOTPRINTS and not load("survey\\survey_airbase_footprints.lua") then return end
+if CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN and not load("survey\\probe_parked_aircraft_spawn.lua") then return end
 
 -- Data files checked against each other and the unit pool before anything runs.
 PlanBaseDefenses.checkData()
 PlanSamSites.checkData()
+PlanFixedGroundTargets.checkData()
+PlanConvoys.checkData()
 
 -- ── Run sequence ────────────────────────────────────────────────
 
@@ -68,21 +80,38 @@ local function run()
     if CONFIG.SHOW_WEATHER_DEBUG then Log.dumpWeather() end
 
     local plan = { world = Gather.run() }
+    if CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN then
+        ProbeParkedAircraftSpawn.run(plan.world)
+        return
+    end
     if CONFIG.SURVEY_FOOTPRINTS then SurveyAirbaseFootprints.run(plan.world) end
     RollTerritory.run(plan)
     PlanBaseDefenses.run(plan)
     PlanSamSites.run(plan)
-    -- stages 3b..7 go here
+    PlanFixedGroundTargets.run(plan)
+    PlanConvoys.run(plan)
+    CatalogTargets.run(plan)   -- after every stage that plans targets
+    -- stages 5..7 go here
 
     dumpPlan(plan)
 
     Territory.apply(plan)
+    -- KEEP THIS ORDER: every static object before any AI unit. Spawned after ~800 AI
+    -- units, each parked aircraft took ~3 s inside addStaticObject (a 3-minute stall at
+    -- start); spawned first, 247 objects took 7.4 s and the units were no slower
+    -- (2026-09-24). New stages that spawn static objects add them here, above the groups.
+    SpawnStaticObjects.run(plan.fixed_ground_targets.static_objects, "fixed ground target objects")
     SpawnGroundGroups.run(plan.base_defenses.groups, "base defenses")
     SpawnGroundGroups.run(plan.sam_sites.groups, "SAM sites")
+    SpawnGroundGroups.run(plan.fixed_ground_targets.groups, "fixed ground target units")
+    SpawnGroundGroups.run(plan.convoys.groups, "convoys")
     DrawBaseDefenses.apply(plan)
     DrawSamSites.apply(plan)
+    DrawFixedGroundTargets.apply(plan)
+    DrawConvoys.apply(plan)
     local text = Territory.summaryText(plan) .. "\n" .. DrawBaseDefenses.summaryText(plan)
-        .. "\n" .. DrawSamSites.summaryText(plan)
+        .. "\n" .. DrawSamSites.summaryText(plan) .. "\n" .. DrawFixedGroundTargets.summaryText(plan)
+        .. "\n" .. DrawConvoys.summaryText(plan)
     if CONFIG.SHOW_WEATHER_DEBUG then
         text = text .. "\n\n" .. Weather.summaryText(plan.world)
     end

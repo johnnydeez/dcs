@@ -3,10 +3,10 @@
     python tools/unit_pool.py [--pydcs C:\\Users\\johnk\\Git\\pydcs] [--out-dir kola_f16/data]
 
 pydcs (github.com/pydcs/dcs) is reference material only: its dcs/vehicles.py, planes.py,
-helicopters.py, ships.py and weapons_data.py are generated straight from DCS's own unit
-database, so the `id` strings are exactly what coalition.addGroup expects. This script
-reads those source files as text (no import, no dependency) and writes two plain-data
-Lua files:
+helicopters.py, ships.py, statics.py and weapons_data.py are generated straight from
+DCS's own unit database, so the `id` strings are exactly what coalition.addGroup and
+coalition.addStaticObject expect. This script reads those source files as text (no
+import, no dependency) and writes two plain-data Lua files:
 
   unit_pool.lua       every AI-operable unit in base DCS (incl. the CoreMods packs —
                       Currenthill, ColdWar, Massun92 …), segmented ground / plane /
@@ -14,6 +14,9 @@ Lua files:
                       and era-agnostic: the spawner always uses CJTF_RED / CJTF_BLUE.
                       `role` is a planner-facing tag assigned here by name heuristics,
                       overridden by unit_role_overrides.json next to this script.
+                      Plus `static`: every structure / cargo static object type
+                      (statics.py: Fortification, Warehouse, Cargo) with its category
+                      and shape_name, as coalition.addStaticObject needs them.
   aircraft_pylons.lua per-aircraft pylon -> allowed weapon CLSIDs. Kept out of the pool
                       because it is large; used to validate hand-authored loadouts.
 
@@ -339,7 +342,27 @@ def lua_entry(fields):
     return "{ " + ", ".join(parts) + " }"
 
 
-def write_pool(path, ground, planes, helis, ships, src):
+# statics.py holder classes whose types are placeable structures / cargo. GroundObject
+# (Building, Bridge, Transport, Train) is scenery, not something a mission places.
+STATIC_HOLDERS = {"Fortification", "Warehouse", "Cargo"}
+STATIC_DEFAULT_CATEGORY = "Fortifications"   # unittype.StaticType's default
+
+
+def static_entries(path):
+    out = []
+    for holder, _cls, f, _p in parse_classes(path):
+        if holder not in STATIC_HOLDERS:
+            continue
+        uid = f["id"]
+        out.append((uid, [
+            ("type", uid), ("name", f.get("name", "")),
+            ("category", f.get("category") or STATIC_DEFAULT_CATEGORY),
+            ("shape_name", f.get("shape_name")), ("can_cargo", f.get("can_cargo")),
+        ]))
+    return sorted(out, key=lambda e: (dict(e[1])["category"], e[0].lower()))
+
+
+def write_pool(path, ground, planes, helis, ships, statics, src):
     L = [
         "-- Every AI-operable DCS unit type, extracted from pydcs (%s) by tools/unit_pool.py —" % src,
         "-- do not hand-edit; fix tools/unit_role_overrides.json and re-run. Plain data, no logic.",
@@ -362,6 +385,10 @@ def write_pool(path, ground, planes, helis, ships, src):
         "--   detection_m / threat_m / air_weapon_m   ED's sensor range and longest weapon reach, metres",
         "--   aircraft:       tasks (DCS task names the AI can fly), task_default, fuel_max (kg),",
         "--                   max_speed (km/h), chaff, flare, pylons (count), flyable, large_parking, tacan",
+        "--   static:         structure / cargo static objects for coalition.addStaticObject: type, name,",
+        "--                   category (Fortifications / Warehouses / Cargos), shape_name, can_cargo.",
+        "--                   Aircraft and vehicles placed as static objects use the plane / helicopter /",
+        "--                   ground entries instead.",
         "",
         "UNIT_POOL = {",
     ]
@@ -378,9 +405,9 @@ def write_pool(path, ground, planes, helis, ships, src):
     section("plane", planes)
     section("helicopter", helis)
     section("ship", ships)
+    section("static", statics)
     L.append("")
-    L.append("    -- Stubs: structures (need shape_name) and weapon CLSIDs come in a later pass.")
-    L.append("    static  = {},")
+    L.append("    -- Stub: weapon CLSIDs come in a later pass.")
     L.append("    weapons = {},")
     L.append("}")
     L.append("")
@@ -429,7 +456,7 @@ def main():
     args = ap.parse_args()
 
     src = os.path.join(args.pydcs, "dcs")
-    for f in ("vehicles.py", "planes.py", "helicopters.py", "ships.py", "weapons_data.py"):
+    for f in ("vehicles.py", "planes.py", "helicopters.py", "ships.py", "statics.py", "weapons_data.py"):
         if not os.path.exists(os.path.join(src, f)):
             sys.exit("missing %s — is --pydcs pointing at a pydcs checkout?" % os.path.join(src, f))
 
@@ -498,16 +525,17 @@ def main():
         return sorted(entries, key=lambda e: (dict(e[1]).get("cat", ""), dict(e[1])["role"], e[0].lower()))
 
     ground, planes, helis, ships = order(ground), order(planes), order(helis), order(ships)
+    statics = static_entries(os.path.join(src, "statics.py"))
 
     weapons = parse_weapons(os.path.join(src, "weapons_data.py"))
     src_label = "checkout at " + os.path.abspath(args.pydcs).replace("\\", "/")
     pool_path = os.path.join(args.out_dir, "unit_pool.lua")
     pyl_path = os.path.join(args.out_dir, "aircraft_pylons.lua")
-    write_pool(pool_path, ground, planes, helis, ships, src_label)
+    write_pool(pool_path, ground, planes, helis, ships, statics, src_label)
     missing = write_pylons(pyl_path, plane_pylons + heli_pylons, weapons, src_label)
 
-    print("unit_pool.lua: %d ground, %d planes, %d helicopters, %d ships -> %s" % (
-        len(ground), len(planes), len(helis), len(ships), pool_path))
+    print("unit_pool.lua: %d ground, %d planes, %d helicopters, %d ships, %d static objects -> %s" % (
+        len(ground), len(planes), len(helis), len(ships), len(statics), pool_path))
     print("aircraft_pylons.lua: %d aircraft with pylons, %d weapons known -> %s" % (
         sum(1 for _u, p in plane_pylons + heli_pylons if p), len(weapons), pyl_path))
     if missing:

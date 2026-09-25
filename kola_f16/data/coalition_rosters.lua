@@ -26,6 +26,12 @@ COALITION_ROSTER = {
         shoulder_launched_missile = { { "SA-18 Igla-S manpad", 3 }, { "SA-18 Igla manpad", 1 } },
         infantry                  = { { "Soldier AK", 2 }, { "Infantry AK ver2", 1 }, { "Infantry AK ver3", 1 },
                                       { "Soldier RPG", 1 } },
+        -- ── convoys (data/convoy_recipes.lua; Red only for now) ──
+        cargo_truck               = { { "Ural-4320-31", 3 }, { "KAMAZ Truck", 2 }, { "GAZ-66", 1 } },
+        fuel_truck                = { { "ATZ-10", 2 }, { "ATZ-5", 1 }, { "TZ-22_KrAZ", 1 } },
+        armored_personnel_carrier = { { "BTR-82A", 2 }, { "BTR-80", 1 } },
+        -- escorts an important column: gun or infrared missiles on a tracked chassis
+        mobile_air_defense_vehicle = { { "ZSU-23-4 Shilka", 1 }, { "Strela-10M3", 1 } },
     },
     blue = {
         -- Finland fields ZU-23-2 (23 ItK 61); rosters are per coalition, so it shows up at
@@ -73,5 +79,77 @@ COALITION_SAM_SYSTEMS = {
         -- incoming missiles. Rapier left out: useless against low flyers in DCS
         short_range   = { { "SA-8", 2 }, { "SA-15", 1 }, { "Roland", 1 } },
         early_warning = { { "FPS-117", 1 } },
+    },
+}
+
+-- What each coalition's fixed ground targets are made of, per role: { type, weight }.
+-- Roles are named by data/fixed_ground_target_recipes.lua. Kept apart from
+-- COALITION_ROSTER because these include static objects and parked aircraft, not only
+-- ground units. A recipe part says whether its role spawns as units or static objects:
+--   unit           type must be in UNIT_POOL.ground
+--   static_object  type must be in UNIT_POOL.static (structures), .ground (a parked
+--                  vehicle), .plane or .helicopter (a parked aircraft)
+-- Structures are core DCS objects only (no M92 asset-pack tents / containers).
+COALITION_FIXED_GROUND_TARGET_ROSTER = {
+    red = {
+        -- ── structures ──
+        barracks              = { { "Barracks 2", 3 }, { "FARP Tent", 2 } },
+        command_building      = { { "Military staff", 2 }, { ".Command Center", 1 }, { "FARP CP Blindage", 1 } },
+        communications_tower  = { { "Comms tower M", 3 }, { "TV tower", 1 } },
+        warehouse             = { { "Warehouse", 2 }, { "Small werehouse 1", 1 }, { "Small werehouse 2", 1 } },
+        ammunition_storage    = { { ".Ammunition depot", 2 }, { "FARP Ammo Dump Coating", 1 } },
+        fuel_storage_tank     = { { "Fuel tank", 2 }, { "Tank", 2 } },
+        supply_containers     = { { "Container brown", 2 }, { "Container red 1", 1 }, { "Container white", 1 } },
+        generator             = { { "GeneratorF", 1 } },
+        -- ── parked vehicles ──
+        supply_truck          = { { "Ural-4320-31", 2 }, { "KAMAZ Truck", 2 }, { "GAZ-66", 1 } },
+        fuel_truck            = { { "ATZ-10", 2 }, { "ATZ-5", 1 }, { "TZ-22_KrAZ", 1 } },
+        command_vehicle       = { { "Ural-375 PBU", 2 }, { "SKP-11", 1 } },
+        -- ── ground units ──
+        infantry              = { { "Soldier AK", 2 }, { "Infantry AK ver2", 1 }, { "Infantry AK ver3", 1 },
+                                  { "Soldier RPG", 1 } },
+        infantry_carrier      = { { "BTR-82A", 2 }, { "BMP-2", 2 }, { "BMP-3", 1 }, { "MTLB", 1 } },
+        main_battle_tank      = { { "T-72B3", 3 }, { "T-80B", 2 }, { "T-90", 1 } },
+        -- one type per battery (recipe same_type): tube or rocket artillery
+        artillery_piece       = { { "SAU Msta", 3 }, { "SAU Gvozdika", 1 }, { "Grad-URAL", 2 },
+                                  { "Uragan_BM-27", 1 } },
+        -- ── parked aircraft (Northern Fleet aviation and the long-range bombers at Olenya) ──
+        parked_fighter        = { { "Su-27", 3 }, { "MiG-31", 3 }, { "MiG-29S", 1 }, { "Su-30", 1 } },
+        parked_strike_aircraft = { { "Su-24M", 2 }, { "Su-34", 2 } },
+        parked_bomber         = { { "Tu-22M3", 3 }, { "Tu-95MS", 1 }, { "Tu-142", 1 } },
+        parked_transport      = { { "An-26B", 2 }, { "IL-76MD", 1 } },
+        parked_helicopter     = { { "Mi-8MT", 3 }, { "Ka-27", 1 }, { "Mi-24P", 1 } },
+    },
+    blue = {
+        -- ── structures ──
+        barracks              = { { "Barracks 2", 3 }, { "FARP Tent", 2 } },
+        command_building      = { { "Military staff", 2 }, { ".Command Center", 1 }, { "FARP CP Blindage", 1 } },
+        communications_tower  = { { "Comms tower M", 3 }, { "TV tower", 1 } },
+        warehouse             = { { "Warehouse", 2 }, { "Small werehouse 1", 1 }, { "Small werehouse 2", 1 } },
+        ammunition_storage    = { { ".Ammunition depot", 2 }, { "FARP Ammo Dump Coating", 1 } },
+        fuel_storage_tank     = { { "Fuel tank", 2 }, { "Tank", 2 } },
+        supply_containers     = { { "Container brown", 2 }, { "Container red 1", 1 }, { "Container white", 1 } },
+        generator             = { { "GeneratorF", 1 } },
+        -- ── parked vehicles ──
+        supply_truck          = { { "M 818", 2 }, { "CHAP_M1083", 1 }, { "Land_Rover_101_FC", 1 } },
+        fuel_truck            = { { "M978 HEMTT Tanker", 1 } },
+        command_vehicle       = { { "Land_Rover_101_FC", 1 }, { "Hummer", 1 } },
+        -- ── ground units ──
+        infantry              = { { "Soldier M4", 3 }, { "Soldier M249", 1 } },
+        -- Marder for Norway's and Sweden's CV90, Stryker for Finland's Patria AMV; M113
+        -- still serves in Norway and Finland
+        infantry_carrier      = { { "Marder", 2 }, { "M1126 Stryker ICV", 2 }, { "M-113", 1 } },
+        -- Leopard 2 in all three armies (Strv 122 ≈ 2A5)
+        main_battle_tank      = { { "Leopard-2A5", 2 }, { "leopard-2A4", 2 }, { "Leopard-2", 1 } },
+        -- M109 for Norway's K9, Dana for Sweden's wheeled Archer; Finland fields M270 MLRS
+        artillery_piece       = { { "M-109", 2 }, { "SpGH_Dana", 1 }, { "MLRS", 1 }, { "CHAP_M142_GMLRS_M31", 1 } },
+        -- ── parked aircraft (Nordic air forces plus allied reinforcements) ──
+        -- F-16 for Norway's F-35 / Sweden's Gripen (neither in DCS), Hornet for Finland
+        parked_fighter        = { { "FA-18C_hornet", 3 }, { "F-16C_50", 2 }, { "F-15C", 1 } },
+        parked_strike_aircraft = { { "F-15ESE", 2 }, { "FA-18C_hornet", 1 } },
+        -- US bomber task force deployments to Norway; stands in for Evenes' P-8s too
+        parked_bomber         = { { "B-1B", 2 }, { "B-52H", 1 } },
+        parked_transport      = { { "C-130", 2 }, { "C-130J-30", 1 } },
+        parked_helicopter     = { { "UH-60A", 2 }, { "CH-47D", 1 }, { "SH-60B", 1 } },
     },
 }
