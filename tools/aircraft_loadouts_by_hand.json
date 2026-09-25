@@ -1,0 +1,37 @@
+{
+  "_comment": "Loadouts proven in our own missions, pylons exactly as flown. From the Syria mission's scripts/modules/blue_air_support.lua (CAS flights, verified in DCS). Read by aircraft_loadouts.py as source 'hand'.",
+  "F-16C_50": {
+    "Syria CAS": { "pylons": [
+      { "num": 1,  "CLSID": "{6CEB49FC-DED8-4DED-B053-E1F033FF72D3}" },
+      { "num": 2,  "CLSID": "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },
+      { "num": 3,  "CLSID": "{DAC53A2F-79CA-42FF-A77A-F5649B601308}" },
+      { "num": 7,  "CLSID": "{DAC53A2F-79CA-42FF-A77A-F5649B601308}" },
+      { "num": 8,  "CLSID": "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },
+      { "num": 9,  "CLSID": "{6CEB49FC-DED8-4DED-B053-E1F033FF72D3}" },
+      { "num": 11, "CLSID": "{A111396E-D3E8-4b9c-8AC9-2432489304D5}" }
+    ] }
+  },
+  "FA-18C_hornet": {
+    "Syria CAS": { "pylons": [
+      { "num": 1, "CLSID": "{5CE2FF2A-645A-4197-B48D-8720AC69394F}" },
+      { "num": 2, "CLSID": "LAU_117_AGM_65F" },
+      { "num": 3, "CLSID": "{GBU-38}" },
+      { "num": 4, "CLSID": "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },
+      { "num": 5, "CLSID": "{A111396E-D3E8-4b9c-8AC9-2432489304D5}" },
+      { "num": 6, "CLSID": "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },
+      { "num": 7, "CLSID": "{GBU-38}" },
+      { "num": 8, "CLSID": "LAU_117_AGM_65F" },
+      { "num": 9, "CLSID": "{5CE2FF2A-645A-4197-B48D-8720AC69394F}" }
+    ] }
+  },
+  "A-10C_2": {
+    "Syria CAS": { "pylons": [
+      { "num": 1,  "CLSID": "{DB434044-F5D0-4F1F-9BA9-B73027E18DD3}" },
+      { "num": 2,  "CLSID": "{A111396E-D3E8-4b9c-8AC9-2432489304D5}" },
+      { "num": 3,  "CLSID": "{DAC53A2F-79CA-42FF-A77A-F5649B601308}" },
+      { "num": 9,  "CLSID": "{DAC53A2F-79CA-42FF-A77A-F5649B601308}" },
+      { "num": 10, "CLSID": "{CBU-87}" },
+      { "num": 11, "CLSID": "{DB434044-F5D0-4F1F-9BA9-B73027E18DD3}" }
+    ] }
+  }
+}

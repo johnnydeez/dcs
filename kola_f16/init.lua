@@ -22,6 +22,7 @@ if not load("lib\\util.lua")               then return end
 if not load("lib\\logger.lua")             then return end
 if not load("lib\\weather.lua")            then return end
 if not load("lib\\placement.lua")          then return end
+if not load("lib\\threat_routing.lua")     then return end
 
 Log.info("============================================")
 Log.info("  Kola F-16 generator loading")
@@ -45,6 +46,9 @@ if not load("data\\sam_site_density.lua")         then return end
 if not load("data\\fixed_ground_target_recipes.lua") then return end
 if not load("data\\fixed_ground_target_density.lua") then return end
 if not load("data\\convoy_recipes.lua")           then return end
+if not load("data\\aircraft_profiles.lua")        then return end
+if not load("data\\aircraft_loadouts.lua")        then return end
+if not load("data\\air_tasking.lua")              then return end
 if not load("gather.lua")                  then return end
 if not load("stages\\roll_territory.lua")  then return end
 if not load("stages\\plan_base_defenses.lua")     then return end
@@ -52,6 +56,7 @@ if not load("stages\\plan_sam_sites.lua")         then return end
 if not load("stages\\plan_fixed_ground_targets.lua") then return end
 if not load("stages\\plan_convoys.lua")           then return end
 if not load("stages\\catalog_targets.lua")        then return end
+if not load("stages\\plan_air_tasking.lua")       then return end
 if not load("consumers\\territory.lua")    then return end
 if not load("consumers\\spawn_ground_groups.lua") then return end
 if not load("consumers\\draw_base_defenses.lua")  then return end
@@ -59,6 +64,9 @@ if not load("consumers\\draw_sam_sites.lua")      then return end
 if not load("consumers\\spawn_static_objects.lua") then return end
 if not load("consumers\\draw_fixed_ground_targets.lua") then return end
 if not load("consumers\\draw_convoys.lua")        then return end
+if not load("consumers\\spawn_aircraft_groups.lua") then return end
+if not load("consumers\\schedule_air_tasking_orders.lua") then return end
+if not load("consumers\\draw_air_tasking_orders.lua") then return end
 if CONFIG.SURVEY_FOOTPRINTS and not load("survey\\survey_airbase_footprints.lua") then return end
 if CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN and not load("survey\\probe_parked_aircraft_spawn.lua") then return end
 
@@ -67,6 +75,7 @@ PlanBaseDefenses.checkData()
 PlanSamSites.checkData()
 PlanFixedGroundTargets.checkData()
 PlanConvoys.checkData()
+PlanAirTasking.checkData()
 
 -- ── Run sequence ────────────────────────────────────────────────
 
@@ -91,7 +100,8 @@ local function run()
     PlanFixedGroundTargets.run(plan)
     PlanConvoys.run(plan)
     CatalogTargets.run(plan)   -- after every stage that plans targets
-    -- stages 5..7 go here
+    PlanAirTasking.run(plan)   -- stages 5–6: reads only the catalog for targets
+    -- stage 7 (brief) goes here
 
     dumpPlan(plan)
 
@@ -109,9 +119,12 @@ local function run()
     DrawSamSites.apply(plan)
     DrawFixedGroundTargets.apply(plan)
     DrawConvoys.apply(plan)
+    -- aircraft spawn later, each at its planned start time
+    ScheduleAirTaskingOrders.start(plan)
+    DrawAirTaskingOrders.apply(plan)
     local text = Territory.summaryText(plan) .. "\n" .. DrawBaseDefenses.summaryText(plan)
         .. "\n" .. DrawSamSites.summaryText(plan) .. "\n" .. DrawFixedGroundTargets.summaryText(plan)
-        .. "\n" .. DrawConvoys.summaryText(plan)
+        .. "\n" .. DrawConvoys.summaryText(plan) .. "\n" .. DrawAirTaskingOrders.summaryText(plan)
     if CONFIG.SHOW_WEATHER_DEBUG then
         text = text .. "\n\n" .. Weather.summaryText(plan.world)
     end
