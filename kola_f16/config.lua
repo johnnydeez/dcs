@@ -59,9 +59,16 @@ CONFIG = {
     DRAW_ANCHORS     = false,   -- dot every placement anchor at defended bases (by kind)
     DRAW_SAM_SITES   = true,    -- label every SAM / early-warning site
     DRAW_SAM_RINGS   = true,    -- engagement ring per SAM site, detection ring per EW site
+    DRAW_FIXED_GROUND_TARGETS = true,   -- label + ring per fixed ground target site
+    DRAW_CONVOYS     = true,    -- planned route line + start and parking labels per convoy
 
     -- One-off: survey every airfield's footprint (aprons, airfield buildings) and write
     -- Saved Games\DCS\kola_airbase_footprints.lua; copy it to data\airbase_footprints.lua
     -- and set this back to false. See survey/survey_airbase_footprints.lua.
     SURVEY_FOOTPRINTS = false,
+
+    -- One-off: time how long parked aircraft take to spawn as static objects under
+    -- different countries / liveries (survey/probe_parked_aircraft_spawn.lua). When true,
+    -- the mission runs only the probe — nothing else is planned or spawned.
+    PROBE_PARKED_AIRCRAFT_SPAWN = false,
 }

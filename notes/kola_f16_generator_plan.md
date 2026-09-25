@@ -1,9 +1,9 @@
 # Kola F-16 Randomized Mission Generator — Planning Doc
 
-> **Status:** v1 — stages 1–2 (territory + base defenses at all 37 airfields) + stage 3a (SAM network, 100 zones) + world inputs running in DCS (2026-09-23). Planning sections §1–10 are the concept; §11, "Where we are" and "Base defenses — as built" are the spec.
+> **Status:** v1 — stages 1–2 (territory + base defenses at all 37 airfields) + stage 3a (SAM network, 100 zones) + world inputs running in DCS (2026-09-23); zone classes in `data/zones.lua`, stage 3b (fixed ground targets) and 3c (target catalog) running in DCS for both coalitions, full start-up spawn ~7 s (2026-09-24). Planning sections §1–10 are the concept; §11, "Where we are" and the "as built" sections are the spec.
 > Companion to the Syria project (`notes/notes.md`). Open questions are marked **[Q]** — answer them inline and the doc becomes the spec.
 >
-> **Layout:** *Where we are* (pick up here) → *Next session* candidates → *Base defenses — as built* → *Plan* (§1–10, concept and research) → *Architecture* (§11, code structure decisions).
+> **Layout:** *Where we are* (pick up here) → *Next session* candidates → *Base defenses / SAM sites / Fixed ground targets — as built* → *Plan* (§1–10, concept and research) → *Architecture* (§11, code structure decisions).
 >
 > **Naming rule:** name things by what they are or what they do, in full words. No abbreviations in code names: `mobile_anti_aircraft_guns`, not `aaa_sp`; `shoulder_launched_missile_teams`, not `manpads_team`. Each name answers one question. Prose may still use common terms (AAA, SHORAD, MANPADS).
 >
@@ -11,7 +11,54 @@
 
 ---
 
-## Where we are — pick up here  *(2026-09-23, end of session 4 — SAM network done for now; 100 zones)*
+## Session 6 (2026-09-25) — first convoy, offline only so far
+
+- **Performance flights** (John, F-16): baseline under "Unit budget" below. Result: no mission changes, graphics settings only; re-test once AI flights and moving units land.
+- **Stage 4, first part: one Red supply convoy per mission** (`stages/plan_convoys.lua`, `PlanConvoys` → `plan.convoys`). Ported from the Syria `convoy_setup.lua`, split into the pipeline:
+  - **Data:** `data/convoy_recipes.lua` holds `CONVOY_RECIPE.supply_convoy` and `CONVOYS_PER_COALITION` (Red 1, Blue 0). The column is 1–2 armored personnel carriers at the ends, 4–8 cargo trucks + 1–2 fuel trucks (critical), 1–2 gun trucks mixed in, and 0–1 Shilka/Strela-10 at the tail: 7–14 vehicles. No infantry (it would slow the column to walking pace). New Red roles in `COALITION_ROSTER`: `cargo_truck`, `fuel_truck`, `armored_personnel_carrier`, `mobile_air_defense_vehicle`.
+  - **Route:** a Red base pair 60–175 km apart. It prefers rear/mid → front, then any base → one closer to the enemy, shuffled. Start and parking are road points 2.5–5 km outside each airfield, clear of runways, zones and anything planned. `land.findPathOnRoads` proves a road connects them and measures it (≤ 250 km); a pair without one is skipped (up to 8 tried). Vehicles stand in a column along the first stretch of the road path, 25 m apart. There is a waypoint every 20 km, "On Road" at ~50 km/h, and the convoy parks at the last one.
+  - **Ids:** `CONVOY_<FROM CODE>_supply_convoy_<n>`.
+  - **One ground spawner** (John: spawners split by static / ground / air; no per-feature spawners): `SpawnGroundGroups` takes an optional `route` field. Offline, the other 215 groups produce byte-identical `addGroup` tables.
+  - **Catalog:** category `mobile_ground_target`, mission type `interdiction` (new); the trucks are critical, fraction 0.5. The entry carries `from_base`, `to_base`, `waypoints`, `speed_mps`, `travel_minutes`, so tasking can work out where the convoy is at a given time. `CatalogTargets` now runs after stage 4.
+  - **Map:** `consumers/draw_convoys.lua` (`CONFIG.DRAW_CONVOYS`, mark ids 40000+) draws a dashed route line plus start and parking labels.
+- **Offline** (100 rolls, road calls stubbed): a convoy every roll, 0 check failures; 24 % of routes go to a base closer to the enemy rather than a `front` one. Each roll logs "BLUE has no targets for: interdiction" (true until Blue gets convoys).
+- **Not yet verified in DCS:** that `land.findPathOnRoads` works on Kola, that the convoy actually drives, and where it gets stuck. First DCS run: grep `Stage 4` in `dcs.log`, then watch the column on F10.
+
+## Where we were — end of session 5  *(2026-09-24 — zone classes, fixed ground targets and the target catalog running in DCS)*
+
+**Status: stages 1–3c run in DCS.** Boot → gather → `RollTerritory` → `PlanBaseDefenses` → `PlanSamSites` → `PlanFixedGroundTargets` → `CatalogTargets` → plan dump → `Territory.apply` → spawn: **static objects first**, then base defenses, SAM sites, fixed-target units → draw (base defenses, SAM sites, fixed ground targets) + on-screen summary.
+- **Last DCS run:** 250 static objects in 0.5 s, then ~860 units in ~5 s. 0 failed, 0 type mismatches.
+- **Catalog:** 107 targets. It holds every SAM / early-warning site and every fixed ground target site of the roll, none missing, each with critical names, mission types, `covered_by` and `defended_base`.
+- **John's verdict** on the parked-aircraft groups: "looks pretty good". The session ends at a good stopping point.
+
+**Session 5 (2026-09-24):**
+- **Zone classes (offline, part of the zone workflow).** `kola_f16/survey/survey_zone_terrain.lua` runs only in `khola_ground_zones.miz` (trigger: ONCE → TIME MORE 1 → DO SCRIPT `dofile(lfs.writedir() .. "Scripts\\kola_f16\\survey\\survey_zone_terrain.lua")`). It measures the DCS terrain around every zone and writes `Saved Games\DCS\kola_zone_terrain.lua`. `python tools/miz_zones.py "<khola_ground_zones.miz>"` then writes the classes into each `data/zones.lua` entry: `size`, `airfield_distance`, `ground`, `terrain`, `road_access`, `railway_access`, `water`, `radar_view`, `settlement`, `prepared_sam_position`. It also writes `surveyed`, a `measured` line, and reports prepared SAM positions and every map object type found. Thresholds and object categories (`CLASS_THRESHOLDS`, `OBJECT_CATEGORIES`) live in the tool. Workflow after drawing zones: save the .miz → fly it once → run the tool. Real data 2026-09-24: 7 zones on the map's own SAM revetments (the Kilpyavr zones, the Ivalo pair, `ZONE_ALAK_074_013` just outside); `settlement` still counts airfield buildings (18 of 29 airfield zones read "town") — accepted for now. SAM results verified byte-identical with the new `zones.lua` (30 seeds) and in a DCS run.
+- **SAM spawning left untouched on purpose** (John: "we just got that working the way we wanted"). Later stages only consume what SAM leaves (`plan.sam_sites.zones_used`). SAM + base-defense output was verified byte-identical offline (30 seeds) after every related change.
+- **Fixed ground targets (stage 3b) and the target catalog (stage 3c)**: spec in "Fixed ground targets — as built" below.
+  - **One roller** for every kind of fixed target (John: separate rollers per target type would get unwieldy). Nine kinds, both coalitions ("an active conflict unfolding").
+  - **Offline** (luae, 100 seeds, real zones): Red ≈ 22 sites / 17 units / 102 static objects per roll, Blue ≈ 31 / 42 / 159; all placement checks clean.
+  - **In DCS:** Red 18–20 sites, Blue 29–33.
+- **Renamed "static" → "fixed"** (John): "static" is reserved for actual DCS static objects; things that don't move are "fixed", things that move will be "mobile". The stage, data files, globals, plan key, config flag and mark text all say fixed.
+- **Revetment zones are SAM-only** (John: anything else "would spawn weirdly there"). Rule: `FIXED_GROUND_TARGET_EXCLUDED_ZONE_CLASSES = { prepared_sam_position = { "revetments" } }`. Offline 30 seeds: 0 fixed targets in the 7 revetment zones.
+- **Start-up stall found and fixed: static objects must spawn before any AI units.**
+  - **Symptom:** the first runs spent ~2–3 min in `coalition.addStaticObject`, ~3 s per parked aircraft.
+  - **Probe** (`survey/probe_parked_aircraft_spawn.lua`, `CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN`, off): livery and country (CJTF vs real) made no difference; every variant took ~0.00 s into an empty world.
+  - **Fix:** spawning static objects first → 247 objects in 7.4 s, then 250 in 0.5 s; units no slower. The reason inside DCS is unknown and doesn't matter (John).
+  - **Recorded** in the `init.lua` spawn block ("KEEP THIS ORDER"), both spawner headers, §1.1 "Execution timing", §11.3 step 6, the §11.4 consumers table and the fixed-targets as-built section. Temporary timing lines were removed after the fix was confirmed.
+- **Parked aircraft stand together:** one group per base, one role, one type, on neighbouring spots (John: singles scattered over the field weren't realistic; more aircraft aren't needed). Offline: 0 mixed-type groups in 489, median spread 95 m. In DCS: "looks pretty good".
+- **Prerequisites done:**
+  - `tools/unit_pool.py` now fills `UNIT_POOL.static`: 259 structure / cargo types with category + shape_name from pydcs `statics.py`. The rest of the pool regenerates identically.
+  - Gather keeps each parking spot's terminal type and index (`{ x, z, terminal_type, terminal_index }`). Kola fields have types 104 (large), 72 (open), 40 (helicopter), 16 (runway), and no hardened shelters (68).
+  - Parked vehicles as static objects use the pool's `cat` as their category (e.g. `Unarmed`); verified in DCS.
+- **Known gaps:**
+  - **Front targets are starved.** Only ~4 zones per coalition are within 100 km of an enemy base, and the SAM front belt takes ~90% of them. So armor assembly areas and artillery batteries almost never appear, and Red often has just 1 close-air-support target.
+  - **Red's supply-depot minimum** fails about half the time: its large free zones mostly have `no_road`.
+  - **Fix:** zones near the front (John, later) or a front-target rule; SAM stays untouched.
+- **Cosmetic, harmless:**
+  - With CJTF countries and no `livery_id`, DCS logs "livery not found" and uses its standard livery. Real liveries per coalition would make parked jets look right.
+  - Some wreck models are missing (`Ural-375_p_1`, `MOBILE_GENERATOR_CRASH`, …).
+
+## Where we were — end of session 4  *(2026-09-23 — SAM network done for now; 100 zones)*
 
 **Status: stages 1–2 run in DCS and are verified at all 37 airfields; stage 3a (SAM sites) ran in DCS five times with 90–100 zones and was tuned between runs (below); John called it done for now ("perfection isn't necessary").** Boot → gather (airbases incl. runways/parking/anchor, zones, weather + time) → `RollTerritory` (territory, front, echelon) → `PlanBaseDefenses` (every base, both coalitions) → `PlanSamSites` (SAM + early-warning network in the zones) → plan dump → `Territory.apply` (coalitions + circles) → `SpawnGroundGroups` (base defenses, then SAM sites) → `DrawBaseDefenses` + `DrawSamSites` (debug marks) + on-screen summary. The user's all-bases run looked right; placements at the cramped fields were acceptable. FPS is not a concern for standing ground units (John).
 
@@ -52,8 +99,8 @@ kola_f16/
   lib/weather.lua            Weather.derive / deriveTime (§1.11), sun, flight rules, summaryText (TEMP debug)
   lib/placement.lua          isClear (runway boxes, parking, surface ring), findClear, ringPoint/discPoint,
                              buildAnchors (infield/apron/parking/building/runway_side), pickAnchorPoint
-  data/clusters.lua          11 clusters (§3)            data/zones.lua  100 zones, generated (§1.12)
-  data/cloud_presets.lua     34 presets, generated        data/unit_pool.lua  every AI-operable unit, generated (§1.13)
+  data/clusters.lua          11 clusters (§3)            data/zones.lua  100 zones + classes, generated (§1.12)
+  data/cloud_presets.lua     34 presets, generated        data/unit_pool.lua  every AI-operable unit + static object type, generated (§1.13)
   data/aircraft_pylons.lua   generated, NOT loaded        data/airbase_codes.lua  4-letter code per base
   data/airbase_classes.lua   hub/fighter/bomber/heli/strip (DRAFT)
   data/base_defense_levels.lua  BASE_DEFENSE_LEVEL[class][echelon] + BASE_DEFENSE_SKILL[level]
@@ -64,15 +111,26 @@ kola_f16/
   data/forested_airfields.lua  fields whose infield is forest (Afrikanda): runway ends + roads only
   data/sam_site_recipes.lua  what each SAM / EW system's site contains + layout (SAM_SITE_RECIPE, SAM_SITE_PLACE)
   data/sam_site_density.lua  zone roles, chance + layer weights per role, zone share and per-layer caps
-  gather.lua                 plan.world: airbases{pos, anchor, runways, parking, me_side}, zones, time, weather, checks
+  data/fixed_ground_target_recipes.lua  what each fixed ground target kind contains, where it goes, success
+  data/fixed_ground_target_density.lua  per coalition: zone chance + kinds per echelon, airfield chances, minimums, caps
+  gather.lua                 plan.world: airbases{pos, anchor, runways, parking{x, z, terminal type, index}, me_side}, zones, time, weather, checks
   stages/roll_territory.lua  plan.territory: clusters, bases{side, cluster, echelon}, zones, front, summary
   stages/plan_base_defenses.lua  plan.base_defenses: groups, bases (per-base summary), totals
   stages/plan_sam_sites.lua  plan.sam_sites: sites, groups, zones_used, summary
+  stages/plan_fixed_ground_targets.lua  plan.fixed_ground_targets: sites, groups, static_objects, zones_used, parking_used
+  stages/catalog_targets.lua  plan.target_catalog: every SAM site + fixed ground target, by id
   consumers/territory.lua    setCoalition + autoCapture(false); base/zone circles; summaryText
   consumers/spawn_ground_groups.lua  plan entries → coalition.addGroup + type check (generic: zones will reuse it)
   consumers/draw_base_defenses.lua   level ring per base, label per group, optional anchor dots; summaryText
   consumers/draw_sam_sites.lua       label + engagement / detection ring per SAM site; summaryText
+  consumers/spawn_static_objects.lua coalition.addStaticObject + per-object type check
+  consumers/draw_fixed_ground_targets.lua  label + ring per fixed ground target site; summaryText
+  data/convoy_recipes.lua    what each convoy kind contains, how it drives; convoys per coalition
+  stages/plan_convoys.lua    plan.convoys: convoys, groups (with route), summary (stage 4, first part)
+  consumers/draw_convoys.lua route line + start / parking labels per convoy; summaryText
   survey/survey_airbase_footprints.lua  one-off survey (off)
+  survey/survey_zone_terrain.lua      zone terrain survey; runs only in khola_ground_zones.miz
+  survey/probe_parked_aircraft_spawn.lua  one-off timing probe (off; CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN)
 tools/                       miz_zones.py, cloud_presets.py, unit_pool.py (+ overrides), dcslua.py, kola_proj.py, kola_airbases.json
 kola_f16_random_tasking.miz  flyable mission (ONCE + TIME MORE 1 → DO SCRIPT dofile(lfs.writedir().."Scripts\\kola_f16\\init.lua"))
 ```
@@ -82,20 +140,32 @@ Plan dump: `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `python tools/
 
 ## NEXT SESSION — candidates  *(pick one with John)*
 
-**Chosen (2026-09-23): build linearly, stage by stage.** Next is **stage 3b: the ground units that will be targets** (candidate 2 below), then stage 4 (moving units), and only then tasking/missions (stages 5–7). John isn't in a rush to fly; a thin "fly one SEAD mission first" slice was offered and declined. To settle at the start of stage 3b:
-- **Garrisons** in free zones (`plan.sam_sites.zones_used` excluded): composition by role and distance to the front; SHORAD/MANPADS travelling with them (instead of taking zones); later CAS targets and stage-4 start points.
-- **Target sites**: depots, fuel farms, HQ / command posts, radar and comms sites, ammo dumps, mostly in rear zones.
-- **Airfield targets** at Red bases (parked aircraft, fuel tanks, shelters): script-spawned statics on the existing footprint anchors (leaning this way) vs ME late-activation groups (§1.2's original assumption).
-- **Naval**: Kola Bay moored ships — still open (§9).
-- **Target catalog shape**: id, kind, position, group/static names, success criterion (§1.2), so the tasking stages choose from what really exists.
+**Build order (chosen 2026-09-23): linearly, stage by stage.** Stage 3 (base defenses, SAM sites, fixed ground targets, target catalog) is done as of 2026-09-24. Next by the build order is **stage 4 (mobile units)**, then tasking/missions (stages 5–7), which read only `plan.target_catalog`. John isn't in a rush to fly; a thin "fly one SEAD mission first" slice was offered and declined.
 
-1. ~~First DCS run of the SAM network and tuning~~ — done 2026-09-23 (five runs, minimum-per-layer rule, spreading). Still open: fly against it and check the Patriot's two-radar layout actually engages; optionally a Blue rear-density tweak.
-2. **Rest of stage 3:** garrisons and target sites in the zones SAM sites leave free (`plan.sam_sites.zones_used`). Consolidate spawning into `lib/dcs_groups.lua` + a `spawn_at_start` consumer once there's a third list (discussed 2026-09-23).
-3. **Base-defense polish** (deferred list): ±1 level nudge at ~20 %; logistics/fuel components as statics (cheap, targetable); `security_armor` / `apc_patrol` components; re-classify `airbase_classes.lua` and grow `coalition_rosters.lua` (Tor / Tunguska at heavy Red bases, etc.).
-4. **Housekeeping:** rename `consumers/territory.lua` → `apply_territory.lua` (`ApplyTerritory`); drop `SHOW_WEATHER_DEBUG` once the brief exists.
-5. **Proximity spawning** (unlikely to be needed: standing ground units barely affect FPS): spawn a base's defenses when a player gets within ~150 km — the plan already holds every unit, so briefs and targets stay truthful.
+1. **Front targets** (the known gap above): John draws zones near the front, or a front-target rule. For example, measure "front" for targets from this roll's front gap like the SAM front belt does, or allow armor / artillery at `mid`. Also Red supply depots with no road access.
+2. **Stage 4: mobile units.** Convoys, reinforcements, TEL deployments, contacts. They need their own zones / corridors, since fixed targets use all free zones. Add them to the catalog through an adapter in `stages/catalog_targets.lua`. Spawn their static objects (if any) before units.
+3. **SAM sites on the map's revetments** (`prepared_sam_position = "revetments"`, 7 zones): John wants SAMs spawned in those dug-in positions later. It's a SAM-stage change, so ask first.
+4. ~~First DCS run of the SAM network and tuning~~, done 2026-09-23. Still open: fly against it and check the Patriot's two-radar layout engages; optionally a Blue rear-density tweak.
+5. ~~Rest of stage 3~~, done 2026-09-24 (fixed ground targets + catalog). Deferred from it:
+   - consolidate spawning into `lib/dcs_groups.lua` + a `spawn_at_start` consumer (it would touch SAM spawning, so leave it until wanted);
+   - a second parked-aircraft group at hubs if ramps look empty;
+   - real liveries per coalition for parked aircraft;
+   - `settlement` still counts airfield buildings.
+6. **Base-defense polish** (deferred list): ±1 level nudge at ~20 %; logistics/fuel components as statics (cheap, targetable); `security_armor` / `apc_patrol` components; re-classify `airbase_classes.lua` and grow `coalition_rosters.lua` (Tor / Tunguska at heavy Red bases, etc.).
+7. **Housekeeping:** rename `consumers/territory.lua` → `apply_territory.lua` (`ApplyTerritory`); drop `SHOW_WEATHER_DEBUG` once the brief exists.
+8. **Proximity spawning** (unlikely to be needed: standing ground units barely affect FPS): spawn a base's defenses when a player gets within ~150 km — the plan already holds every unit, so briefs and targets stay truthful.
 
-**Unit budget (researched 2026-09-23, rules of thumb, not measured):** standing ground units ~1,000–1,500 total (now ~770 per roll); moving ground groups ~10–20 at once, short on-road routes (stage 4 is the risk); AI aircraft 12–20 alive. Cost order: moving ground > AI aircraft > standing units with sensors > idle units / statics. Levers: `controller:setOnOff(false)` for far ground groups, statics for non-shooting targets, few infantry, wreck cleanup, proximity spawning. Check with RCtrl+Pause FPS over the Kola core; a per-run unit census log line was offered.
+**Unit budget (researched 2026-09-23, rules of thumb, not measured):** standing ground units ~1,000–1,500 total (2026-09-24: ~860 units + ~250 static objects per roll; all spawn in ~6 s); moving ground groups ~10–20 at once, short on-road routes (stage 4 is the risk); AI aircraft 12–20 alive. Cost order: moving ground > AI aircraft > standing units with sensors > idle units / statics. Levers: `controller:setOnOff(false)` for far ground groups, statics for non-shooting targets, few infantry, wreck cleanup, proximity spawning. Check with RCtrl+Pause FPS over the Kola core; a per-run unit census log line was offered.
+
+**Performance baseline (John's F-16 flights, 2026-09-25, stages 1–3c; GPU-bound both times):**
+
+| | Everything spawned (~860 units + ~250 static objects, all `DRAW_*` on) | Empty map |
+|---|---|---|
+| Bodø, on the ground and low flyover | 45–60 fps, some stutter and frametime drops when panning | 48–65 fps, smoother |
+| 25,000 ft | 70–75 fps | 70–75 fps |
+| F10 map | 45 fps | 55 fps |
+
+Reading: standing ground units cost a few fps only close to a heavy base, nothing at altitude. The F10 drop is most likely the ~600 debug marks, not the units. John's response: lower the LOD distance and tune graphics settings; no mission changes. **Re-test the same way once tasked AI flights, CAP and moving ground units land**, since those are the expensive items in the cost order above.
 
 **Open decision, settled for now:** base-defense units live in the plan (`plan.base_defenses`, ids = DCS group names) so they can later be mission targets or brief info, but they are **not** in the target catalog yet.
 
@@ -257,6 +327,89 @@ Log: one line per site (`SAM_SEV1_SA10_1  RED  SA-10  long_range  asset_ring  Se
 
 ---
 
+## Fixed ground targets — as built  *(2026-09-24, stage 3b + target catalog 3c; offline only so far)*
+
+Everything on the ground worth attacking that doesn't move and isn't a SAM site, for both coalitions ("an active conflict unfolding" — John). **Naming (John, 2026-09-24): "fixed" = doesn't move** (fixed ground targets; mobile targets are a separate, later stage and don't need zones kept free). **"static" is reserved for actual DCS static objects** (`coalition.addStaticObject`, `form = "static_object"`, `SpawnStaticObjects`, `UNIT_POOL.static`). A recipe part says `form = "unit"` or `"static_object"` (rule of thumb: would shoot or drive → unit; buildings, parked vehicles and aircraft → static object).
+
+**Run order:** `PlanSamSites` → `PlanFixedGroundTargets` → `CatalogTargets` → dump → spawn (base defenses, SAM, target units, target static objects) → draw. SAM is untouched; 3b only reads `plan.sam_sites.zones_used`.
+
+**Data (plain, no logic):**
+- `data/fixed_ground_target_recipes.lua`: `FIXED_GROUND_TARGET_RECIPE[kind]`. Fields:
+  - `label`, `location` (`zone` / `parking_spot` / `airfield_ground`), `echelons`;
+  - zone class `requires` / `prefers`;
+  - `footprint_m`, `unit_spacing`;
+  - `parts` `{ role, min, max, place, form, critical, same_type, spacing_m }`;
+  - airfield `anchors`; parking `aircraft` + `aircraft_roles_by_base_class`;
+  - `success = { critical_fraction }`, `mission_types`, `value`.
+
+  Places: `centre` / `middle` / `outer` rings (`FIXED_GROUND_TARGET_PLACE`).
+- `data/fixed_ground_target_density.lua`: per coalition `zone_chance` and `zone_kinds` per echelon, `airfield_chance[kind][base class]`, `minimum`, `max_per_kind`. Also the preference bonus, 2 zone targets per area, 2 km spacing, parking share 0.3, skill `Average`.
+- `COALITION_FIXED_GROUND_TARGET_ROSTER` in `data/coalition_rosters.lua` (still the only file that knows red from blue). It's a separate table because `COALITION_ROSTER` is validated as ground units only.
+
+**Kinds (first pass):**
+
+| Kind | Location | Needs | Echelons |
+|---|---|---|---|
+| garrison | zone | medium+, road | all |
+| armor_assembly_area | zone | large, road | front |
+| artillery_battery | zone | medium+, not steep | front |
+| command_post | zone | road | all |
+| supply_depot | zone | large, road | mid, rear |
+| fuel_depot | zone | large, road | mid, rear |
+| communications_site | zone | prefers high ground / open radar view | all |
+| parked_aircraft | parking spots | aircraft roles by base class | all |
+| airfield_fuel_storage | building/apron anchors | — | all |
+
+**Roll, per coalition (same shape as SAM):**
+1. **Minimum pass.** Zone kinds go in the best-fitting zone: most preferred classes, then a new area, then chance. Airfield kinds go to the base with the highest chance.
+2. **Zone pass.** Every free zone gets a chance by echelon, then a kind that fits it; the weight grows ×(1 + matched preferences).
+3. **Airfield pass.** Each held base rolls each airfield kind by its class.
+
+A zone's echelon is measured like a base's (nearest enemy base, 100 / 200 km). **Zones on the map's own SAM revetments (`prepared_sam_position = "revetments"`) are for SAM sites only** — anything else sits oddly in the dug-in positions (John, 2026-09-24); rule: `FIXED_GROUND_TARGET_EXCLUDED_ZONE_CLASSES`, and the summary line counts excluded zones.
+
+**Placement:**
+- **Zone objects** stay inside the zone. The same relaxations as SAM sites: half spacing, then point-only.
+- **Airfield ground:**
+  - uses the base-defense anchors (`Placement.buildAnchors`);
+  - keeps ≥ 40 m from every base-defense unit, and a footprint + 40 m clearance for the site centre;
+  - no relaxing beyond half spacing.
+- **Parked aircraft:**
+  - on real parking spots, at most 30% of a base's spots;
+  - large aircraft only on terminal type 104, helicopters on 40/72/104, others on 68/72/104;
+  - nose toward the nearest runway centreline;
+  - **one group per base, one type, parked together** (John, 2026-09-24: scattered singles weren't realistic; more aircraft not needed). The role comes from the base-class weights, then one roster type. The seed is the fitting spot with the most free fitting spots within `FIXED_GROUND_TARGET_PARKED_AIRCRAFT_REACH_M` (300 m); the group fills the seed's nearest neighbours. Offline, 30 rolls on real spot types: 489 groups, 0 mixed-type, median spread 95 m (max 428 m), ~4% end up as a single aircraft (few fitting spots nearby, or a small base's 30% cap).
+
+**Plan shape:** `plan.fixed_ground_targets = { sites, groups, static_objects, zones_used, parking_used, summary }`.
+- **Ids:** `TGT_<CODE>_<kind>_<n>` is the DCS group name. Units are `<id>_<n>`, static objects `<id>_static_<n>`.
+- **Static-object entry:** `{ id, coalition, type, category, shape_name, x, z, heading_deg, site }`.
+- **Category comes from the pool:** structures from `UNIT_POOL.static`; `Planes` / `Helicopters` for aircraft; the pool's `cat` for vehicles (e.g. `Unarmed`). This is unverified in DCS.
+
+**Target catalog (`stages/catalog_targets.lua`, `plan.target_catalog`):** `targets[id]`, `list` (by coalition, highest value first), `summary[coalition].by_mission_type`.
+- **Entry fields:** `category` (`air_defense` / `ground_target`), `kind`, `label`, `coalition`, `cluster`, `location`, `zone` or `base`, `pos`, `value`, `mission_types`, `group_ids`, `static_object_ids`, `critical_names`, `success = { critical_fraction }`, `covered_by`, `defended_base`, `description`.
+  - `covered_by` = the owner's other SAM rings reaching the target.
+  - `defended_base` = an own base within 5 km that has defenses.
+- **SAM sites:** mission types `suppression_of_air_defenses` + `destruction_of_air_defenses`. Critical = radars (pool roles sam_sr / sam_tr / ewr), else the whole site; fraction 0.5.
+- **Early-warning sites:** mission types `strike` + `destruction_of_air_defenses`; fraction 1.
+- **Mission-type names** are in full words: `suppression_of_air_defenses`, `destruction_of_air_defenses`, `strike`, `airfield_strike`, `close_air_support`.
+- **Rules:** base defenses stay out of the catalog. Mission stages read only the catalog. The catalog is built before spawning; alive or dead is runtime state keyed by the same ids.
+
+**Consumers:** `SpawnGroundGroups` (unchanged) for target units; `consumers/spawn_static_objects.lua` (`SpawnStaticObjects`) spawns static objects, looks each one up by name and compares its type; `consumers/draw_fixed_ground_targets.lua` (`CONFIG.DRAW_FIXED_GROUND_TARGETS`, mark ids 30000+).
+
+**Spawn order rule — static objects before any AI units** (measured 2026-09-24).
+- **Spawned after ~800 AI units:** 286 static objects took ~2–3 min inside `coalition.addStaticObject`. Planes cost ~3 s each (C-130 ~10 s), vehicles ~0.2 s, structures ~0.03 s.
+- **What it isn't:** the probe (`survey/probe_parked_aircraft_spawn.lua`, `CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN`) ruled out livery and country. Every variant took ~0.00 s into an empty world.
+- **Spawned first:** 247 objects took 7.4 s (45 planes 0.2 s), and the unit spawns didn't slow down. Init completes ~14 s after start.
+- **Apply it to every later stage:** anything that spawns static objects spawns them before units.
+- **Confirmed** on the next run: 250 objects in 0.5 s. The TEMP per-type `TIMING` lines were removed. The one-off ATZ-5 slowdown (6.6 s) was likely a first-time model load; if start-up ever slows again, the per-list timestamps in `dcs.log` show where.
+
+**Load-time validation** (`PlanFixedGroundTargets.checkData`):
+- every roster type exists in the right pool for its part's form, and parked-aircraft roles are aircraft;
+- `requires` / `prefers` use real zone classes and values;
+- each recipe has a critical part;
+- density kinds and echelons agree with the recipes (it caught `garrison` listed for the rear while its recipe excluded it).
+
+---
+
 ## 1. Concept
 A mission generator for the **F-16C Block 50** on the **Kola map**. When the `.miz` loads, the script:
 
@@ -357,6 +510,18 @@ The plan is built in **stages**, each consuming the outputs of every stage befor
 
 #### Execution timing
 Planning is pure data and fast. **Spawning** is the cost. Stages 1–4 spawn at T+0 (Syria does this in one frame; if the Kola ground layer is much bigger, spread spawns over a few seconds with `timer.scheduleFunction`). Stages 5–6 spawn on the ATO clock via the Executor's scheduler, under the alive-aircraft budget (§1.9).
+
+**Spawn order at T+0 — static objects first, then AI units** (measured 2026-09-24).
+- `coalition.addStaticObject` gets very slow once many AI units exist: ~3 s per parked aircraft after ~800 units, a 3-minute stall at start.
+- Spawned before the units, the same objects take seconds, and the units are no slower.
+- Every stage that adds static objects must spawn them ahead of all ground groups; `init.lua`'s spawn block is where this is kept.
+- Details: "Fixed ground targets — as built".
+
+**A player aircraft in the world slows every spawn** (found 2026-09-25).
+- **Measured:** with a Client F-16 cold on the ramp at Bodø, 227 static objects took 71 s (~0.3 s each, spread evenly) instead of 0.5 s, even though they went first into an empty world. Base defenses took 16 s and SAM sites 11 s. The log shows "Control passed to the player" before the spawn began.
+- **Decision (John):** remove the slot during development.
+- **Final design:** the player comes in by dynamic spawn (§1.4) after "Init complete", so the T+0 world is built with no player aircraft present.
+- **Still open for mid-mission spawns** (ATO flights, later convoys) while the player flies: spawn in small batches across frames (`timer.scheduleFunction`) so the sim doesn't freeze. Measure it when stage 5/6 lands.
 
 ### 1.2 Content catalog and the side-condition
 
@@ -706,10 +871,12 @@ Committed data over a live read so the dataset is reviewable/diffable in git; re
 
 **Tooling (all under `tools/`, no external dependencies — pydcs is reference material only):** `dcslua.py` reads/writes DCS's Lua-table serialization; `kola_proj.py` is the Kola projection (WGS84 TM, CM 21°E, k₀ 0.9996, FE −62702, FN −7543625); `kola_airbases.json` holds the 37 Kola airbase positions + codes (extracted once from pydcs's airport data); `miz_zones.py` is the parser.
 
+**Zone classes (added 2026-09-24):** static facts about each zone, one question each, written into `data/zones.lua` by `miz_zones.py`: `size`, `airfield_distance`, `ground`, `terrain`, `road_access`, `railway_access`, `water`, `radar_view`, `settlement`, `prepared_sam_position` + `surveyed` + `measured`. The terrain facts come from flying the zone drawing mission once; `kola_f16/survey/survey_zone_terrain.lua` writes `Saved Games\DCS\kola_zone_terrain.lua` and the tool merges it by zone id. Workflow after drawing or moving zones: save the .miz → fly it once → `python tools/miz_zones.py "<.miz>"`. Classification never runs in the flyable mission (John). Details in "Where we are", session 5.
+
 ### 1.13 Unit pool — every spawnable DCS unit  *(2026-09-22)*
 **What DCS needs to spawn a unit is one string.** `coalition.addGroup(country, category, { units = { { type = "BTR-80", … } } })` — the `type` string is the unit's whole identity; everything else per unit is placement (position, heading, skill). Country is always `CJTF_RED` / `CJTF_BLUE` (the scripting API doesn't restrict types by nation), category is per group. Statics add `shape_name`, aircraft add a payload of pylon CLSIDs. An unknown string doesn't error — DCS substitutes a Leopard-2 and logs `woCar: … replaced with Leopard-2`.
 
-**`data/unit_pool.lua`** — every AI-operable unit in base DCS (incl. the CoreMods packs: Currenthill `CHAP_*`, ColdWar, Massun92, HeavyMetal; nothing from `Saved Games\Mods`), generated by `tools/unit_pool.py` from pydcs's `vehicles.py` / `planes.py` / `helicopters.py` / `ships.py` (themselves generated from DCS's own database). Segmented `ground` / `plane` / `helicopter` / `ship`, keyed by exact type string. **Side-, country- and era-agnostic by design** — Blue may field Russian SAMs; which coalition uses what is a `coalition_rosters` decision, not a pool property. Per entry: `type`, `name`, `cat` (pydcs category), `role` (planner tag: `sam_sr / sam_tr / sam_ln / sam_cp / shorad / ewr / aaa / aaa_sp / manpads / mbt / ifv / apc / recon / atgm / arty_sp / mlrs / truck / fuel / c2 …`; air: `fighter / multirole / strike / awacs / tanker / transport / recon / attack`), `system` (SAM family for site recipes: `SA-10`, `Patriot`, `Hawk`, `SA-2/3/5` …), ED's `detection_m` / `threat_m` / `air_weapon_m` (the seed for CONFIRMED-ring radii, §1.5), and for aircraft `tasks` (DCS task names the AI can fly — the ATO's feasibility input), `task_default`, `fuel_max`, `chaff`/`flare`, `pylons`, `flyable`, `large_parking`, `tacan`. `static = {}` and `weapons = {}` are stubs for later passes. Roles come from name heuristics in the tool plus `tools/unit_role_overrides.json`; the tool reports anything unclassified. Re-run after a DCS update once pydcs has caught up.
+**`data/unit_pool.lua`** — every AI-operable unit in base DCS (incl. the CoreMods packs: Currenthill `CHAP_*`, ColdWar, Massun92, HeavyMetal; nothing from `Saved Games\Mods`), generated by `tools/unit_pool.py` from pydcs's `vehicles.py` / `planes.py` / `helicopters.py` / `ships.py` (themselves generated from DCS's own database). Segmented `ground` / `plane` / `helicopter` / `ship`, keyed by exact type string. **Side-, country- and era-agnostic by design** — Blue may field Russian SAMs; which coalition uses what is a `coalition_rosters` decision, not a pool property. Per entry: `type`, `name`, `cat` (pydcs category), `role` (planner tag: `sam_sr / sam_tr / sam_ln / sam_cp / shorad / ewr / aaa / aaa_sp / manpads / mbt / ifv / apc / recon / atgm / arty_sp / mlrs / truck / fuel / c2 …`; air: `fighter / multirole / strike / awacs / tanker / transport / recon / attack`), `system` (SAM family for site recipes: `SA-10`, `Patriot`, `Hawk`, `SA-2/3/5` …), ED's `detection_m` / `threat_m` / `air_weapon_m` (the seed for CONFIRMED-ring radii, §1.5), and for aircraft `tasks` (DCS task names the AI can fly — the ATO's feasibility input), `task_default`, `fuel_max`, `chaff`/`flare`, `pylons`, `flyable`, `large_parking`, `tacan`. `static` (added 2026-09-24) holds every structure / cargo static-object type from pydcs `statics.py` with its `category` and `shape_name`; `weapons = {}` is still a stub. Roles come from name heuristics in the tool plus `tools/unit_role_overrides.json`; the tool reports anything unclassified. Re-run after a DCS update once pydcs has caught up.
 
 **`data/aircraft_pylons.lua`** — per-aircraft pylon → allowed weapon CLSIDs (1.1 MB). Deliberately *not* in the pool and *not* loaded by `init.lua`; it exists so hand-authored loadouts (`data/loadouts.lua`, later) can be validated offline before DCS sees them. Verified: the Syria F-16 CAS loadout validates on all four pylons.
 
@@ -948,7 +1115,7 @@ The 7 stages of §1.1 build **one accumulating Lua table**. Stage 1 writes `plan
 3. **Gather inputs — one step, up front.** All DCS reads happen here and are converted to plain values: airbase list with positions and current coalition, trigger zones, late-activation group names and positions, mission time/date. Plus the static data files (cluster table, content catalog, unit pools) and the session history file. Every stage then works from the same snapshot; the stages never see a DCS object. Cost: what the stages need has to be known ahead of time — for airbases/zones/groups that's clear enough.
 4. **Stages 1–7 run back-to-back** in one call. All data, milliseconds. (v1: stages 1–2 only; see §11.2.)
 5. **Plan dump** to file if the config flag is set.
-6. **Hand off** to spawner, briefing, ATO scheduler, objective tracker.
+6. **Hand off** to spawner, briefing, ATO scheduler, objective tracker. The spawner adds **all static objects before any AI units** (§1.1 "Execution timing": the reverse order stalls DCS for minutes).
 
 The gathered inputs are stored on the plan itself (`plan.world`) so the dump file is self-contained; it costs nothing and makes the dump complete.
 
@@ -957,7 +1124,7 @@ Who reads the plan and what they pull from it:
 
 | Consumer | When | Reads | Needs per entry |
 |---|---|---|---|
-| **Ground spawner** | T+0 | `base_defenses`, `fixed` (targets, garrisons, IADS), `ground` (moving units) | ME late-activation group name to activate, *or* country + unit types + positions + headings (+ route if it moves). Doesn't care why anything is there. |
+| **Ground spawner** | T+0 | `base_defenses`, `fixed` (targets, garrisons, IADS), `ground` (moving units) | ME late-activation group name to activate, *or* country + unit types + positions + headings (+ route if it moves). Doesn't care why anything is there. **Static objects are spawned before any AI units** (`SpawnStaticObjects`, then `SpawnGroundGroups`). |
 | **ATO scheduler** | on the clock | `red.ato`, `blue.ato` (skips the player's line) | `t_start`, aircraft type + count, base, loadout, steerpoints, role → DCS task (CAP orbit / SEAD / bombing target / escort target / tanker track + TACAN + freq / AWACS orbit + freq), callsign. Alive-aircraft cap from config. |
 | **Scramble loop** (per side) | periodic | posture: alert bases, fighter count/type, cooldown, detection radius | everything else is runtime state |
 | **Briefing** | T+0, F10 on demand | player's line, support lines, `fixed.threat_map` + fidelity, `ground.contacts`, Red posture (AOB), full ATO for the F10 view | coordinates in DMS + MGRS — stored in the plan or converted on the way out |

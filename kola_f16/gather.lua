@@ -49,14 +49,17 @@ local function gatherRunways(ab)
     return out
 end
 
--- Parking spots as { x, z } — used to keep spawns off aprons.
+-- Parking spots as { x, z, terminal_type, terminal_index } — used to keep spawns off
+-- aprons and to park static aircraft. terminal_type is DCS's Term_Type: 16 runway,
+-- 40 helicopter only, 68 hardened aircraft shelter, 72 open spot for airplanes,
+-- 104 open spot for large airplanes.
 local function gatherParking(ab)
     local ok, spots = pcall(ab.getParking, ab)
     if not ok or type(spots) ~= "table" then return {} end
     local out = {}
     for _, s in ipairs(spots) do
         local p = s.vTerminalPos
-        if p then out[#out + 1] = { round(p.x), round(p.z) } end
+        if p then out[#out + 1] = { round(p.x), round(p.z), s.Term_Type, s.Term_Index } end
     end
     return out
 end
