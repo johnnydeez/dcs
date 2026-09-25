@@ -6,8 +6,12 @@
 --
 --   local map = ThreatRouting.buildMap(circles, bounds)
 --       circles = { { id, x, z, radius_m } }, bounds = { min_x, max_x, min_z, max_z }
---   local points = ThreatRouting.route(map, from, to)       -- { { x, z } }, from … to
---   local ids = ThreatRouting.crossed(map, points)          -- circle ids the route enters
+--   local points = ThreatRouting.route(map, from, to, max_length_m)
+--       { { x, z } }, from … to; max_length_m (optional) keeps the search to paths no
+--       longer than that — the straight line when none exists
+--   local ids = ThreatRouting.crossed(map, points)          -- circle ids the route enters,
+--                                                           -- in the order it enters them
+--   local c = ThreatRouting.circle(map, id)                 -- { id, x, z, r2 } or nil
 --   ThreatRouting.length(points)                            -- metres
 
 ThreatRouting = {}
@@ -75,61 +79,72 @@ end
 
 -- ── path search (A*, 8 neighbours) ──────────────────────────────
 
-local function heapPush(h, f, id)
-    h[#h + 1] = { f, id }
-    local i = #h
-    while i > 1 do
-        local p = math.floor(i / 2)
-        if h[p][1] <= h[i][1] then break end
-        h[p], h[i] = h[i], h[p]
-        i = p
-    end
-end
+-- The open list is a binary heap kept in two parallel arrays (f values, cell ids), so a
+-- search allocates no table per step — the search is most of the air tasking stage's time.
+local NEIGHBOUR_X    = { 1, -1, 0, 0, 1, 1, -1, -1 }
+local NEIGHBOUR_Z    = { 0, 0, 1, -1, 1, -1, 1, -1 }
+local NEIGHBOUR_STEP = { 1, 1, 1, 1, 1.41421356, 1.41421356, 1.41421356, 1.41421356 }
 
-local function heapPop(h)
-    local top = h[1]
-    local last = table.remove(h)
-    if #h > 0 then
-        h[1] = last
-        local i = 1
-        while true do
-            local l, r, s = 2 * i, 2 * i + 1, i
-            if l <= #h and h[l][1] < h[s][1] then s = l end
-            if r <= #h and h[r][1] < h[s][1] then s = r end
-            if s == i then break end
-            h[s], h[i] = h[i], h[s]
-            i = s
-        end
-    end
-    return top
-end
-
-local NEIGHBOURS = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 }, { 1, 1 }, { 1, -1 }, { -1, 1 }, { -1, -1 } }
-
-local function search(map, from, to)
-    local nx, w = map.nx, map.weight
+-- Cells whose centre is farther than max_length_m from→cell→to (plus a cell's slack for
+-- the endpoints' snapping) are never entered: every path through them is too long.
+local function search(map, from, to, max_length_m)
+    local nx, nz, w = map.nx, map.nz, map.weight
+    local sqrt, floor = math.sqrt, math.floor
     local sx, sz = cellOf(map, from)
     local gx, gz = cellOf(map, to)
+    local limit = max_length_m and (max_length_m + 2 * CELL_M) / CELL_M
+    local fx, fz = (from.x - map.x0) / CELL_M, (from.z - map.z0) / CELL_M
+    local tx, tz = (to.x - map.x0) / CELL_M, (to.z - map.z0) / CELL_M
     local start, goal = sz * nx + sx + 1, gz * nx + gx + 1
-    local g, came, closed, open = { [start] = 0 }, {}, {}, {}
-    heapPush(open, 0, start)
-    while #open > 0 do
-        local id = heapPop(open)[2]
+    local g, came, closed = { [start] = 0 }, {}, {}
+    local hf, hid, n = { 0 }, { start }, 1
+    while n > 0 do
+        -- pop the lowest f
+        local id = hid[1]
+        local lf, lid = hf[n], hid[n]
+        hf[n], hid[n] = nil, nil
+        n = n - 1
+        if n > 0 then
+            local i = 1
+            hf[1], hid[1] = lf, lid
+            while true do
+                local l, r, s = 2 * i, 2 * i + 1, i
+                if l <= n and hf[l] < hf[s] then s = l end
+                if r <= n and hf[r] < hf[s] then s = r end
+                if s == i then break end
+                hf[s], hf[i] = hf[i], hf[s]
+                hid[s], hid[i] = hid[i], hid[s]
+                i = s
+            end
+        end
         if id == goal then break end
         if not closed[id] then
             closed[id] = true
-            local ix, iz = (id - 1) % nx, math.floor((id - 1) / nx)
-            for _, d in ipairs(NEIGHBOURS) do
-                local jx, jz = ix + d[1], iz + d[2]
-                if jx >= 0 and jx < nx and jz >= 0 and jz < map.nz then
+            local ix, iz = (id - 1) % nx, floor((id - 1) / nx)
+            local gid, wid = g[id], w[id]
+            for k = 1, 8 do
+                local jx, jz = ix + NEIGHBOUR_X[k], iz + NEIGHBOUR_Z[k]
+                if jx >= 0 and jx < nx and jz >= 0 and jz < nz
+                   and (not limit or sqrt((jx - fx) ^ 2 + (jz - fz) ^ 2) + sqrt((jx - tx) ^ 2 + (jz - tz) ^ 2) <= limit) then
                     local j = jz * nx + jx + 1
                     if not closed[j] then
-                        local step = (d[1] ~= 0 and d[2] ~= 0) and 1.41421356 or 1
-                        local cost = g[id] + step * (w[id] + w[j]) / 2
-                        if not g[j] or cost < g[j] then
+                        local cost = gid + NEIGHBOUR_STEP[k] * (wid + w[j]) / 2
+                        local gj = g[j]
+                        if not gj or cost < gj then
                             g[j], came[j] = cost, id
-                            local h = math.sqrt((jx - gx) ^ 2 + (jz - gz) ^ 2)
-                            heapPush(open, cost + h, j)
+                            -- push
+                            local dx, dz = jx - gx, jz - gz
+                            local f = cost + sqrt(dx * dx + dz * dz)
+                            n = n + 1
+                            hf[n], hid[n] = f, j
+                            local i = n
+                            while i > 1 do
+                                local p = floor(i / 2)
+                                if hf[p] <= hf[i] then break end
+                                hf[p], hf[i] = hf[i], hf[p]
+                                hid[p], hid[i] = hid[i], hid[p]
+                                i = p
+                            end
                         end
                     end
                 end
@@ -170,12 +185,20 @@ local function smooth(map, pts)
     return out
 end
 
-function ThreatRouting.route(map, from, to)
+function ThreatRouting.route(map, from, to, max_length_m)
     if segmentMax(map, from, to) == 0 then return { { x = from.x, z = from.z }, { x = to.x, z = to.z } } end
-    return smooth(map, search(map, from, to))
+    return smooth(map, search(map, from, to, max_length_m))
 end
 
--- Ids of the circles any segment of the route enters.
+function ThreatRouting.circle(map, id)
+    for _, c in ipairs(map.circles) do
+        if c.id == id then return c end
+    end
+    return nil
+end
+
+-- Ids of the circles any segment of the route enters, in the order the route enters them
+-- (circles entered at the same sample point in id order).
 function ThreatRouting.crossed(map, points)
     local hit, ids = {}, {}
     for i = 2, #points do
@@ -185,14 +208,16 @@ function ThreatRouting.crossed(map, points)
         for s = 0, steps do
             local t = s / steps
             local x, z = a.x + t * (b.x - a.x), a.z + t * (b.z - a.z)
+            local here = {}
             for _, c in ipairs(map.circles) do
                 if not hit[c.id] and (x - c.x) ^ 2 + (z - c.z) ^ 2 < c.r2 then
                     hit[c.id] = true
-                    ids[#ids + 1] = c.id
+                    here[#here + 1] = c.id
                 end
             end
+            table.sort(here)
+            for _, id in ipairs(here) do ids[#ids + 1] = id end
         end
     end
-    table.sort(ids)
     return ids
 end

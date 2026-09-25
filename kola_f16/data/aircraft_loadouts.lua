@@ -365,6 +365,22 @@ AIRCRAFT_LOADOUT = {
                 { num = 12, CLSID = "{ECM_POD_L_175V}" },  -- L175V Khibiny ECM pod
             },
         },
+        destruction_of_air_defenses = {
+            source = "dcs", name = "Kh-29T*4,R-73*2,R-27R*2,ECM",
+            fuel = 9800, chaff = 64, flare = 64, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82F}" },  -- L005 Sorbtsiya ECM pod (left)
+                { num = 2, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 3, CLSID = "{X-29T}" },  -- Kh-29T (AS-14 Kedge) - 670kg, ASM, TV Guided
+                { num = 4, CLSID = "{X-29T}" },  -- Kh-29T (AS-14 Kedge) - 670kg, ASM, TV Guided
+                { num = 6, CLSID = "{9B25D316-0434-4954-868F-D51DB1A38DF0}" },  -- R-27R (AA-10 Alamo A) - Semi-Act Rdr
+                { num = 7, CLSID = "{9B25D316-0434-4954-868F-D51DB1A38DF0}" },  -- R-27R (AA-10 Alamo A) - Semi-Act Rdr
+                { num = 9, CLSID = "{X-29T}" },  -- Kh-29T (AS-14 Kedge) - 670kg, ASM, TV Guided
+                { num = 10, CLSID = "{X-29T}" },  -- Kh-29T (AS-14 Kedge) - 670kg, ASM, TV Guided
+                { num = 11, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 12, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82A}" },  -- L005 Sorbtsiya ECM pod (right)
+            },
+        },
         interdiction = {
             source = "liberation", name = "Liberation CAS",
             fuel = 9800, chaff = 64, flare = 64, gun = 100,
