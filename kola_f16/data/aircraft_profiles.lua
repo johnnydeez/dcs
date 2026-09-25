@@ -16,6 +16,8 @@
 --                       target — what's realistic for the jet and its payload, whatever the
 --                       threat: unguided bombs lower, cluster bombs lower still, JDAMs and
 --                       carpet bombing from high up
+--   anti_radiation_missiles  per aircraft in its suppression_of_air_defenses loadout
+--                       (data/aircraft_loadouts.lua); keep in step when that choice changes
 --   carpet_bombing      true: one Bombing task at the centre of the target, all bombs in
 --                       one pass (heavy bombers; DCS Liberation does the same for Tu-22M3 / B-52)
 --   keeps_gun           true: the gun stays loaded on attack missions (gun-armed attack
@@ -30,13 +32,16 @@ AIRCRAFT_PROFILE = {
         -- FAB-500 level bombing from medium altitude, as in Syria; RBK cluster bombs lower
         cruise_speed_mps = 230, cruise_altitude_m = 7500,
         attack_altitude_m = { strike = 5000, airfield_strike = 3000, suppression_of_air_defenses = 6000 },
+        anti_radiation_missiles = 4,   -- 2 Kh-58U + 2 Kh-25MPU
     },
     ["Su-34"] = {
         base_classes = { "hub", "fighter", "bomber" }, min_runway_m = 2000, parking = { 104, 72 },
         flight_size = { 2, 2 }, combat_radius_km = 700,
         cruise_speed_mps = 230, cruise_altitude_m = 8000,
+        -- Kh-29T TV-guided missiles against air-defense sites from medium altitude
         attack_altitude_m = { strike = 5000, airfield_strike = 3000, suppression_of_air_defenses = 6000,
-                              interdiction = 4000 },
+                              destruction_of_air_defenses = 4000, interdiction = 4000 },
+        anti_radiation_missiles = 4,   -- Kh-31P
     },
     ["Tu-22M3"] = {
         base_classes = { "bomber" }, min_runway_m = 2500, parking = { 104 },
@@ -52,6 +57,7 @@ AIRCRAFT_PROFILE = {
         cruise_speed_mps = 230, cruise_altitude_m = 7500,
         attack_altitude_m = { strike = 7000, airfield_strike = 7000, suppression_of_air_defenses = 6000,
                               destruction_of_air_defenses = 7000, close_air_support = 4500 },
+        anti_radiation_missiles = 2,   -- AGM-88C
     },
     ["F-16C_50"] = {
         base_classes = { "hub", "fighter", "dispersal" }, min_runway_m = 1800, parking = { 72, 104 },
@@ -59,6 +65,7 @@ AIRCRAFT_PROFILE = {
         cruise_speed_mps = 230, cruise_altitude_m = 7500,
         attack_altitude_m = { strike = 7000, airfield_strike = 7000, suppression_of_air_defenses = 6000,
                               destruction_of_air_defenses = 7000, close_air_support = 4500 },
+        anti_radiation_missiles = 2,   -- AGM-88C
     },
     ["F-15ESE"] = {
         base_classes = { "hub", "fighter", "bomber" }, min_runway_m = 2200, parking = { 104, 72 },

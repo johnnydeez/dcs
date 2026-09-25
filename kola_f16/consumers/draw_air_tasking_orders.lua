@@ -1,6 +1,8 @@
 -- Consumer: debug view of plan.air_tasking_orders on the F10 map.
 --   CONFIG.DRAW_AIR_TASKING_ORDERS: each flight's planned route as a dotted line in its
---   coalition's colour, and a text mark at the target (mission, aircraft, base, times).
+--   coalition's colour, and a text mark at the target (mission, aircraft, base, times,
+--   package); a suppression flight's mark sits at its attack waypoint, with the threats
+--   it engages.
 -- Reads the plan; writes nothing back to it.
 
 DrawAirTaskingOrders = {}
@@ -27,11 +29,25 @@ function DrawAirTaskingOrders.apply(plan)
                     SIDE_COLOR[coalition], LINE_DOTTED, true, "")
                 _mark = _mark + 1
             end
-            local text = string.format("%s %s %s\n%dx %s from %s\nstart %s  TOT %s  back %s\n→ %s%s",
-                m.id, coalition:upper(), m.mission_type, m.count, m.aircraft_type, m.launch_base,
-                clock(m.start_s), clock(m.tot_s), clock(m.end_s), m.target,
-                m.needs_suppression and ("\nneeds suppression: " .. table.concat(m.suppression_threats, ", ")) or "")
-            trigger.action.markToAll(_mark, text, Util.toVec3(m.target_pos), true, "")
+            local detail
+            if m.escorts then
+                detail = string.format("escorts %s\nengages: %s", m.escorts, table.concat(m.attack.groups, ", "))
+            else
+                detail = "→ " .. m.target
+                if m.needs_suppression then
+                    detail = string.format("%s\ncrosses: %s\nsuppressed by: %s", detail,
+                        table.concat(m.suppression_threats, ", "), table.concat(m.suppressed_by or {}, ", "))
+                end
+            end
+            local text = string.format("%s %s %s (%s)\n%dx %s from %s\nstart %s  TOT %s  back %s\n%s",
+                m.id, coalition:upper(), m.mission_type, m.package or "", m.count, m.aircraft_type, m.launch_base,
+                clock(m.start_s), clock(m.tot_s), clock(m.end_s), detail)
+            -- suppression flights share their mission's target: label them at their attack waypoint
+            local at = m.target_pos
+            if m.escorts then
+                for _, w in ipairs(r) do if w.carries_attack_tasks then at = w end end
+            end
+            trigger.action.markToAll(_mark, text, Util.toVec3(at), true, "")
             _mark = _mark + 1
         end
     end
@@ -47,8 +63,8 @@ function DrawAirTaskingOrders.summaryText(plan)
         local s = ato[c] and ato[c].summary
         if s then
             local first = ato[c].missions[1]
-            parts[#parts + 1] = string.format("%s %d missions%s", c:upper(), s.missions,
-                first and (", first starts " .. clock(first.start_s)) or "")
+            parts[#parts + 1] = string.format("%s %d missions + %d suppression flights%s", c:upper(), s.missions,
+                s.suppression_flights or 0, first and (", first starts " .. clock(first.start_s)) or "")
         end
     end
     return "AIR TASKING: " .. table.concat(parts, "; ")

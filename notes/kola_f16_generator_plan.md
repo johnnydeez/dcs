@@ -1,6 +1,6 @@
 # Kola F-16 Randomized Mission Generator — Planning Doc
 
-> **Status:** v1 — stages 1–2 (territory + base defenses at all 37 airfields) + stage 3a (SAM network, 100 zones) + world inputs running in DCS (2026-09-23); zone classes in `data/zones.lua`, stage 3b (fixed ground targets) and 3c (target catalog) running in DCS for both coalitions, full start-up spawn ~7 s (2026-09-24); stage 4 first part (one Red supply convoy) and stages 5–6 first pass (strike and airfield strike air tasking for both coalitions, threat-aware routing) running in DCS (2026-09-25). Planning sections §1–10 are the concept; §11, "Where we are" and the "as built" sections are the spec.
+> **Status:** v1 — stages 1–2 (territory + base defenses at all 37 airfields) + stage 3a (SAM network, 100 zones) + world inputs running in DCS (2026-09-23); zone classes in `data/zones.lua`, stage 3b (fixed ground targets) and 3c (target catalog) running in DCS for both coalitions, full start-up spawn ~7 s (2026-09-24); stage 4 first part (one Red supply convoy) and stages 5–6 first pass (strike and airfield strike air tasking for both coalitions, threat-aware routing) running in DCS (2026-09-25); SEAD/DEAD and packages built, offline only (session 7, 2026-09-25). Planning sections §1–10 are the concept; §11, "Where we are" and the "as built" sections are the spec.
 > Companion to the Syria project (`notes/notes.md`). Open questions are marked **[Q]** — answer them inline and the doc becomes the spec.
 >
 > **Layout:** *Where we are* (pick up here) → *Next session* candidates → *Base defenses / SAM sites / Fixed ground targets — as built* → *Plan* (§1–10, concept and research) → *Architecture* (§11, code structure decisions).
@@ -11,7 +11,53 @@
 
 ---
 
-## Where we are — pick up here  *(2026-09-25, end of session 6 — convoy and ground attack air tasking running in DCS)*
+## Session 7 (2026-09-25) — SEAD/DEAD and packages, offline only so far
+
+**To verify in DCS first:** grep `MSN` and `PKG` in `dcs.log`. Watch for:
+- suppression flights launching 3–5 min ahead of their mission and firing anti-radiation missiles (`EngageGroup` fires only once the radar is detected, so a silent SAM draws no shot);
+- suppression flights heading home once the missiles are gone;
+- DEAD flights (`AttackGroup`) actually hitting a SAM site;
+- start-up time: air tasking planning is now ~1.5 s offline, up from ~0.7 s.
+
+**Built:**
+- **Two mission types.** `suppression_of_air_defenses` is escort-only: `EngageGroup` per threat, anti-radiation missiles only, and `return_when_out_of = "arm"` (DCS option 10). `destruction_of_air_defenses` is a primary type (`AttackGroup` on each of the site's groups): Blue weight 2, Red 1. Red DEAD is the Su-34 with 4 Kh-29T (`dcs:Kh-29T*4,R-73*2,R-27R*2,ECM`, attack altitude 4,000 m).
+- **Packages** (John: a mission that needs suppression never flies without it; whether the suppression works doesn't need tracking, it's flavour).
+  - A mission whose route still crosses rings gets suppression flights, or isn't planned; another target is tried.
+  - Threats are shared out in the order the route meets them (`ThreatRouting.crossed` now returns route order). Each flight takes `count × anti_radiation_missiles / missiles_per_threat` of them: 2 missiles per threat; F-16 / F/A-18 2 missiles each, Su-34 / Su-24M 4.
+  - A suppression flight flies the package's route from the mission's own base when it can launch there (~90 %), else from the nearest base, joining and leaving the route at its nearest points. It is over the target `AIR_PACKAGE.suppression_lead_s` (3–5 min) ahead, so it reaches every ring on the way that much earlier too.
+  - Its `EngageGroup` tasks sit on the waypoint before the first of its rings (`carries_attack_tasks` on a route point; bombing and DEAD flights have it on the ingress).
+  - Nothing is per-site: more zones → more SAM rings → more suppression flights, automatically.
+- **Airborne cap now counts aircraft:** `max_airborne_aircraft` per coalition, counting every package member. It started at 8 (16 total) and was raised to 10 (20 total, the top of the §1.9 budget) after the escort change below.
+- **Plan shape:** `plan.air_tasking_orders[c].packages = { { id = "PKG<n>", mission, suppression_flights, tot_s } }`. Missions carry `package`; escorted ones `suppressed_by`; suppression flights `escorts` + `suppresses`. `summary` adds `suppression_flights`, `flights`, `failures` (why tries failed).
+- **Routing speed:** the A* search keeps to the ellipse of paths no longer than `max_detour` × direct or the reach (longer ones were thrown away anyway), plus a per-coalition route cache. Paths are unchanged (300 random legs identical before the ellipse). Mission results are practically the same, and planning is 1.45 s vs 2.3 s per roll without the ellipse.
+- **Offline, 60 rolls:**
+  - Red 4.8 missions + 2.8 suppression flights, 0 unplanned; Blue 6.5 + 8.0, 0.4 unplanned (mostly the aircraft cap).
+  - 65 % of missions escorted: 1 escort 44 %, 2 escorts 10 %, 3 escorts 10 %.
+  - 0 uncovered threats, 0 wrong leads, 0 over the cap, 0 parking clashes, 0 empty attack tasks.
+
+**First DCS run of packages (John): "went really well".** Blue's SEAD and strikes were very successful. Red's SEAD at Rovaniemi got 2 Kh-31P off, both shot down by a Tor, and the whole package died.
+- **Fixed, the way home:**
+  - it used to be its own route search from the target back to base, falling back to a straight line when that found nothing short enough. PKG2001's SEAD flights from Rovaniemi went out around `SAM_VUOJ_SA11_1` and were routed home straight over it. The way home is now the way out reversed; SEAD flights from another base leave where they joined and fly their joining leg back;
+  - `return_when_out_of = "arm"` (DCS option 10) is removed from SEAD: DCS flies straight home once the missiles are gone, off the route.
+  - Offline, 30 rolls: 0 flights whose way home crosses a ring the way out didn't. Planning is 0.45 s per roll, since the way home needs no search.
+- **Imbalance, analysed, not changed yet:**
+  - the Tor that killed Red's missiles was `SAM_ROVA_SA10_1_escort` (a CHAP_TorM2), the SA-10 site's point defense. Escort groups are neither threat rings nor engaged by SEAD, so nothing suppresses them, and Tor / Pantsir are the best missile killers in DCS;
+  - Red's Su-34 SEAD flight carries 8 Kh-31P, so it takes 4 threats alone where Blue sends one 2-ship per 2 threats: Red packages have half the jets per threat;
+  - one run; Red happened to hit Blue's hardest site, the Rovaniemi SA-10 + Tor.
+- **Then built (John: "let's try 1 and 2"):**
+  - a SAM site's point-defense escort is engaged together with its site and counts as one more group;
+  - `max_groups_per_flight = 2`, so every suppression flight takes at most 2 groups.
+
+  Offline, 60 rolls: Red 4.8 missions + 3.3 suppression flights (was 2.7); Blue 5.9 + 5.3 (was 6.3 + 7.2), 1.1 unplanned per roll. Suppression jets per threat: Red 1.55, Blue 1.78. All checks 0.
+- **Side effect:** Kola core packages (three SA-10s, each with a Pantsir) now need 3–4 suppression flights, more than `max_airborne_aircraft = 8` allows, so Blue drops them for lighter targets. With 10 per coalition, Blue is back to 8.3 suppression flights, packages of up to 4 escorts, and 20 jets airborne at most (the top of the §1.9 budget). **Raised to 10 per coalition** (John: "I really don't know where the performance limits are so we might as well try it"). Watch fps with up to 20 AI jets airborne.
+- **Third run (John):** routes home look right, and the Su-34 DEAD on an SA-11 was "hard fought but very successful". Unclear whether the F-15Es did anything: the only one spawned (MSN2001, JDAM strike on Ivalo) had its TOT at T+2546 s and the log ends at ~T+2605 s. A forum search found reports of AI not dropping bombs, but nothing specific to AI F-15Es with JDAMs on the conformal tanks.
+- **Added: flight results in `dcs.log`** (`consumers/schedule_air_tasking_orders.lua`), so a run can be judged without watching; grep the mission id:
+  - `fired <weapon>` for every weapon a planned flight releases;
+  - `killed <name> (<type>)` for what it destroyed;
+  - `target object … destroyed (n of m critical)` for a mission's target, whoever hit it;
+  - `<unit> lost (crash / dead / ejected)` for its own losses.
+
+## Where we were — end of session 6  *(2026-09-25 — convoy and ground attack air tasking running in DCS)*
 
 **Status: stages 1–6 (first passes) run in DCS.**
 - **Run order:** Boot → gather → `RollTerritory` → `PlanBaseDefenses` → `PlanSamSites` → `PlanFixedGroundTargets` → `PlanConvoys` → `CatalogTargets` → `PlanAirTasking` → plan dump → `Territory.apply` → spawn (**static objects first**, then base defenses, SAM sites, fixed-target units, convoys) → `ScheduleAirTaskingOrders` (flights spawn on the mission clock) → draw + on-screen summary.
@@ -201,6 +247,8 @@ Plan dump: `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `python tools/
 ## NEXT SESSION — candidates  *(pick one with John)*
 
 **Build order (chosen 2026-09-23): linearly, stage by stage.** Stages 1–3 are done; stage 4 and stages 5–6 have first passes running in DCS (2026-09-25). Mission stages read only `plan.target_catalog`. John isn't in a rush to fly; a thin "fly one SEAD mission first" slice was offered and declined.
+
+**Built in session 7 (offline; verify in DCS):** SEAD/DEAD mission types and packages, see "Session 7" at the top. The notes below were the plan for it.
 
 **Agreed next (John, 2026-09-25): packages — ordering plus SEAD/DEAD escorts.**
 - **The hook is there:** each mission with `needs_suppression` lists its `suppression_threats` (SAM site ids, plus `DEF_…_radar_missile_launchers_*` groups). That's about 72 % of missions offline.

@@ -94,6 +94,7 @@ COALITION_AIRCRAFT = {
         strike                      = { { "Su-34", 3 }, { "Su-24M", 2 }, { "Tu-22M3", 1 } },
         airfield_strike             = { { "Su-34", 2 }, { "Su-24M", 2 }, { "Tu-22M3", 2 } },
         suppression_of_air_defenses = { { "Su-34", 2 }, { "Su-24M", 1 } },
+        destruction_of_air_defenses = { { "Su-34", 1 } },
         interdiction                = { { "Su-34", 1 } },
     },
     blue = {

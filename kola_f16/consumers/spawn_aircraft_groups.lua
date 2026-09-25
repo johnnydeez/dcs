@@ -8,8 +8,12 @@
 --              emptied unless the profile keeps it)
 --   waypoint 1 takeoff from parking, hot, plus the behaviour options every attack flight
 --              gets (data/air_tasking.lua): open fire, evade fire, return at bingo, no
---              jettisoning
---   ingress    the attack tasks (Bombing per attack point, in pydcs's parameter shape)
+--              jettisoning, and return when out of its main weapon if the mission says so
+--   the waypoint with carries_attack_tasks (the ingress, or for suppression flights the
+--              waypoint before their first ring): the attack tasks, in pydcs's parameter
+--              shape — Bombing per attack point, AttackGroup / EngageGroup per group.
+--              Group tasks need DCS group ids, looked up by name now; a group that no
+--              longer exists is skipped
 --   landing    at the landing base
 -- After the spawn, every unit's type is compared with the plan (DCS swaps unknown types).
 -- Reads the plan; writes nothing back to it.
@@ -23,6 +27,7 @@ local OPTION_ROE, ROE_OPEN_FIRE                    = 0, 2
 local OPTION_REACTION_ON_THREAT, EVADE_FIRE        = 1, 2
 local OPTION_RETURN_AT_BINGO_FUEL                  = 6
 local OPTION_PROHIBIT_JETTISON                     = 15
+local OPTION_RETURN_WHEN_OUT_OF_AMMUNITION         = 10
 
 local function option(number, name, value)
     return { number = number, auto = false, id = "WrappedAction", enabled = true,
@@ -33,19 +38,49 @@ local function combo(tasks)
     return { id = "ComboTask", params = { tasks = tasks } }
 end
 
--- The attack tasks for the ingress waypoint. Only the built attack kinds exist so far.
-local function attackTasks(m)
-    local tasks = {}
-    if m.attack.kind == "bomb_critical_objects" then
-        for i, p in ipairs(m.attack.points) do
-            tasks[i] = { number = i, auto = false, id = "Bombing", enabled = true, params = {
-                x = p.x, y = p.z, weaponType = m.attack.weapon_type, expend = m.attack.expend,
+-- DCS group ids of the named groups that still exist, in order.
+local function groupIds(m, names)
+    local ids = {}
+    for _, name in ipairs(names or {}) do
+        local g = Group.getByName(name)
+        if g and g:isExist() then
+            ids[#ids + 1] = g:getID()
+        else
+            Log.info(string.format("%s: attack group %s no longer exists — skipped", m.id, name))
+        end
+    end
+    return ids
+end
+
+-- The attack tasks, numbered from `first`. Only the built attack kinds exist so far.
+local function attackTasks(m, first)
+    local tasks, a = {}, m.attack
+    local function add(id, params)
+        tasks[#tasks + 1] = { number = first + #tasks, auto = false, id = id, enabled = true, params = params }
+    end
+    if a.kind == "bomb_critical_objects" then
+        for _, p in ipairs(a.points) do
+            add("Bombing", {
+                x = p.x, y = p.z, weaponType = a.weapon_type, expend = a.expend,
                 attackQtyLimit = false, attackQty = 1, directionEnabled = false, direction = 0,
                 altitudeEnabled = false, altitude = 0, groupAttack = true,
-            } }
+            })
+        end
+    elseif a.kind == "attack_group" then
+        for _, id in ipairs(groupIds(m, a.groups)) do
+            add("AttackGroup", {
+                groupId = id, weaponType = a.weapon_type, expend = a.expend, groupAttack = true,
+                attackQtyLimit = false, attackQty = 1, directionEnabled = false, direction = 0,
+                altitudeEnabled = false, altitude = 0,
+            })
+        end
+    elseif a.kind == "engage_group" then
+        -- en-route task: attacks each group once it is detected, in route order
+        for i, id in ipairs(groupIds(m, a.groups)) do
+            add("EngageGroup", { groupId = id, weaponType = a.weapon_type, priority = i, visible = false })
         end
     else
-        Log.warn(string.format("%s: attack kind '%s' isn't built — the flight has no attack task", m.id, m.attack.kind))
+        Log.warn(string.format("%s: attack kind '%s' isn't built — the flight has no attack task", m.id, a.kind))
     end
     return tasks
 end
@@ -78,18 +113,24 @@ local function buildGroup(m, launchId, landingId)
     local points = {}
     for _, r in ipairs(m.route) do
         if r.kind == "takeoff" then
+            local tasks = {
+                option(1, OPTION_ROE, ROE_OPEN_FIRE),
+                option(2, OPTION_REACTION_ON_THREAT, EVADE_FIRE),
+                option(3, OPTION_RETURN_AT_BINGO_FUEL, true),
+                option(4, OPTION_PROHIBIT_JETTISON, true),
+            }
+            if m.return_when_out_of then
+                tasks[#tasks + 1] = option(#tasks + 1, OPTION_RETURN_WHEN_OUT_OF_AMMUNITION, m.return_when_out_of)
+            end
+            if r.carries_attack_tasks then
+                for _, t in ipairs(attackTasks(m, #tasks + 1)) do tasks[#tasks + 1] = t end
+            end
             points[#points + 1] = waypoint(r, {
                 type = "TakeOffParkingHot", action = "From Parking Area Hot", airdromeId = launchId,
-                alt = land.getHeight({ x = r.x, y = r.z }), speed = 0,
-                task = combo({
-                    option(1, OPTION_ROE, ROE_OPEN_FIRE),
-                    option(2, OPTION_REACTION_ON_THREAT, EVADE_FIRE),
-                    option(3, OPTION_RETURN_AT_BINGO_FUEL, true),
-                    option(4, OPTION_PROHIBIT_JETTISON, true),
-                }),
+                alt = land.getHeight({ x = r.x, y = r.z }), speed = 0, task = combo(tasks),
             })
-        elseif r.kind == "ingress" then
-            points[#points + 1] = waypoint(r, { task = combo(attackTasks(m)) })
+        elseif r.carries_attack_tasks then
+            points[#points + 1] = waypoint(r, { task = combo(attackTasks(m, 1)) })
         elseif r.kind == "landing" then
             points[#points + 1] = waypoint(r, { type = "Land", action = "Landing", airdromeId = landingId,
                 alt = land.getHeight({ x = r.x, y = r.z }) })
@@ -125,8 +166,9 @@ function SpawnAircraftGroups.spawn(m)
             Log.warn(string.format("%s unit %d: asked for '%s', DCS spawned '%s'", m.id, i, m.aircraft_type, u:getTypeName()))
         end
     end
-    Log.info(string.format("%s spawned: %s %s %dx %s at %s → %s (%s), TOT %d s; %d type mismatches",
+    Log.info(string.format("%s spawned: %s %s %dx %s at %s → %s (%s)%s, TOT %d s; %d type mismatches",
         m.id, m.coalition:upper(), m.mission_type, m.count, m.aircraft_type, m.launch_base, m.target,
-        m.target_label, m.tot_s, mismatches))
+        m.target_label, m.escorts and (", escorting " .. m.escorts .. ", engaging " .. table.concat(m.suppresses, ", ")) or "",
+        m.tot_s, mismatches))
     return grp
 end

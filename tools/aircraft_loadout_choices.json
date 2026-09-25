@@ -9,6 +9,7 @@
     "strike":                      "dcs:FAB-500*8,R-73*2,ECM",
     "airfield_strike":             "liberation:Liberation Strike",
     "suppression_of_air_defenses": "liberation:Liberation SEAD",
+    "destruction_of_air_defenses": "dcs:Kh-29T*4,R-73*2,R-27R*2,ECM",
     "interdiction":                "liberation:Liberation CAS"
   },
   "Tu-22M3": {
