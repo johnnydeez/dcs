@@ -1,0 +1,46 @@
+{
+  "_comment": "Which loadout each aircraft type flies per mission type: \"<source>:<loadout name>\", source = dcs | liberation | hand. See `python tools/aircraft_loadouts.py --list <type>`. Rule: one kind of air-to-ground weapon per loadout; the AI handles mixed weapons badly. strike and airfield_strike are flown now; the rest are ready for when those mission types are built.",
+  "Su-24M": {
+    "strike":                      "dcs:FAB-500*4,R-60M*2",
+    "airfield_strike":             "dcs:RBK-250*8",
+    "suppression_of_air_defenses": "liberation:SEAD"
+  },
+  "Su-34": {
+    "strike":                      "dcs:FAB-500*8,R-73*2,ECM",
+    "airfield_strike":             "liberation:Liberation Strike",
+    "suppression_of_air_defenses": "liberation:Liberation SEAD",
+    "interdiction":                "liberation:Liberation CAS"
+  },
+  "Tu-22M3": {
+    "strike":                      "dcs:FAB-500*33",
+    "airfield_strike":             "dcs:FAB-250*33"
+  },
+  "FA-18C_hornet": {
+    "strike":                      "liberation:STRIKE",
+    "airfield_strike":             "liberation:STRIKE",
+    "suppression_of_air_defenses": "liberation:Liberation SEAD",
+    "destruction_of_air_defenses": "liberation:Liberation DEAD",
+    "close_air_support":           "hand:Syria CAS"
+  },
+  "F-16C_50": {
+    "strike":                      "liberation:Liberation Strike",
+    "airfield_strike":             "liberation:Liberation Strike",
+    "suppression_of_air_defenses": "liberation:Liberation SEAD",
+    "destruction_of_air_defenses": "liberation:Liberation DEAD",
+    "close_air_support":           "hand:Syria CAS"
+  },
+  "F-15ESE": {
+    "strike":                      "liberation:Liberation Strike",
+    "airfield_strike":             "liberation:Liberation OCA/Aircraft",
+    "destruction_of_air_defenses": "liberation:Liberation DEAD",
+    "interdiction":                "liberation:Liberation BAI"
+  },
+  "B-1B": {
+    "strike":                      "liberation:Liberation Strike",
+    "airfield_strike":             "liberation:Liberation OCA/Aircraft",
+    "interdiction":                "liberation:Liberation BAI"
+  },
+  "A-10C_2": {
+    "close_air_support":           "hand:Syria CAS"
+  }
+}

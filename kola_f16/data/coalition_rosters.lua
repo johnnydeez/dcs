@@ -82,6 +82,32 @@ COALITION_SAM_SYSTEMS = {
     },
 }
 
+-- Which aircraft each coalition sends on each air mission type: { type, weight }. Every
+-- type needs an AIRCRAFT_PROFILE (data/aircraft_profiles.lua) and a loadout for that
+-- mission type (data/aircraft_loadouts.lua, generated). Independent of the parked
+-- aircraft: any base whose class the profile allows can launch it. Mission types not
+-- built yet (data/air_tasking.lua) have rosters already, so building them is one flag.
+COALITION_AIRCRAFT = {
+    red = {
+        -- Su-24M: Severomorsk naval aviation; Su-34: the modern front-line bomber;
+        -- Tu-22M3: Olenya's long-range bombers, carpet-bombing airfields and large sites
+        strike                      = { { "Su-34", 3 }, { "Su-24M", 2 }, { "Tu-22M3", 1 } },
+        airfield_strike             = { { "Su-34", 2 }, { "Su-24M", 2 }, { "Tu-22M3", 2 } },
+        suppression_of_air_defenses = { { "Su-34", 2 }, { "Su-24M", 1 } },
+        interdiction                = { { "Su-34", 1 } },
+    },
+    blue = {
+        -- F/A-18C for Finland's Hornets, F-16C for Norway's F-35 and Sweden's Gripen (neither
+        -- in DCS), F-15E and B-1B for US reinforcements
+        strike                      = { { "FA-18C_hornet", 3 }, { "F-16C_50", 3 }, { "F-15ESE", 2 }, { "B-1B", 1 } },
+        airfield_strike             = { { "FA-18C_hornet", 2 }, { "F-16C_50", 2 }, { "F-15ESE", 2 }, { "B-1B", 1 } },
+        suppression_of_air_defenses = { { "F-16C_50", 2 }, { "FA-18C_hornet", 1 } },
+        destruction_of_air_defenses = { { "F-15ESE", 1 }, { "F-16C_50", 1 }, { "FA-18C_hornet", 1 } },
+        interdiction                = { { "F-15ESE", 2 }, { "B-1B", 1 } },
+        close_air_support           = { { "A-10C_2", 2 }, { "F-16C_50", 1 }, { "FA-18C_hornet", 1 } },
+    },
+}
+
 -- What each coalition's fixed ground targets are made of, per role: { type, weight }.
 -- Roles are named by data/fixed_ground_target_recipes.lua. Kept apart from
 -- COALITION_ROSTER because these include static objects and parked aircraft, not only

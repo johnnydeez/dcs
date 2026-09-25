@@ -1,6 +1,6 @@
 # Kola F-16 Randomized Mission Generator — Planning Doc
 
-> **Status:** v1 — stages 1–2 (territory + base defenses at all 37 airfields) + stage 3a (SAM network, 100 zones) + world inputs running in DCS (2026-09-23); zone classes in `data/zones.lua`, stage 3b (fixed ground targets) and 3c (target catalog) running in DCS for both coalitions, full start-up spawn ~7 s (2026-09-24). Planning sections §1–10 are the concept; §11, "Where we are" and the "as built" sections are the spec.
+> **Status:** v1 — stages 1–2 (territory + base defenses at all 37 airfields) + stage 3a (SAM network, 100 zones) + world inputs running in DCS (2026-09-23); zone classes in `data/zones.lua`, stage 3b (fixed ground targets) and 3c (target catalog) running in DCS for both coalitions, full start-up spawn ~7 s (2026-09-24); stage 4 first part (one Red supply convoy) and stages 5–6 first pass (strike and airfield strike air tasking for both coalitions, threat-aware routing) running in DCS (2026-09-25). Planning sections §1–10 are the concept; §11, "Where we are" and the "as built" sections are the spec.
 > Companion to the Syria project (`notes/notes.md`). Open questions are marked **[Q]** — answer them inline and the doc becomes the spec.
 >
 > **Layout:** *Where we are* (pick up here) → *Next session* candidates → *Base defenses / SAM sites / Fixed ground targets — as built* → *Plan* (§1–10, concept and research) → *Architecture* (§11, code structure decisions).
@@ -11,7 +11,19 @@
 
 ---
 
-## Session 6 (2026-09-25) — first convoy, offline only so far
+## Where we are — pick up here  *(2026-09-25, end of session 6 — convoy and ground attack air tasking running in DCS)*
+
+**Status: stages 1–6 (first passes) run in DCS.**
+- **Run order:** Boot → gather → `RollTerritory` → `PlanBaseDefenses` → `PlanSamSites` → `PlanFixedGroundTargets` → `PlanConvoys` → `CatalogTargets` → `PlanAirTasking` → plan dump → `Territory.apply` → spawn (**static objects first**, then base defenses, SAM sites, fixed-target units, convoys) → `ScheduleAirTaskingOrders` (flights spawn on the mission clock) → draw + on-screen summary.
+- **Last DCS runs (John: "looks good"):**
+  - start-up spawn ~7 s (212 static objects in 0.5 s; ~830 units);
+  - 12 missions planned in 0.6 s, all routed; flights spawn on time with 0 type mismatches;
+  - Su-24Ms dropped their bombs, not very accurately.
+- **Not yet seen in a log:** flights landing and being removed. No logged run lasted past the first return (~1 h 17 min); grep `landed — removing it`.
+- **Development setting:** no player slot in the mission. A player aircraft in the world slows every spawn (see §1.1 "Execution timing"); the final design is dynamic spawn after "Init complete".
+- **Spawners, one per kind of DCS object (John):** `SpawnStaticObjects`, `SpawnGroundGroups` (optional fields such as `route`), `SpawnAircraftGroups`.
+
+### Session 6 details (2026-09-25)
 
 - **Performance flights** (John, F-16): baseline under "Unit budget" below. Result: no mission changes, graphics settings only; re-test once AI flights and moving units land.
 - **Stage 4, first part: one Red supply convoy per mission** (`stages/plan_convoys.lua`, `PlanConvoys` → `plan.convoys`). Ported from the Syria `convoy_setup.lua`, split into the pipeline:
@@ -22,7 +34,46 @@
   - **Catalog:** category `mobile_ground_target`, mission type `interdiction` (new); the trucks are critical, fraction 0.5. The entry carries `from_base`, `to_base`, `waypoints`, `speed_mps`, `travel_minutes`, so tasking can work out where the convoy is at a given time. `CatalogTargets` now runs after stage 4.
   - **Map:** `consumers/draw_convoys.lua` (`CONFIG.DRAW_CONVOYS`, mark ids 40000+) draws a dashed route line plus start and parking labels.
 - **Offline** (100 rolls, road calls stubbed): a convoy every roll, 0 check failures; 24 % of routes go to a base closer to the enemy rather than a `front` one. Each roll logs "BLUE has no targets for: interdiction" (true until Blue gets convoys).
-- **Not yet verified in DCS:** that `land.findPathOnRoads` works on Kola, that the convoy actually drives, and where it gets stuck. First DCS run: grep `Stage 4` in `dcs.log`, then watch the column on F10.
+- **Verified in DCS (John):** the convoy works. Spawn times had grown because a player F-16 slot was in the mission (see §1.1 "Execution timing"); the slot is removed during development.
+- **Stages 5–6, first pass: ground attack air tasking orders for both coalitions** (`stages/plan_air_tasking.lua`, `PlanAirTasking` → `plan.air_tasking_orders[coalition].missions`). Offline only so far.
+  - **Built:** `strike` and `airfield_strike`, one flight per mission, no escorts or suppression packages (next).
+  - **Stubbed:** `suppression_of_air_defenses`, `destruction_of_air_defenses`, `interdiction`, `close_air_support` (`built = false` in `data/air_tasking.lua`). Their attack method, rosters and loadouts are already in the data.
+  - **Volume (John):** Red 4–6 and Blue 6–8 missions per 6-hour window, at most 3 flights per coalition airborne at once. Each coalition's first flight starts at T+2 min, so there's something to watch early.
+  - **Per mission:** mission type (weighted) → aircraft from `COALITION_AIRCRAFT` → an enemy catalog target within its combat radius from a base it can launch from (weighted by value, never hit twice) → one of the 3 nearest fitting bases → a start time under the airborne cap → parking spots free at that time (not on parked-aircraft statics) → route (takeoff, departure, ingress, target, egress, landing) and attack tasks.
+  - **Not tied to the parked-aircraft rosters** (John: it would limit launch bases and make tasking harder).
+  - **Ids:** `MSN<number>` (Blue 2001+, Red 5001+) is the DCS group name.
+  - **Making the AI attack** (researched from DCS Liberation's code and the ED forums):
+    - one `Bombing` task per critical object at its position, on the ingress waypoint (search tasks never pick static objects); drop everything when there is a single point;
+    - heavy bombers (Tu-22M3) get one `Bombing` at the centre, bombs only;
+    - on the first waypoint: rules of engagement open fire (not weapons free, so the flight stays on its target), evade fire, return at bingo fuel, no jettisoning, gun emptied (the AI otherwise strafes a Tor once the bombs are gone);
+    - loadouts carry one kind of air-to-ground weapon each;
+    - recorded for later: `EngageGroup` for anti-radiation missiles (waits for the radar to emit), `AttackGroup` for SAM sites and convoys, `BombingRunway` ignores laser-guided bombs.
+  - **Loadouts:** `tools/aircraft_loadouts.py` generates `data/aircraft_loadouts.lua` from ED's UnitPayloads, DCS Liberation's AI loadouts (local reference clone at `C:\Users\johnk\Git\dcs_liberation`, like pydcs) and Syria's three proven CAS loadouts (`tools/aircraft_loadouts_by_hand.json`). The choice per type and mission type is in `tools/aircraft_loadout_choices.json`; every CLSID is checked against `aircraft_pylons.lua`. `--list <type>` shows the options with weapon names.
+  - **Consumers:**
+    - `consumers/spawn_aircraft_groups.lua` (`SpawnAircraftGroups`): the third and last spawner, one per kind of DCS object;
+    - `consumers/schedule_air_tasking_orders.lua`: spawns each flight at its start time and removes aircraft 3 min after they land;
+    - `consumers/draw_air_tasking_orders.lua`: route lines and target labels, behind `DRAW_AIR_TASKING_ORDERS`.
+  - **Offline** (100 rolls): Red 4.8 and Blue 7.0 missions per roll, 0 unplanned; 0 flights beyond reach, over the airborne cap, on a clashing or static-occupied spot, or sent to a target twice.
+  - **To verify in DCS:**
+    - that flights start hot from their parking spots;
+    - that they actually drop on static objects;
+    - how the Tu-22M3 carpet run looks;
+    - whether they land and get removed.
+
+    Grep `MSN` in `dcs.log`.
+  - **First DCS run (John): works "pretty well".** Su-24Ms dropped their bombs, not very accurately. Two problems:
+    - flights overflew easily avoidable enemy SAMs;
+    - Su-24Ms crossed the map at 9,800 ft. Cause: the attack altitude sat on the ingress waypoint, and the AI descends toward the next waypoint's altitude from the previous one, so the whole transit sank toward attack height.
+  - **Fixed: altitudes and threat routing** (`lib/threat_routing.lua`, `AIR_ROUTING` in `data/air_tasking.lua`).
+    - **Cruise ≥ 7,500 m (~25k ft) for every attack flight:** above guns, shoulder-launched missiles and short-range SAMs (SA-8, SA-15, Roland reach ~5–6 km). Cruise altitude is held until a descent point (5 km per km of drop, ≥ 10 km) before the ingress.
+    - **Attack altitude per aircraft and mission type** (`attack_altitude_m` in the profiles), realistic for the payload whatever the threat (John): unguided FAB-500 5,000 m, RBK cluster 3,000 m, JDAMs 7,000–9,000 m, Tu-22M3 carpet 8,000 m.
+    - **Routed around what can't be overflown:** enemy medium- and long-range SAM rings (+10 km) and enemy Pantsir / Tor-M2 base-defense groups (+5 km). Every fixed enemy site is treated as known (John agreed).
+    - **Method:** A* on a 10 km grid, where cells inside rings cost 25× per ring but aren't forbidden, then smoothed to a few waypoints. If the way around is > 1.6× direct or out of reach, the flight goes straight through (John agreed).
+    - **Still crossing a ring** → `needs_suppression = true`, with the ids in `suppression_threats`: the hook for SEAD/DEAD escorts. Shown on the F10 label.
+  - **Offline, 60 rolls:**
+    - 86 % of direct routes would cross a ring and 72 % of flown routes still do. About 4 in 10 flagged missions cross only the rings around the target itself. The rest are mostly the front belt of SA-11 / NASAMS rings (a continuous wall at 45 km radius) and the stacked rings of the Kola core; 8 % of ways around were rejected as too long.
+    - 0 transit waypoints below 7,500 m, 0 unflagged crossings, ~0.7 s per roll to plan.
+    - **Takeaway:** most attack missions need suppression, which is what SEAD/DEAD packages are for, next.
 
 ## Where we were — end of session 5  *(2026-09-24 — zone classes, fixed ground targets and the target catalog running in DCS)*
 
@@ -128,26 +179,47 @@ kola_f16/
   data/convoy_recipes.lua    what each convoy kind contains, how it drives; convoys per coalition
   stages/plan_convoys.lua    plan.convoys: convoys, groups (with route), summary (stage 4, first part)
   consumers/draw_convoys.lua route line + start / parking labels per convoy; summaryText
+  lib/threat_routing.lua      grid path search around threat circles, smoothing, crossed-ring check (pure logic)
+  data/aircraft_profiles.lua  per aircraft type: launch base classes, runway, parking, reach, speeds, altitudes
+  data/aircraft_loadouts.lua  one loadout per aircraft type and mission type, generated (tools/aircraft_loadouts.py)
+  data/air_tasking.lua        air mission types (built or stub, how they attack), missions per coalition, timing
+  stages/plan_air_tasking.lua plan.air_tasking_orders: each coalition's missions (stages 5–6, first pass)
+  consumers/spawn_aircraft_groups.lua        one planned flight → coalition.addGroup + type check
+  consumers/schedule_air_tasking_orders.lua  spawns flights at their start times; removes them after landing
+  consumers/draw_air_tasking_orders.lua      route line + target label per flight; summaryText
   survey/survey_airbase_footprints.lua  one-off survey (off)
   survey/survey_zone_terrain.lua      zone terrain survey; runs only in khola_ground_zones.miz
   survey/probe_parked_aircraft_spawn.lua  one-off timing probe (off; CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN)
-tools/                       miz_zones.py, cloud_presets.py, unit_pool.py (+ overrides), dcslua.py, kola_proj.py, kola_airbases.json
+tools/                       miz_zones.py, cloud_presets.py, unit_pool.py (+ overrides), dcslua.py, kola_proj.py, kola_airbases.json,
+                             aircraft_loadouts.py (+ aircraft_loadout_choices.json, aircraft_loadouts_by_hand.json)
 kola_f16_random_tasking.miz  flyable mission (ONCE + TIME MORE 1 → DO SCRIPT dofile(lfs.writedir().."Scripts\\kola_f16\\init.lua"))
 ```
-Plan dump: `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `python tools/miz_zones.py "<survey .miz>"` after drawing zones; `python tools/unit_pool.py` after a DCS update once pydcs has caught up; the footprint survey after a map update. DCS updates re-sanitize `MissionScripting.lua` → `python desanitize_dcs.py` from an admin shell + full DCS restart.
+Plan dump: `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `python tools/miz_zones.py "<survey .miz>"` after drawing zones; `python tools/unit_pool.py` after a DCS update once pydcs has caught up; `python tools/aircraft_loadouts.py` after changing a loadout choice, re-running unit_pool.py, or updating the Liberation clone (`C:\Users\johnk\Git\dcs_liberation`, sparse: resources/customized_payloads); the footprint survey after a map update. DCS updates re-sanitize `MissionScripting.lua` → `python desanitize_dcs.py` from an admin shell + full DCS restart.
 
 ---
 
 ## NEXT SESSION — candidates  *(pick one with John)*
 
-**Build order (chosen 2026-09-23): linearly, stage by stage.** Stage 3 (base defenses, SAM sites, fixed ground targets, target catalog) is done as of 2026-09-24. Next by the build order is **stage 4 (mobile units)**, then tasking/missions (stages 5–7), which read only `plan.target_catalog`. John isn't in a rush to fly; a thin "fly one SEAD mission first" slice was offered and declined.
+**Build order (chosen 2026-09-23): linearly, stage by stage.** Stages 1–3 are done; stage 4 and stages 5–6 have first passes running in DCS (2026-09-25). Mission stages read only `plan.target_catalog`. John isn't in a rush to fly; a thin "fly one SEAD mission first" slice was offered and declined.
+
+**Agreed next (John, 2026-09-25): packages — ordering plus SEAD/DEAD escorts.**
+- **The hook is there:** each mission with `needs_suppression` lists its `suppression_threats` (SAM site ids, plus `DEF_…_radar_missile_launchers_*` groups). That's about 72 % of missions offline.
+- **Build first:** the stubbed `suppression_of_air_defenses` (`EngageGroup`, anti-radiation missiles) and `destruction_of_air_defenses` (`AttackGroup`) mission types. Their rosters, loadouts, attack altitudes and attack method are already in the data (`built = false`).
+- **Then packages:** a suppression line whose time on target is 3–5 min before the strike's, on the sites the strike crosses (§1.9 rule 3).
+- **Decide:** how the package shares one start and time-on-target plan; whether a flagged strike without an available suppression flight is dropped or flies anyway; and how the airborne cap counts package members.
+
+**Also wanted:** CAP and scrambles (§1.10), interdiction (convoy `AttackGroup`) and close air support flights, then the brief (stage 7).
 
 1. **Front targets** (the known gap above): John draws zones near the front, or a front-target rule. For example, measure "front" for targets from this roll's front gap like the SAM front belt does, or allow armor / artillery at `mid`. Also Red supply depots with no road access.
-2. **Stage 4: mobile units.** Convoys, reinforcements, TEL deployments, contacts. They need their own zones / corridors, since fixed targets use all free zones. Add them to the catalog through an adapter in `stages/catalog_targets.lua`. Spawn their static objects (if any) before units.
+2. **Rest of stage 4: mobile units.** One Red supply convoy is done (session 6). Still to do: Blue convoys, reinforcements, missile-launcher deployments, contacts. They need their own zones or corridors, since fixed targets use all free zones. Add them to the catalog through an adapter in `stages/catalog_targets.lua`; spawn any static objects before units.
+   - **Air tasking polish:**
+     - Red Su-34s sometimes fly at the edge of their reach (677 km of 700); lower `combat_radius_km` if they run dry;
+     - mid-mission spawns while a player flies: batch them across frames if they freeze the sim;
+     - `SpawnAircraftGroups` only builds `bomb_critical_objects` attacks so far.
 3. **SAM sites on the map's revetments** (`prepared_sam_position = "revetments"`, 7 zones): John wants SAMs spawned in those dug-in positions later. It's a SAM-stage change, so ask first.
 4. ~~First DCS run of the SAM network and tuning~~, done 2026-09-23. Still open: fly against it and check the Patriot's two-radar layout engages; optionally a Blue rear-density tweak.
 5. ~~Rest of stage 3~~, done 2026-09-24 (fixed ground targets + catalog). Deferred from it:
-   - consolidate spawning into `lib/dcs_groups.lua` + a `spawn_at_start` consumer (it would touch SAM spawning, so leave it until wanted);
+   - ~~consolidate spawning~~: settled in session 6 as one spawner per kind of DCS object;
    - a second parked-aircraft group at hubs if ramps look empty;
    - real liveries per coalition for parked aircraft;
    - `settlement` still counts airfield buildings.
@@ -169,7 +241,7 @@ Reading: standing ground units cost a few fps only close to a heavy base, nothin
 
 **Open decision, settled for now:** base-defense units live in the plan (`plan.base_defenses`, ids = DCS group names) so they can later be mission targets or brief info, but they are **not** in the target catalog yet.
 
-**Decide as we hit them:** runtime state table shape (§11.2); ATO scheduler + scramble loop (§1.9/§1.10); success model (§9); later phases: Skynet, pydcs pre-gen, naval.
+**Decide as we hit them:** runtime state table shape (§11.2; the ATO scheduler keeps a first `_flights` table keyed by mission id); scramble loop (§1.10); success model (§9); later phases: Skynet, pydcs pre-gen, naval.
 
 ---
 
