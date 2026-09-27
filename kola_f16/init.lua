@@ -49,15 +49,18 @@ if not load("data\\convoy_recipes.lua")           then return end
 if not load("data\\aircraft_profiles.lua")        then return end
 if not load("data\\aircraft_loadouts.lua")        then return end
 if not load("data\\air_tasking.lua")              then return end
+if not load("data\\airspace.lua")                 then return end
 if not load("gather.lua")                  then return end
 if not load("stages\\roll_territory.lua")  then return end
 if not load("stages\\plan_base_defenses.lua")     then return end
 if not load("stages\\plan_sam_sites.lua")         then return end
+if not load("stages\\divide_airspace.lua")        then return end
 if not load("stages\\plan_fixed_ground_targets.lua") then return end
 if not load("stages\\plan_convoys.lua")           then return end
 if not load("stages\\catalog_targets.lua")        then return end
 if not load("stages\\plan_air_tasking.lua")       then return end
 if not load("consumers\\territory.lua")    then return end
+if not load("consumers\\draw_airspace.lua")       then return end
 if not load("consumers\\spawn_ground_groups.lua") then return end
 if not load("consumers\\draw_base_defenses.lua")  then return end
 if not load("consumers\\draw_sam_sites.lua")      then return end
@@ -65,7 +68,9 @@ if not load("consumers\\spawn_static_objects.lua") then return end
 if not load("consumers\\draw_fixed_ground_targets.lua") then return end
 if not load("consumers\\draw_convoys.lua")        then return end
 if not load("consumers\\spawn_aircraft_groups.lua") then return end
+if not load("consumers\\preload_aircraft_types.lua") then return end
 if not load("consumers\\schedule_air_tasking_orders.lua") then return end
+if not load("consumers\\run_scrambles.lua")      then return end
 if not load("consumers\\draw_air_tasking_orders.lua") then return end
 if CONFIG.SURVEY_FOOTPRINTS and not load("survey\\survey_airbase_footprints.lua") then return end
 if CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN and not load("survey\\probe_parked_aircraft_spawn.lua") then return end
@@ -97,6 +102,7 @@ local function run()
     RollTerritory.run(plan)
     PlanBaseDefenses.run(plan)
     PlanSamSites.run(plan)
+    DivideAirspace.run(plan)   -- Blue / Red / contested, from held ground + SAM reach
     PlanFixedGroundTargets.run(plan)
     PlanConvoys.run(plan)
     CatalogTargets.run(plan)   -- after every stage that plans targets
@@ -105,6 +111,7 @@ local function run()
 
     dumpPlan(plan)
 
+    DrawAirspace.apply(plan)   -- first, so the filled areas lie under every other mark
     Territory.apply(plan)
     -- KEEP THIS ORDER: every static object before any AI unit. Spawned after ~800 AI
     -- units, each parked aircraft took ~3 s inside addStaticObject (a 3-minute stall at
@@ -119,10 +126,18 @@ local function run()
     DrawSamSites.apply(plan)
     DrawFixedGroundTargets.apply(plan)
     DrawConvoys.apply(plan)
+    -- Every aircraft type the flights use is spawned once and removed now: a type's first
+    -- spawn freezes the sim for seconds (F-15E ~25 s), so it happens here, during start-up,
+    -- not mid-mission.
+    PreloadAircraftTypes.run(plan)
     -- aircraft spawn later, each at its planned start time
     ScheduleAirTaskingOrders.start(plan)
+    -- OFF until the AI behaviour rules are designed (session 8): no alert posture is
+    -- planned (AIR_DEFENSE.alert_posture_planned), so there is nothing to scramble.
+    -- RunScrambles.start(plan)   -- reacts to what the radars see; spawns scrambles as needed
     DrawAirTaskingOrders.apply(plan)
-    local text = Territory.summaryText(plan) .. "\n" .. DrawBaseDefenses.summaryText(plan)
+    local text = Territory.summaryText(plan) .. "\n" .. DrawAirspace.summaryText(plan)
+        .. "\n" .. DrawBaseDefenses.summaryText(plan)
         .. "\n" .. DrawSamSites.summaryText(plan) .. "\n" .. DrawFixedGroundTargets.summaryText(plan)
         .. "\n" .. DrawConvoys.summaryText(plan) .. "\n" .. DrawAirTaskingOrders.summaryText(plan)
     if CONFIG.SHOW_WEATHER_DEBUG then

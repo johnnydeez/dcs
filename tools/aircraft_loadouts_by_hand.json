@@ -33,5 +33,11 @@
       { "num": 10, "CLSID": "{CBU-87}" },
       { "num": 11, "CLSID": "{DB434044-F5D0-4F1F-9BA9-B73027E18DD3}" }
     ] }
+  },
+  "A-50": {
+    "Clean": { "pylons": [] }
+  },
+  "E-3A": {
+    "Clean": { "pylons": [] }
   }
 }

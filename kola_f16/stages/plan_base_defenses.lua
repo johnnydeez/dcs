@@ -321,9 +321,21 @@ function PlanBaseDefenses.run(plan)
         return plan
     end
 
-    for name in pairs(AIRBASE_CLASS) do
-        if not world.airbases[name] then
+    for name, class in pairs(AIRBASE_CLASS) do
+        local wab = world.airbases[name]
+        if not wab then
             Log.warn("airbase_classes.lua lists '" .. name .. "' but DCS has no such airdrome")
+        else
+            -- runway length decides strip vs a jet field (data/airbase_classes.lua)
+            local runway = 0
+            for _, r in ipairs(wab.runways or {}) do if r.length > runway then runway = r.length end end
+            local jets = runway >= AIRBASE_CLASS_JET_RUNWAY_M
+            if class == "strip" and jets then
+                Log.warn(string.format("airbase_classes.lua: %s is a strip but its runway (%d m) takes jets", name, runway))
+            elseif class ~= "strip" and class ~= "heli" and not jets then
+                Log.warn(string.format("airbase_classes.lua: %s is %s but its runway (%d m) is too short for jets",
+                    name, class, runway))
+            end
         end
     end
     for name in pairs(FORESTED_AIRFIELDS) do

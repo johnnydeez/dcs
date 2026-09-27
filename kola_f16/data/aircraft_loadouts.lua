@@ -21,6 +21,14 @@ AIRCRAFT_LOADOUT = {
             },
         },
     },
+    ["A-50"] = {
+        airborne_early_warning = {
+            source = "hand", name = "Clean",
+            fuel = 70000, chaff = 192, flare = 192, gun = 100,
+            pylons = {
+            },
+        },
+    },
     ["B-1B"] = {
         strike = {
             source = "liberation", name = "Liberation Strike",
@@ -47,6 +55,50 @@ AIRCRAFT_LOADOUT = {
                 { num = 1, CLSID = "GBU-31*8" },  -- MPRL - 8 x GBU-31(V)1/B - JDAM, 2000lb GPS Guided Bomb
                 { num = 2, CLSID = "GBU-31*8" },  -- MPRL - 8 x GBU-31(V)1/B - JDAM, 2000lb GPS Guided Bomb
                 { num = 3, CLSID = "GBU-31*8" },  -- MPRL - 8 x GBU-31(V)1/B - JDAM, 2000lb GPS Guided Bomb
+            },
+        },
+    },
+    ["E-3A"] = {
+        airborne_early_warning = {
+            source = "hand", name = "Clean",
+            fuel = 65000, chaff = 120, flare = 60, gun = 100,
+            pylons = {
+            },
+        },
+    },
+    ["F-15C"] = {
+        combat_air_patrol = {
+            source = "liberation", name = "CAP",
+            fuel = 6103, chaff = 120, flare = 60, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{6CEB49FC-DED8-4DED-B053-E1F033FF72D3}" },  -- AIM-9M Sidewinder IR AAM
+                { num = 2, CLSID = "{E1F29B21-F291-4589-9FD8-3272EEC69506}" },  -- Fuel tank 610 gal
+                { num = 3, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 4, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 5, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 6, CLSID = "{E1F29B21-F291-4589-9FD8-3272EEC69506}" },  -- Fuel tank 610 gal
+                { num = 7, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 8, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 9, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 10, CLSID = "{E1F29B21-F291-4589-9FD8-3272EEC69506}" },  -- Fuel tank 610 gal
+                { num = 11, CLSID = "{6CEB49FC-DED8-4DED-B053-E1F033FF72D3}" },  -- AIM-9M Sidewinder IR AAM
+            },
+        },
+        interception = {
+            source = "liberation", name = "CAP",
+            fuel = 6103, chaff = 120, flare = 60, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{6CEB49FC-DED8-4DED-B053-E1F033FF72D3}" },  -- AIM-9M Sidewinder IR AAM
+                { num = 2, CLSID = "{E1F29B21-F291-4589-9FD8-3272EEC69506}" },  -- Fuel tank 610 gal
+                { num = 3, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 4, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 5, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 6, CLSID = "{E1F29B21-F291-4589-9FD8-3272EEC69506}" },  -- Fuel tank 610 gal
+                { num = 7, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 8, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 9, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 10, CLSID = "{E1F29B21-F291-4589-9FD8-3272EEC69506}" },  -- Fuel tank 610 gal
+                { num = 11, CLSID = "{6CEB49FC-DED8-4DED-B053-E1F033FF72D3}" },  -- AIM-9M Sidewinder IR AAM
             },
         },
     },
@@ -200,6 +252,36 @@ AIRCRAFT_LOADOUT = {
                 { num = 11, CLSID = "{A111396E-D3E8-4b9c-8AC9-2432489304D5}" },  -- AN/AAQ-28 LITENING - Targeting Pod
             },
         },
+        combat_air_patrol = {
+            source = "dcs", name = "AIM-120C*4, AIM-9X*2, FUEL*3",
+            fuel = 3249, chaff = 60, flare = 60, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 2, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 3, CLSID = "{5CE2FF2A-645A-4197-B48D-8720AC69394F}" },  -- AIM-9X Sidewinder IR AAM
+                { num = 4, CLSID = "{F376DBEE-4CAE-41BA-ADD9-B2910AC95DEC}" },  -- Fuel tank 370 gal
+                { num = 5, CLSID = "{8A0BE8AE-58D4-4572-9263-3144C0D06364}" },  -- Fuel tank 300 gal
+                { num = 6, CLSID = "{F376DBEE-4CAE-41BA-ADD9-B2910AC95DEC}" },  -- Fuel tank 370 gal
+                { num = 7, CLSID = "{5CE2FF2A-645A-4197-B48D-8720AC69394F}" },  -- AIM-9X Sidewinder IR AAM
+                { num = 8, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 9, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+            },
+        },
+        interception = {
+            source = "dcs", name = "AIM-120C*4, AIM-9X*2, FUEL*3",
+            fuel = 3249, chaff = 60, flare = 60, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 2, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 3, CLSID = "{5CE2FF2A-645A-4197-B48D-8720AC69394F}" },  -- AIM-9X Sidewinder IR AAM
+                { num = 4, CLSID = "{F376DBEE-4CAE-41BA-ADD9-B2910AC95DEC}" },  -- Fuel tank 370 gal
+                { num = 5, CLSID = "{8A0BE8AE-58D4-4572-9263-3144C0D06364}" },  -- Fuel tank 300 gal
+                { num = 6, CLSID = "{F376DBEE-4CAE-41BA-ADD9-B2910AC95DEC}" },  -- Fuel tank 370 gal
+                { num = 7, CLSID = "{5CE2FF2A-645A-4197-B48D-8720AC69394F}" },  -- AIM-9X Sidewinder IR AAM
+                { num = 8, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 9, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+            },
+        },
     },
     ["FA-18C_hornet"] = {
         strike = {
@@ -273,6 +355,60 @@ AIRCRAFT_LOADOUT = {
                 { num = 9, CLSID = "{5CE2FF2A-645A-4197-B48D-8720AC69394F}" },  -- AIM-9X Sidewinder IR AAM
             },
         },
+        combat_air_patrol = {
+            source = "liberation", name = "Liberation BARCAP",
+            fuel = 4900, chaff = 60, flare = 60, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{5CE2FF2A-645A-4197-B48D-8720AC69394F}" },  -- AIM-9X Sidewinder IR AAM
+                { num = 2, CLSID = "LAU-115_2*LAU-127_AIM-120C" },  -- LAU-115: 2 x LAU-127 - 2 x AIM-120C AMRAAM - Active Radar AAM
+                { num = 3, CLSID = "{FPU_8A_FUEL_TANK}" },  -- FPU-8A Fuel Tank 330 gallons
+                { num = 4, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 6, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 7, CLSID = "{FPU_8A_FUEL_TANK}" },  -- FPU-8A Fuel Tank 330 gallons
+                { num = 8, CLSID = "LAU-115_2*LAU-127_AIM-120C" },  -- LAU-115: 2 x LAU-127 - 2 x AIM-120C AMRAAM - Active Radar AAM
+                { num = 9, CLSID = "{5CE2FF2A-645A-4197-B48D-8720AC69394F}" },  -- AIM-9X Sidewinder IR AAM
+            },
+        },
+        interception = {
+            source = "liberation", name = "Liberation BARCAP",
+            fuel = 4900, chaff = 60, flare = 60, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{5CE2FF2A-645A-4197-B48D-8720AC69394F}" },  -- AIM-9X Sidewinder IR AAM
+                { num = 2, CLSID = "LAU-115_2*LAU-127_AIM-120C" },  -- LAU-115: 2 x LAU-127 - 2 x AIM-120C AMRAAM - Active Radar AAM
+                { num = 3, CLSID = "{FPU_8A_FUEL_TANK}" },  -- FPU-8A Fuel Tank 330 gallons
+                { num = 4, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 6, CLSID = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}" },  -- AIM-120C AMRAAM - Active Radar AAM
+                { num = 7, CLSID = "{FPU_8A_FUEL_TANK}" },  -- FPU-8A Fuel Tank 330 gallons
+                { num = 8, CLSID = "LAU-115_2*LAU-127_AIM-120C" },  -- LAU-115: 2 x LAU-127 - 2 x AIM-120C AMRAAM - Active Radar AAM
+                { num = 9, CLSID = "{5CE2FF2A-645A-4197-B48D-8720AC69394F}" },  -- AIM-9X Sidewinder IR AAM
+            },
+        },
+    },
+    ["MiG-31"] = {
+        combat_air_patrol = {
+            source = "liberation", name = "CAP",
+            fuel = 15500, chaff = 0, flare = 0, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{4EDBA993-2E34-444C-95FB-549300BF7CAF}" },  -- R-40RD (AA-6 Acrid) - Semi-Act Rdr
+                { num = 2, CLSID = "{F1243568-8EF0-49D4-9CB5-4DA90D92BC1D}" },  -- R-33 (AA-9 Amos) - Semi-Act Rdr
+                { num = 3, CLSID = "{F1243568-8EF0-49D4-9CB5-4DA90D92BC1D}" },  -- R-33 (AA-9 Amos) - Semi-Act Rdr
+                { num = 4, CLSID = "{F1243568-8EF0-49D4-9CB5-4DA90D92BC1D}" },  -- R-33 (AA-9 Amos) - Semi-Act Rdr
+                { num = 5, CLSID = "{F1243568-8EF0-49D4-9CB5-4DA90D92BC1D}" },  -- R-33 (AA-9 Amos) - Semi-Act Rdr
+                { num = 6, CLSID = "{4EDBA993-2E34-444C-95FB-549300BF7CAF}" },  -- R-40RD (AA-6 Acrid) - Semi-Act Rdr
+            },
+        },
+        interception = {
+            source = "liberation", name = "CAP",
+            fuel = 15500, chaff = 0, flare = 0, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{4EDBA993-2E34-444C-95FB-549300BF7CAF}" },  -- R-40RD (AA-6 Acrid) - Semi-Act Rdr
+                { num = 2, CLSID = "{F1243568-8EF0-49D4-9CB5-4DA90D92BC1D}" },  -- R-33 (AA-9 Amos) - Semi-Act Rdr
+                { num = 3, CLSID = "{F1243568-8EF0-49D4-9CB5-4DA90D92BC1D}" },  -- R-33 (AA-9 Amos) - Semi-Act Rdr
+                { num = 4, CLSID = "{F1243568-8EF0-49D4-9CB5-4DA90D92BC1D}" },  -- R-33 (AA-9 Amos) - Semi-Act Rdr
+                { num = 5, CLSID = "{F1243568-8EF0-49D4-9CB5-4DA90D92BC1D}" },  -- R-33 (AA-9 Amos) - Semi-Act Rdr
+                { num = 6, CLSID = "{4EDBA993-2E34-444C-95FB-549300BF7CAF}" },  -- R-40RD (AA-6 Acrid) - Semi-Act Rdr
+            },
+        },
     },
     ["Su-24M"] = {
         strike = {
@@ -309,6 +445,112 @@ AIRCRAFT_LOADOUT = {
                 { num = 2, CLSID = "{FE382A68-8620-4AC0-BDF5-709BFE3977D7}" },  -- Kh-58U (AS-11 Kilter) - 640kg, ARM, IN & Pas Rdr
                 { num = 7, CLSID = "{FE382A68-8620-4AC0-BDF5-709BFE3977D7}" },  -- Kh-58U (AS-11 Kilter) - 640kg, ARM, IN & Pas Rdr
                 { num = 8, CLSID = "{E86C5AA5-6D49-4F00-AD2E-79A62D6DDE26}" },  -- Kh-25MPU (Updated AS-12 Kegler) - 320kg, ARM, IN & Pas Rdr
+            },
+        },
+    },
+    ["Su-27"] = {
+        combat_air_patrol = {
+            source = "liberation", name = "CAP",
+            fuel = 9400, chaff = 96, flare = 96, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 2, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 3, CLSID = "{B79C379A-9E87-4E50-A1EE-7F7E29C2E87A}" },  -- R-27ET (AA-10 Alamo D) - IR Extended Range
+                { num = 4, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 5, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 6, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 7, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 8, CLSID = "{B79C379A-9E87-4E50-A1EE-7F7E29C2E87A}" },  -- R-27ET (AA-10 Alamo D) - IR Extended Range
+                { num = 9, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 10, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+            },
+        },
+        interception = {
+            source = "liberation", name = "CAP",
+            fuel = 9400, chaff = 96, flare = 96, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 2, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 3, CLSID = "{B79C379A-9E87-4E50-A1EE-7F7E29C2E87A}" },  -- R-27ET (AA-10 Alamo D) - IR Extended Range
+                { num = 4, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 5, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 6, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 7, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 8, CLSID = "{B79C379A-9E87-4E50-A1EE-7F7E29C2E87A}" },  -- R-27ET (AA-10 Alamo D) - IR Extended Range
+                { num = 9, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 10, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+            },
+        },
+    },
+    ["Su-30"] = {
+        combat_air_patrol = {
+            source = "liberation", name = "CAP",
+            fuel = 9400, chaff = 96, flare = 96, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82F}" },  -- L005 Sorbtsiya ECM pod (left)
+                { num = 2, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 3, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}" },  -- R-77 (AA-12 Adder) - Active Rdr
+                { num = 4, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}" },  -- R-77 (AA-12 Adder) - Active Rdr
+                { num = 5, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}" },  -- R-77 (AA-12 Adder) - Active Rdr
+                { num = 6, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}" },  -- R-77 (AA-12 Adder) - Active Rdr
+                { num = 7, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}" },  -- R-77 (AA-12 Adder) - Active Rdr
+                { num = 8, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}" },  -- R-77 (AA-12 Adder) - Active Rdr
+                { num = 9, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 10, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82A}" },  -- L005 Sorbtsiya ECM pod (right)
+            },
+        },
+        interception = {
+            source = "liberation", name = "CAP",
+            fuel = 9400, chaff = 96, flare = 96, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82F}" },  -- L005 Sorbtsiya ECM pod (left)
+                { num = 2, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 3, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}" },  -- R-77 (AA-12 Adder) - Active Rdr
+                { num = 4, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}" },  -- R-77 (AA-12 Adder) - Active Rdr
+                { num = 5, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}" },  -- R-77 (AA-12 Adder) - Active Rdr
+                { num = 6, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}" },  -- R-77 (AA-12 Adder) - Active Rdr
+                { num = 7, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}" },  -- R-77 (AA-12 Adder) - Active Rdr
+                { num = 8, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}" },  -- R-77 (AA-12 Adder) - Active Rdr
+                { num = 9, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 10, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82A}" },  -- L005 Sorbtsiya ECM pod (right)
+            },
+        },
+    },
+    ["Su-33"] = {
+        combat_air_patrol = {
+            source = "liberation", name = "CAP",
+            fuel = 9500, chaff = 48, flare = 48, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 2, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 3, CLSID = "{B79C379A-9E87-4E50-A1EE-7F7E29C2E87A}" },  -- R-27ET (AA-10 Alamo D) - IR Extended Range
+                { num = 4, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 5, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 6, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 7, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 8, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 9, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 10, CLSID = "{B79C379A-9E87-4E50-A1EE-7F7E29C2E87A}" },  -- R-27ET (AA-10 Alamo D) - IR Extended Range
+                { num = 11, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 12, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+            },
+        },
+        interception = {
+            source = "liberation", name = "CAP",
+            fuel = 9500, chaff = 48, flare = 48, gun = 100,
+            pylons = {
+                { num = 1, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 2, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 3, CLSID = "{B79C379A-9E87-4E50-A1EE-7F7E29C2E87A}" },  -- R-27ET (AA-10 Alamo D) - IR Extended Range
+                { num = 4, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 5, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 6, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 7, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 8, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 9, CLSID = "{E8069896-8435-4B90-95C0-01A03AE6E400}" },  -- R-27ER (AA-10 Alamo C) - Semi-Act Extended Range
+                { num = 10, CLSID = "{B79C379A-9E87-4E50-A1EE-7F7E29C2E87A}" },  -- R-27ET (AA-10 Alamo D) - IR Extended Range
+                { num = 11, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
+                { num = 12, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}" },  -- R-73 (AA-11 Archer) - Infra Red
             },
         },
     },

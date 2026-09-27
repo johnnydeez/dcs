@@ -1,33 +1,196 @@
 # Kola F-16 Randomized Mission Generator — Planning Doc
 
-> **Status:** v1 — stages 1–2 (territory + base defenses at all 37 airfields) + stage 3a (SAM network, 100 zones) + world inputs running in DCS (2026-09-23); zone classes in `data/zones.lua`, stage 3b (fixed ground targets) and 3c (target catalog) running in DCS for both coalitions, full start-up spawn ~7 s (2026-09-24); stage 4 first part (one Red supply convoy) and stages 5–6 first pass (strike and airfield strike air tasking for both coalitions, threat-aware routing) running in DCS (2026-09-25); SEAD/DEAD and packages built, offline only (session 7, 2026-09-25). Planning sections §1–10 are the concept; §11, "Where we are" and the "as built" sections are the spec.
+> **Status:** v1 — stages 1–2 (territory + base defenses at all 37 airfields) + stage 3a (SAM network, 100 zones) + world inputs running in DCS (2026-09-23); zone classes in `data/zones.lua`, stage 3b (fixed ground targets) and 3c (target catalog) running in DCS for both coalitions, full start-up spawn ~7 s (2026-09-24); stage 4 first part (one Red supply convoy) and stages 5–6 first pass (strike and airfield strike air tasking for both coalitions, threat-aware routing) running in DCS (2026-09-25); SEAD/DEAD packages and defensive air (CAP, AWACS, radar-triggered scrambles) running in DCS (session 7, 2026-09-25). Session 8 (2026-09-26): direction changed to air denial; airspace map (Blue / Red / contested, regions, pockets) and front-only ground attack with airspace-priced routes running in DCS, aircraft-type preload for the first-spawn freezes built. End of session 8 (2026-09-27): CAP and AWACS back on as front stations over own sites near the contested airspace (two DCS runs, fixes after each; third run pending), scrambles still off. Planning sections §1–10 are the concept; §11, "Where we are" and the "as built" sections are the spec.
 > Companion to the Syria project (`notes/notes.md`). Open questions are marked **[Q]** — answer them inline and the doc becomes the spec.
 >
 > **Layout:** *Where we are* (pick up here) → *Next session* candidates → *Base defenses / SAM sites / Fixed ground targets — as built* → *Plan* (§1–10, concept and research) → *Architecture* (§11, code structure decisions).
 >
 > **Naming rule:** name things by what they are or what they do, in full words. No abbreviations in code names: `mobile_anti_aircraft_guns`, not `aaa_sp`; `shoulder_launched_missile_teams`, not `manpads_team`. Each name answers one question. Prose may still use common terms (AAA, SHORAD, MANPADS).
 >
+> **⚠ Mid-rework (from session 8, 2026-09-26):** the air war is being redesigned from air superiority to **air denial**: jets stay under their own SAM umbrella, ground attack works the front, losses should be rare, and standoff weapons are coming. Flight structures, weapons, tactics and strategy are all in heavy change, step by step. The current state and the decisions made so far live in **"Where we are"**. §1.9 (ATO model), §1.10 (reaction model) and §4.3–4.4 (threat and support layers) describe the **old** design and are marked; don't treat them as the spec until they're rewritten.
+>
 > **Working rules:** commits are always done by John, on his own schedule — never ask about or perform a commit. After any edit under `kola_f16\`, copy the tree to `Saved Games\DCS\Scripts\kola_f16\` immediately; DCS is the only test environment.
 
 ---
 
-## Session 7 (2026-09-25) — SEAD/DEAD and packages, offline only so far
+## Where we are — pick up here  *(2026-09-27, end of session 8: air denial; front CAP stations in their second round of fixes)*
 
-**To verify in DCS first:** grep `MSN` and `PKG` in `dcs.log`. Watch for:
-- suppression flights launching 3–5 min ahead of their mission and firing anti-radiation missiles (`EngageGroup` fires only once the radar is detected, so a silent SAM draws no shot);
-- suppression flights heading home once the missiles are gone;
-- DEAD flights (`AttackGroup`) actually hitting a SAM site;
-- start-up time: air tasking planning is now ~1.5 s offline, up from ~0.7 s.
+**Status:** the airspace map and front-only ground attack run in DCS. John: "it's actually working pretty well for a first pass". Details in "Session 8" below. CAP and AWACS are back on as front stations, run in DCS twice with fixes after each. **The third run (patrols on `open_fire`) is John's first job next session.**
+- **Run order now:** … → `PlanSamSites` → **`DivideAirspace`** → `PlanFixedGroundTargets` → `PlanConvoys` → `CatalogTargets` → `PlanAirTasking` (attack packages only) → dump. Then **`DrawAirspace`** (first, under every other mark) → `Territory.apply` → spawns → draws → **`PreloadAircraftTypes`** → `ScheduleAirTaskingOrders.start` → `DrawAirTaskingOrders`.
+- **CAP and AWACS back on, air denial version (end of session 8; run in DCS twice, fixed after each, third run pending).** Current settings: kill zones at 0.85 of each ring; patrols `open_fire` with `EngageTargetsInZone` from takeoff; orbits and routes out of kill zones; orbit ends on own ground. The bullets below are in the order things happened. John: patrols deny own and as much contested airspace as possible and protect the coalition's installations in or near the contested airspace; behaviour within DCS defaults, no leash yet; single ships.
+  - **Front stations** (`planStations`, replaces barrier / asset): the defended sites are the coalition's catalog targets (not convoys) in the contested airspace or ≤ `defended_depth_km` (60) behind it. Greedy: the uncovered site whose 60 km circle (the patrol's `engage_range_km`) holds the most uncovered value, same region only, becomes a station, up to `max_stations` (3) while it covers value ≥ `min_defended_value` (2).
+  - **Defended zone** = that circle around the covered sites' value-weighted centre. Patrols get `EngageTargetsInZone` (air) on it instead of `EngageTargets` within range of the route. Drawn as a dashed circle.
+  - **Orbit:** walked out from the nearest own base of that region toward the zone centre, as far as it stays on own held ground and `station_clearance_km` clear of enemy rings (first 10 km outside ring + margin; now 0 outside the kill zone, see below); legs across the line to the nearest enemy base. Patrols launch only from bases in the station's region.
+  - **AWACS:** unchanged, except its orbit must now also lie in own (not contested) airspace (`early_warning_clearance_km` 30 replaces `barrier_clearance_km`).
+  - **Alert posture off** (`AIR_DEFENSE.alert_posture_planned = false`), and `RunScrambles.start` stays commented out: scrambles, the leash, strikers aborting when SEAD fails etc. wait for one design of AI behaviour rules (John: collect the list first, then encapsulate).
+  - **Offline, last plan's territory, 20 rolls:** 3 stations and 21 patrols per coalition, 1 AWACS each; Red covers 15 of 28 defended sites, Blue 8 of 20. Orbits sit on their zone centre (no enemy ring reaches them on this territory); 1 in 6 is in contested airspace. Attack side: Red 5.0 missions + 3.4 SEAD, Blue 5.3 + 9.8 (1.6 not planned). 0 check failures (orbit in ring / off own ground, AWACS outside own airspace, patrol from another region, patrol without zone).
+  - **Seen on the way, not changed:** Blue SEAD flights escorting Evenes strikes into the Kola core fly ~211 km in enemy airspace (escorts are exempt from the enemy-km check).
+  - **First DCS run (2026-09-27, John):** F-15E strikes dropped and destroyed their targets (the JDAM question is answered). 8 of the 11 patrols that flew were lost. Some flew at 7–9k ft, others around 30k. Patrols flew into SA-11 / SA-10 rings. A Blue F-15E strike killed `TGT_IVAL_communications_site_1` while two Red patrols (an Su-30 and an Su-27) nearby did nothing. From the log and plan dump:
+    - every orbit stood 45–50 km outside enemy rings; the zones overlapped rings by ≤ 6 km;
+    - **the Rovaniemi F-15C patrols were routed through the Vuojärvi SA-10 and Sodankylä SA-11 rings:** Rovaniemi sits 50 km inside the SA-10 ring, and patrol routes fell back to the straight line like attack routes do. 3 lost there;
+    - the other 5 losses were in own airspace, 63–139 km from any ring, 3 of them in transit: most likely the opposing patrols meeting (Red's Ivalo station and Blue's Banak / Enontekiö stations are close together). The log didn't say who killed them;
+    - the F-15E's target was one of the two sites Red's Ivalo station defends, but that station's first patrol had died in transit at T+1277 s and the next one was still flying in at T+2906 s. Patrols only got their engage task on reaching the orbit, so the two Red jets in transit ignored the strike;
+    - planned altitudes are all 7,500–10,000 m (25–33k ft) in transit and 8,000–10,000 m on station, so 7–9k ft is DCS behaviour (engaging, evading, or bingo home), not the plan. Not confirmed.
+  - **Fixed after that run (offline, 20 rolls, 0 check failures):**
+    - a patrol (or AWACS) base whose route enters any enemy threat ring can't fly the station (`draftStationFlight`). On that territory the F-15Cs now launch from Kallax (567 km one way) instead of Rovaniemi;
+    - the defended zone is cut short of every enemy threat ring and its 10 km margin, never below `min_zone_radius_km` (20). Red's Ivalo zone went from 60 to 44 km;
+    - `EngageTargetsInZone` now sits on the takeoff waypoint (en-route for the whole flight), so a patrol still on its way defends the zone;
+    - **kill zones** (John: SAMs don't fire to their full drawn range, so jets may work close to a ring or a little inside it, just not fly into the kill zone for no reason): patrols and the AWACS now keep out of `AIR_DEFENSE.killzone_fraction` (0.85) of each ring, with no margin, instead of the full ring + 10 km (+ 10 km station clearance; `station_clearance_km` is now 0). This applies to their routes, orbits and defended zones, on a second threat map (`ctx.station_threats`). Attack flights still route around the full ring + margin. On the last run's territory: Red's Ivalo zone is back to 60 km, Blue gained a Hosio station, and Rovaniemi still can't launch patrols (61 km from the Vuojärvi SA-10, inside its 102 km kill zone). Offline, 20 rolls: 0 check failures;
+    - **Second DCS run (2026-09-27, John):** F-15C patrols again at ~8k ft, and one flew too close to an SA-11. John suspected the kill-zone change. The new `track:` / `lost (` lines show otherwise; neither SAM loss was anywhere near its planned path:
+      - MSN2002 (F-15C, Rovaniemi → Banak station, planned 9,000 m northbound) flew south-east from takeoff at ~8,600 ft, never fired, drifted 475 → 534 km from its station and was killed 21 km inside the Kuusamo SA-11 ring, in enemy airspace;
+      - MSN5002 (Su-33) left its orbit (18 → 40 km from its station centre) at ~8,600 ft and was killed 6 km inside the Afrikanda NASAMS ring at 4,900 ft;
+      - MSN5009 (Su-30) and MSN2016 (F-16) shot each other down: patrols meeting over the contested airspace, as intended.
+    - **Cause: patrols flew `weapons_free`.** In DCS that means engage any enemy the group detects, and with the AWACS datalink they detect a lot, so they left their route or orbit for anything. The ~8k ft altitudes are those pursuits. **Fixed:** `combat_air_patrol` is `open_fire` now, so it engages only its task's targets (enemy aircraft inside its defended zone). Jettisoning is decoupled from rules of engagement (`may_jettison` on patrols and interception), so fighters still drop tanks. Scramble interception stays `weapons_free`; it's off anyway. The kill-zone fraction (0.85) was left as it is, since the routes and orbits weren't what brought the jets into the rings.
+    - **Also fixed:** orbit ends could lie on enemy ground (only the centre was checked, and "own ground" was nearest-base rather than the airspace grid). All three points must now be on own held ground per the grid. Offline on that territory, 20 rolls: 0 check failures. Attack side there: Red ~2.5 missions ("no target near the front in reach", the known gap), Blue ~3.8 (airborne cap: long-haul patrols from Kallax / Rovaniemi overlap).
+    - **logging:** losses now say who killed them and where the jet was (`lost (killed by <unit> (<type>)) at <ft>, <airspace>, <n> km inside/outside <nearest enemy ring>`). Every 2 min, each airborne patrol and AWACS logs a `track` line (altitude, airspace, nearest ring, km from its station centre). Grep `track:` for the altitude question and for patrols chasing out of their zones.
+- **Preload** (the first-spawn freeze fix, "1. Stalling bug" below): works. Third run: 13 types in 17.6 s at start-up (F-15C 13.7 s, F-15E 2.5 s, the rest under 0.6 s), and no `the sim froze` line during the mission.
+- **Third CAP run (2026-09-27, John) and the fixes after it (session 9; offline, 20 rolls on that territory, 0 check failures; deployed, next DCS run pending):**
+  - **Seen:**
+    - Rovaniemi (Blue) sat 65 km from the Vuojärvi SA-10, whose ring is 120 km. Its SEAD/DEAD package (2 F-15E + 4 F/A-18) was lost in ~7 min, after 4 HARMs. John: "they did their jobs, that just failed". **No change there.**
+    - Kuusamo F/A-18 patrols to the Banak station flew ~300 km across Red Lapland, inside the Vuojärvi SA-10 ring. Station flights had no enemy-airspace check at all, and their "0 in enemy airspace" wasn't measured.
+    - Rovaniemi F-16s escorted an Evenes strike on Luostari with 211 km in enemy airspace. Escorts were exempt from the check and took the base nearest the *escorted flight's* base.
+    - Nothing launched from Banak or Alta: they were `strip`, and jets could only fly from hub / fighter / dispersal fields.
+    - A Blue F/A-18 and a Red Su-27 passed 54 nm apart over contested airspace and ignored each other. Cause: `open_fire` plus a task limited to the patrol's defended-sites circle. John: two real jets wouldn't both do nothing.
+    - A Su-24M flight looked unarmed, although the plan gave both Su-24 flights their loadouts. Not resolved.
+  - **Fixed:**
+    - **Station flights** (patrols, AWACS) may fly at most `AIR_DEFENSE.station_enemy_airspace_km` (5) of enemy airspace to their station; otherwise that base doesn't fly it. The km is measured and logged.
+    - **Launch fields:** fighters and attack jets fly from any held field whose runway and parking fit them (John: in wartime every usable runway is used). `base_classes` stays only on the heavies (Tu-22M3, B-1B, A-50, E-3A). F-16 / F/A-18 `min_runway_m` is 1,500 m (4,900 ft; John's figures), so Alta (1,490 m) is still just short and Kirkenes (1,795 m) now qualifies. **Banak is `dispersal`**, which also raises its defense level. Red now flies patrols from Kittilä, Koshka Yavr and Vuojärvi.
+    - **SEAD escorts** fly from the escorted mission's base when they can, else from the region's base nearest the target, and obey the same enemy-airspace limit as the mission.
+    - **Commit circles:** each front station also gets circles (`commit_*` in `AIR_DEFENSE`, 40 km radius on a 50 km lattice, within 120 km of the orbit) laid over own and contested airspace, each shrunk until it holds no enemy airspace and no enemy kill zone. Patrols carry `EngageTargetsInZone` on each from takeoff. So an enemy jet over the contested airspace near a patrol gets engaged, one in its own airspace doesn't. Drawn as faint dotted circles (103 on this territory, ~17 per station; thin them if the map is too busy). Risk: once committed, DCS may chase beyond them (the leash is on the behaviour list).
+    - **Ammo log:** 5 s after each spawn, a line per aircraft lists what DCS says it carries: `<MSN>: <unit> carries …`. A warning is logged when it carries nothing but its loadout lists pylons.
+  - **Offline on that territory, 20 rolls:**
+    - Red: 5.0 missions + 3.4 SEAD, 21 patrols.
+    - Blue: 7.0 missions + 13.1 SEAD (was 5 of 7 on the run), 21 patrols.
+    - Blue launches from Banak 13.2, Kiruna 7.6, Kuusamo 7.0, Kirkenes 7.0, Rovaniemi 2.8 flights per roll.
+  - **Next run, check:**
+    - grep `carries` for the Su-24s;
+    - `lost (` and `track:` for patrols meeting over the contested airspace;
+    - that no Blue patrol crosses Red Lapland.
+
+**NEXT SESSION candidates (decide with John; he wants to go step by step, deciding details as we go):**
+1. ~~**Review the preload test.**~~ Done: it works (see above). **Run the session 9 fixes in DCS** and review them first.
+2. **Standoff attacks:** plan a release point short of the target, so jets attack from the contested zone instead of overflying the target. First research which standoff weapons the DCS AI actually releases at range and which loadouts carry them:
+   - Blue: JSOW, SLAM-ER, AGM-86C;
+   - Red: Kh-29 / KAB, bomber cruise missiles.
+3. **Front targets for Blue:** Blue leaves ~3.5 missions per roll unplanned for lack of Red targets near the front. Candidates:
+   - put fixed targets in zones near the front;
+   - a front-target rule;
+   - convoys and other mobile targets (stage 4).
+4. **Spread the targets:** Red keeps hitting whatever sits inside the contested zone; on one roll that was Rovaniemi, 4 of 5 packages.
+5. **Tune the airspace:**
+   - the band width (30 km), maybe scaled to the gap between the two sides' bases;
+   - stopping the front line at the coast or map edge;
+   - the routing multipliers (own 1 / contested 3 / enemy 10).
+6. ~~**Review the third CAP run**~~ (done in session 9, see above; the checks below still apply to the next run) (patrols on `open_fire`):
+   - grep `track:`: patrols should hold ~26k ft or higher and stay within ~25 km of their station centre while on station;
+   - grep `lost (` for who killed what, and where;
+   - if they still wander, the leash (item 7) is next; if they get too close to SAMs, raise `AIR_DEFENSE.killzone_fraction`;
+   - check that the AWACS stays in own airspace, and that open-fire patrols still engage intruders in their zones (they should: the zone task is their tasking);
+   - Blue hits the airborne cap on some territories, because long-haul patrols (Kallax / Rovaniemi → Banak, 450–570 km each way) overlap. Options: count only on-station time, or use nearer bases only / fewer stations.
+7. **AI behaviour rules, one place** (John, session 8): collect the list first, then encapsulate — leash to own / contested airspace, strikes go home if SEAD fails, scrambles that identify one jet and kill it only in certain airspace.
+8. **Doctrine ideas still open** (session 8 discussion, nothing decided):
+   - fighters leashed to own and contested airspace;
+   - strikers that abort when threatened;
+   - finite squadrons with a loss budget, and no second wave into what killed the first;
+   - pulsed tempo instead of filling the cap;
+   - missiles for deep strikes;
+   - mobile SAM ambushes;
+   - escorts only where needed.
+
+   First step suggested: a loss summary per run, so later changes have a before and after.
+
+## Where we were — end of session 7  *(2026-09-25: packages and defensive air running in DCS)*
+
+**Status: stages 1–6 run in DCS**, with the ground attack packages (strike, airfield strike, DEAD, each with its SEAD flights) and defensive air (one AWACS, CAP rotations, radar-triggered scrambles) for both coalitions.
+- **Run order:** unchanged up to `PlanAirTasking`. Inside it, per coalition: AWACS → CAP stations and rotations → alert posture → attack packages. After the spawns: `ScheduleAirTaskingOrders.start` then `RunScrambles.start` (new consumer, `consumers/run_scrambles.lua`).
+- **Volume per roll (offline, cap 16):**
+  - Red: ~5 missions + ~4 SEAD flights + ~10 patrols + 1 AWACS;
+  - Blue: ~6.5 + ~9 + ~11 + 1;
+  - plus scrambles at run time.
+- **Last DCS run (John: "mostly it looks pretty good"; "the CAP and scrambles seemed pretty effective"):**
+  - both AWACS up;
+  - Red's A-50 saw Blue jets and scrambles launched;
+  - the whole Kilpyavr package was lost: both F-15Es to Red's Su-30 patrol, and all four SEAD flights, several of their jets to scrambled fighters.
+  - **Stalls:** see below.
+
+**Session 8 (2026-09-26): direction change, air denial instead of air superiority.** John: each side loses dozens of airframes per mission and simply spawns more. Real air forces (Ukraine) don't do that: layered SAMs deny the air to both sides, jets stay under their own SAM umbrella and reach across with standoff weapons, and losses are rare and meaningful. Ideas under discussion, nothing decided: three zones per side (own umbrella / contested / enemy umbrella), fighters that don't chase into enemy SAMs, strikers that abort, finite squadrons with a loss budget, standoff release points, pulsed tempo, missiles for deep strikes. John: decide as we go, starting with the planner and the battlefield geometry.
+- *(Aircraft were switched off while the map was built, then back on with the front-only missions below; only scrambles stay off.)*
+- **Airspace, first cut (offline, not yet run in DCS):** `stages/divide_airspace.lua` (`DivideAirspace`, after `PlanSamSites`) → `plan.airspace`, with settings in `data/airspace.lua`.
+  - **Grid:** 10 km cells; each cell's centre is classified.
+  - **Held ground:** the coalition holding the nearest airbase, so every base stands in its own ground. The front line is where it flips, traced by marching squares and simplified.
+  - **Contested:** within 30 km of the front line, or on one coalition's ground under the other's medium / long-range SAM rings (the full engagement ring).
+  - **Grid encoding:** one string per row; `B` / `R` are own airspace, `b` / `r` are contested on Blue / Red ground.
+  - **Drawing:** `consumers/draw_airspace.lua` (`CONFIG.DRAW_AIRSPACE`, mark ids 60000+) fills the areas as merged rectangles, drawn first so they lie under every other mark, then draws the front line on top.
+  - **On the last roll:** blue 489, red 384, contested 127 thousand km² (123 of it the front band, 4 under enemy SAMs only); front line 1,462 km. The stage takes 0.07 s; the drawing is 176 areas + 19 line segments.
+  - John, after the first DCS look: "looks really good".
+- **Regions and fronts** (`plan.airspace.regions` / `fronts`, `region_grid` / `front_grid`):
+  - a region is a connected piece of one coalition's held ground; each coalition's largest is `main`, others are logged as `POCKET`;
+  - a front is a connected stretch of contested airspace, with the regions it touches.
+  - **Contested airspace can join a pocket's front to the main one**, so direction comes from `DivideAirspace.facingRegion`: the own region nearest the target. Only bases in that region fly against it.
+  - Checked with a forced pocket (Afrikanda and Alakurtti Blue, Kuusamo Red): region C is found as a Blue pocket, and none of the 14 Red targets facing it is tasked from the main Blue region. Afrikanda and Alakurtti are strips, so the pocket launches nothing.
+- **Ground attack missions back on, front-only (session 8, John: "go for it"):** strike, airfield strike and DEAD with their SEAD packages. Defensive air is not planned (`AIR_DEFENSE.planned = false`), and scrambles are off in `init.lua`.
+  - **Targets:** in the contested airspace, or at most `AIR_TARGETING.max_km_past_contested` (40 km) beyond it. Launch bases come only from the own region facing the target, and SEAD flights follow the same rule.
+  - **Routes priced by airspace:** `AIR_ROUTING.airspace_cost` is own 1 / contested 3 / enemy 10 per km, on top of the threat rings. Smoothing now also refuses a shortcut that costs more than the path it replaces, so a route that keeps to own airspace isn't cut straight across the contested zone. A route with more enemy-airspace km than the target's depth + 20 km isn't flown ("route through enemy airspace").
+  - **Mission fields:** `front`, `facing_region`, `target_depth_km`, `enemy_airspace_km`; the log line shows the last two.
+  - **Offline, 20 rolls:** Red 4.9 missions + 3.8 SEAD flights; Blue 3.6 + 6.0, with 3.5 not planned per roll, all "no target near the front in reach": Blue's strike targets near the front are scarce (the known front-targets gap). 0 check failures (depth, region, enemy km).
+  - The one route plotted (Murmansk → Kuusamo) keeps to Red airspace and crosses the contested zone near the target.
+  - **Open:** standoff release points and loadouts (next); widening the front-target supply for Blue.
+
+**Agreed at the end of session 7 (2026-09-25): 1. fix the stalling bug (preload built in session 8, see below), 2. escorts (on hold since the session 8 change of direction).**
+
+**1. Stalling bug: the sim freezes 2–25 s the first time each aircraft type spawns.** Found from `dcs.log` by comparing wall-clock time with mission time, which stops during a freeze:
+
+| Game time | Stall | Spawning |
+|---|---|---|
+| 08:00 (T+5 s) | ~1 s | the two AWACS |
+| 08:02 (T+120 s) | **~25 s** | first F-15E (MSN2016): livery lookup 14:48:50.4 → spawn returned 14:49:15.3, all inside one `coalition.addGroup` |
+| 08:11 (T+695 s) | ~2.3 s | first Su-27 (scramble MSN5901) |
+| 08:18:52 (T+1132 s) | **~7 s** | first Su-24M (MSN5018), preceded by DCS's own "Corrupt damage model" errors for the Su-24M |
+| 08:22 (T+1355 s) | ~2 s | no spawn; the log shows the terrain unloading distant detail at the same moment. Probably DCS itself; keep an eye |
+
+- **Why:** DCS loads a type's model, liveries and damage model on its first spawn, on the main thread.
+- **Evidence:** repeat spawns of a type were clean (Su-34 at T+120 / 126 / 331; later Su-27, MiG-31 and Su-30 scrambles). First spawns of types already loaded (F-16, F/A-18, Tu-22M3, Su-30, likely thanks to the parked-aircraft statics) didn't stall. Our own code isn't it: planning runs once at start, and ~180 scramble checks / radar queries ran clean. This run had one F-15E and one Su-24M, so repeat spawns of those two aren't confirmed clean.
+- **Options (discussed, nothing changed):**
+  1. **Preload at start-up:** spawn one of every aircraft type the plan and the scramble rosters use, out of the way, during the loading phase, then remove it. Probe first, like `survey/probe_parked_aircraft_spawn.lua`: is a static object enough, or does it take a real group? Time each first spawn. At worst start-up grows by ~35 s, before anyone is flying.
+  2. **Drop the worst types** (F-15E, Su-24M) from the rosters.
+  3. Both.
+
+  Recommendation: probe 1 first (keeps the variety), fall back to 2 for any type that still hitches.
+- **Built (session 8, 2026-09-26), option 1, not yet run in DCS:** `consumers/preload_aircraft_types.lua` (`PreloadAircraftTypes.run`, called in `init.lua` after the ground spawns and before `ScheduleAirTaskingOrders.start`).
+  - For every coalition and aircraft type in the planned flights and the alert bases' scramble aircraft, it spawns one real group 9 km above a base that type flies from, with one unit per distinct loadout (so weapon models load too), then destroys it at once.
+  - We went straight to real groups, skipping the static-object probe: statics carry no payload, and addGroup is the call that stalled.
+  - Offline on the last plan: 13 groups (8 Red, 5 Blue).
+  - **Logging:** `PRELOAD <COALITION> <type>: n loadout(s), s` per type plus a total. Every flight's `spawned` line now ends with its addGroup time, and a spawn over 1 s logs a warning, `addGroup took … — the sim froze`.
+  - **To verify:** grep `PRELOAD` for the start-up cost (expected: F-15E and Su-24M slow here) and `the sim froze` for any mid-mission stall left.
+- **Related:** mid-mission spawns while a player flies (§1.1) were always expected to cost something; this is the first measurement. Once preloading is in, check whether ordinary spawns (already-loaded types) still hitch with a player aircraft present.
+
+**2. Escorts (fighter escorts for attack packages, §1.9 rule 4).** Now needed: CAP and scrambles wipe out unescorted packages.
+- **Hook:** packages exist (`plan.air_tasking_orders[c].packages`); an escort flight would be one more member, like the SEAD flights.
+- **Decide:** when a package gets one (always? target within ~80 nm of an enemy fighter base? route through an enemy CAP station's area, since both sides' stations are fixed facts?). And how it flies: the package route ahead of the strike, like SEAD, with `EngageTargets` (air), or DCS's `Escort` task on the strike group. Check Liberation's escort / sweep implementation before choosing (John: research what actually works for DCS AI). The package's airborne-cap share grows again.
+
+**Still open from session 7:**
+- **F-15E JDAMs:** has an F-15E ever bombed? The two runs so far: MSN2001 flew in and left without visibly attacking; MSN2016 was shot down before its target. Grep `fired` for F-15E missions. If they never release, change the F-15E loadout choice (wing-only JDAMs, or laser-guided bombs). The stalling fix may drop the F-15E anyway.
+- **Frame rate** with up to 32 AI aircraft airborne: not measured yet.
+- **MiG-29S** left out of the Red rosters: its loadouts carry CLSIDs `aircraft_pylons.lua` doesn't know.
+
+## Session 7 details — SEAD/DEAD and packages  *(2026-09-25, run in DCS three times)*
+
+**Verified in DCS:**
+- suppression flights launch ahead of their missions and fire anti-radiation missiles;
+- routes come home the way they went in;
+- the Su-34 DEAD on an SA-11 was "hard fought but very successful".
+
+Grep `MSN` / `PKG` in `dcs.log`; `fired` / `killed` / `lost` lines give each flight's results.
 
 **Built:**
-- **Two mission types.** `suppression_of_air_defenses` is escort-only: `EngageGroup` per threat, anti-radiation missiles only, and `return_when_out_of = "arm"` (DCS option 10). `destruction_of_air_defenses` is a primary type (`AttackGroup` on each of the site's groups): Blue weight 2, Red 1. Red DEAD is the Su-34 with 4 Kh-29T (`dcs:Kh-29T*4,R-73*2,R-27R*2,ECM`, attack altitude 4,000 m).
+- **Two mission types.** `suppression_of_air_defenses` is escort-only: `EngageGroup` per threat, anti-radiation missiles only (`return_when_out_of = "arm"` was tried and removed after the first run, below). `destruction_of_air_defenses` is a primary type (`AttackGroup` on each of the site's groups): Blue weight 2, Red 1. Red DEAD is the Su-34 with 4 Kh-29T (`dcs:Kh-29T*4,R-73*2,R-27R*2,ECM`, attack altitude 4,000 m).
 - **Packages** (John: a mission that needs suppression never flies without it; whether the suppression works doesn't need tracking, it's flavour).
   - A mission whose route still crosses rings gets suppression flights, or isn't planned; another target is tried.
   - Threats are shared out in the order the route meets them (`ThreatRouting.crossed` now returns route order). Each flight takes `count × anti_radiation_missiles / missiles_per_threat` of them: 2 missiles per threat; F-16 / F/A-18 2 missiles each, Su-34 / Su-24M 4.
   - A suppression flight flies the package's route from the mission's own base when it can launch there (~90 %), else from the nearest base, joining and leaving the route at its nearest points. It is over the target `AIR_PACKAGE.suppression_lead_s` (3–5 min) ahead, so it reaches every ring on the way that much earlier too.
   - Its `EngageGroup` tasks sit on the waypoint before the first of its rings (`carries_attack_tasks` on a route point; bombing and DEAD flights have it on the ingress).
   - Nothing is per-site: more zones → more SAM rings → more suppression flights, automatically.
-- **Airborne cap now counts aircraft:** `max_airborne_aircraft` per coalition, counting every package member. It started at 8 (16 total) and was raised to 10 (20 total, the top of the §1.9 budget) after the escort change below.
+- **Airborne cap now counts aircraft:** `max_airborne_aircraft` per coalition, counting every package member. It started at 8, went to 10 after the escort change below, and to **16** once defensive air shared it (see "Defensive air — built").
 - **Plan shape:** `plan.air_tasking_orders[c].packages = { { id = "PKG<n>", mission, suppression_flights, tot_s } }`. Missions carry `package`; escorted ones `suppressed_by`; suppression flights `escorts` + `suppresses`. `summary` adds `suppression_flights`, `flights`, `failures` (why tries failed).
 - **Routing speed:** the A* search keeps to the ellipse of paths no longer than `max_detour` × direct or the reach (longer ones were thrown away anyway), plus a per-coalition route cache. Paths are unchanged (300 random legs identical before the ellipse). Mission results are practically the same, and planning is 1.45 s vs 2.3 s per roll without the ellipse.
 - **Offline, 60 rolls:**
@@ -56,6 +219,102 @@
   - `killed <name> (<type>)` for what it destroyed;
   - `target object … destroyed (n of m critical)` for a mission's target, whoever hit it;
   - `<unit> lost (crash / dead / ejected)` for its own losses.
+
+**Third run, F-15E (John):** the Ivalo F-15E flight flew in and left, but the command post didn't look attacked. Likely the AI never released its JDAMs (`Liberation Strike`: GBU-31(V)3/B on wing and conformal-tank stations). Next run: no `fired` lines for that flight confirms it, and then try another F-15E loadout choice (wing-only JDAMs or laser-guided bombs) and regenerate.
+
+## Defensive air — built  *(2026-09-25, run in DCS twice)*
+
+John: "go for it", with CAP and scramble flights as **single ships** to watch them clearly (`flight_size = { 1, 1 }` on the mission types).
+
+**Data:**
+- **Mission types** `combat_air_patrol`, `airborne_early_warning`, `interception`, with a new `planned_as` field (mission / escort / station / response; it replaces `escort_only`). Per-type `flight_size`, `rules_of_engagement` (patrols and scrambles weapons free, AWACS weapons hold), `takeoff` (AWACS and scrambles off the runway), `keeps_gun`, `engage_range_km`.
+- **`AIR_DEFENSE`** in `data/air_tasking.lua`: stations, AWACS and scramble settings.
+- **Profiles:** Su-27, Su-30, Su-33, MiG-31, F-15C, A-50, E-3A.
+- **Rosters:** MiG-29S left out, since its loadouts carry CLSIDs `aircraft_pylons.lua` doesn't know.
+- **Loadouts:**
+  - Liberation `CAP` for the Russian fighters and F-15C;
+  - `dcs:AIM-120C*4, AIM-9X*2, FUEL*3` for the F-16 (Liberation's CAP has an unknown `<CLEAN>` pylon);
+  - `liberation:Liberation BARCAP` for the F/A-18;
+  - a `hand:Clean` entry (no pylons) for the AWACS types.
+
+**Planning (stage 5–6, before the attack missions):**
+- **AWACS:** off the runway of the held base farthest from the enemy, at T+5 s. It orbits (race-track, 80 km) on the line toward the nearest enemy fighter base, as far forward as it stays 200 km from every enemy base and 30 km outside enemy rings. On station until the window ends.
+- **Patrol stations:** 1–2 per coalition, barrier or asset (weighted 1:1), ≥ 60 km apart, 50 km race-tracks across the threat axis.
+  - A barrier station walks out from a heavy base toward the nearest enemy fighter base while in own territory and 30 km clear of enemy rings.
+  - An asset station sits 30 km off a heavy base.
+- **Rotations:** each patrol is on station 1 h; the next arrives 10 min before it leaves; the first about half an hour in. Each rotation comes from the nearest base in reach with free parking, under the cap.
+- **Alert posture:** the 3 held hub / fighter bases nearest the enemy that can launch an interception type, 3 launches each, 15 min apart. Defended air zones: 100 km around heavy bases, plus each medium / long-range SAM site's ring + 20 km. Radars: every own SAM / early-warning site, and the AWACS.
+
+**Run time:**
+- **Spawner:** runway takeoff, per-mission rules of engagement (no jettison ban for fighters). Station tasks: `EngageTargets` (Air, within 60 km) or `AWACS`, then `ControlledTask(Orbit Race-Track)` with a stop time.
+- **`consumers/run_scrambles.lua`:** every 30 s, per coalition, asks each of its radar groups `getDetectedTargets(RADAR)`. An enemy aircraft group inside a defended zone with no live scramble after it draws one single ship: the nearest alert base with a launch left, off cooldown, in reach, under the cap. It takes off from the runway toward the contact with `EngageGroup` + `EngageTargets` (Air, 40 km), then goes home.
+- **Scramble ids:** `MSN5901+` / `MSN2901+`, tracked by the scheduler for fired / killed / lost logging and removal after landing.
+- **Radar probe in the log:** `RED radars: 24 of 26 answered, enemy aircraft groups seen: 2` (first checks, then every 10 min) and `radar: <group> first seen by <radar>`. If "answered" stays 0 or nothing is ever seen, radar detection doesn't work on ground groups and `AIR_DEFENSE.detection = "distance"` is the fallback.
+- **F10 (`DRAW_AIR_TASKING_ORDERS`):** each station's race-track with one label listing its flights; an `ALERT` label per alert base; defended air zones as dashed circles.
+
+**Offline, 40 rolls:**
+- Red and Blue each fly ~10–11 patrols and 1 AWACS per roll, on 1–2 stations with no gaps; 3 alert bases each.
+- All checks 0: stations outside enemy rings, cap never exceeded.
+- Scrambles tested with a stubbed radar: one launch per intruder, not repeated while the scramble lives.
+- **Shared cap cost:** patrols + AWACS hold ~3 of each coalition's 10 aircraft, so Blue's attack side falls to 5.2 missions + 3.5 suppression flights (was 6.1 + 8.3) and Red's to 5.0 + 2.5.
+- **Cap raised to 16 per coalition** (John: don't reduce the other flight volume). Offline, 40 rolls:
+
+  | Cap | Red | Blue |
+  |---|---|---|
+  | 14 | 5.2 + 4.0 | 6.2 + 6.9 (still short) |
+  | 16 | 5.2 + 4.1 | 6.5 + 8.8 |
+
+  All checks 0. Up to 32 AI aircraft airborne across both coalitions. Scrambles are refused (logged) if a coalition is already at 16 in the air.
+
+**First DCS run (John), watched ~10 min:**
+- Both AWACS up; no patrol seen yet. Planned right, just late: the first patrols spawned at T+8 / T+9.5 min, hot on the ramp, due on station at T+32 min.
+- **Fixed:** the first patrol now spawns from T+2 min and is on station at ~T+17–24 min (offline 20 rolls; all checks 0).
+- **Radar detection works:** `31 of 31 answered` (Red), `21 of 21` (Blue). Red's A-50 saw a Blue F/A-18 near Rovaniemi at T+9 min, and a MiG-31 was scrambled from Murmansk at T+14 min (353 km away).
+- **Map clutter:** the defended-air-zone circles are off (`CONFIG.DRAW_AIR_ZONES = false`). SAM engagement rings and early-warning rings stay.
+
+**Second DCS run (John): "mostly it looks pretty good"; "the CAP and scrambles seemed pretty effective".**
+- **Scrambles:** 8 Red and 4 Blue scrambles launched over ~50 min.
+- **The Kilpyavr package was wiped out:** Red's Su-30 patrol MSN5002 shot down both F-15Es of MSN2016. All four of its SEAD flights were lost too, several jets to scrambled Su-30s and MiG-31s. One F-15E got an AIM-120 kill on a scrambled Su-27 first.
+- **Freezes:** the first-spawn stalls (see "Where we are"). The fix is next session's first job.
+
+**Still to watch:** AWACS on station for the whole 6 hours (A-50 fuel); scramble launch time off the runway; fps with up to 32 AI aircraft up.
+
+## Defensive air — design  *(agreed with John 2026-09-25; built, see above)*
+
+Two kinds, as in §1.10:
+- **CAP is part of the plan:** combat air patrol lines on each coalition's air tasking order.
+- **Scrambles are a response:** runtime reactions to detected incursions. Only the alert posture is planned.
+
+No coalition reads the other's plan.
+
+**1. CAP (combat air patrol), planned in stages 5–6.**
+- **Stations, both kinds, weighted per run** (John):
+  - **barrier stations:** between the coalition's valuable areas and the nearest enemy fighter or bomber bases, back from the front, outside enemy SAM rings (the threat map already built);
+  - **asset stations:** over its heavy bases.
+
+  1–2 stations per coalition to start.
+- **Flights:** 2-ship fighters on a racetrack orbit with engage-targets within a set range of the station, weapons free (Syria `blue_air_support`'s proven set). They rotate with ~10 min overlap; time on station comes from the aircraft profile.
+- **Planned first:** attack packages fill the remaining time under the cap ("support up first", §1.9).
+- **Needs:**
+  - a `combat_air_patrol` mission type;
+  - fighter profiles, rosters and air-to-air loadouts, generated as before (Liberation has CAP loadouts);
+  - rosters "fine for now" (John): Red Su-27, MiG-31, MiG-29, Su-30, Su-33 (Severomorsk-3); Blue F-16, F/A-18, F-15C.
+
+**2. AWACS, one per coalition** (John): spawns hot on the runway of a rear base at mission start and flies to its orbit, over its own territory, well behind the front and outside enemy rings. It feeds AI datalink, so CAP and scrambles see far more.
+- Planned as a support line: A-50 for Red, E-3A for Blue.
+- **Check when built:** whether it stays up the whole 6-hour window on DCS fuel. The A-50 may need a relief or a later start.
+
+**3. Scrambles (quick-reaction alert), a runtime consumer.**
+- **Plan (posture, for the brief too):** alert fighter bases; 2-ships each per window; types; reaction time; cooldown.
+- **Runtime:** a loop every 30–60 s. An enemy aircraft **detected by the coalition's own radars** inside one of its defended air zones → the nearest alert base in range launches a 2-ship with an intercept on that group, then home. Each enemy group draws one response; cooldowns keep it from spiralling.
+  - Radars: early-warning sites, SAM search radars, AWACS, via `Controller:getDetectedTargets()`.
+  - Defended air zones: heavy-base and SAM asset-ring circles, and the front belt.
+- **Detection** (John: "radar-based if that can work"). Probe in DCS first that `getDetectedTargets()` on early-warning, SAM and AWACS controllers reports enemy aircraft. Fall back to a distance check only if it can't. What this buys: no radar coverage means no scramble, so low routes and killed early-warning sites matter.
+- **Launch:** test hot from parking (~3–6 min to airborne) against the runway.
+
+**Budget: one shared cap to start** (John): CAP, AWACS and scrambles count in `max_airborne_aircraft` (10 per coalition) with the attack packages. Continuous CAP takes ~2–4 of the 10 (plus overlap), so expect fewer or smaller packages, or raise the cap. Splitting it later is one field.
+
+**Build order:** CAP + AWACS (planning) → scrambles (runtime). **Still open:** fighter escorts for packages (§1.9 rule 4), which become necessary once scrambles and CAP intercept them; with scrambles or right after.
 
 ## Where we were — end of session 6  *(2026-09-25 — convoy and ground attack air tasking running in DCS)*
 
@@ -232,7 +491,8 @@ kola_f16/
   stages/plan_air_tasking.lua plan.air_tasking_orders: each coalition's missions (stages 5–6, first pass)
   consumers/spawn_aircraft_groups.lua        one planned flight → coalition.addGroup + type check
   consumers/schedule_air_tasking_orders.lua  spawns flights at their start times; removes them after landing
-  consumers/draw_air_tasking_orders.lua      route line + target label per flight; summaryText
+  consumers/draw_air_tasking_orders.lua      route line + target label per flight; stations, alert bases; summaryText
+  consumers/run_scrambles.lua                radar picture every 30 s → scrambles off the runway (session 7)
   survey/survey_airbase_footprints.lua  one-off survey (off)
   survey/survey_zone_terrain.lua      zone terrain survey; runs only in khola_ground_zones.miz
   survey/probe_parked_aircraft_spawn.lua  one-off timing probe (off; CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN)
@@ -248,22 +508,18 @@ Plan dump: `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `python tools/
 
 **Build order (chosen 2026-09-23): linearly, stage by stage.** Stages 1–3 are done; stage 4 and stages 5–6 have first passes running in DCS (2026-09-25). Mission stages read only `plan.target_catalog`. John isn't in a rush to fly; a thin "fly one SEAD mission first" slice was offered and declined.
 
-**Built in session 7 (offline; verify in DCS):** SEAD/DEAD mission types and packages, see "Session 7" at the top. The notes below were the plan for it.
+**Done in session 7:** SEAD/DEAD packages and defensive air, both running in DCS (see "Where we are" and the session 7 sections at the top).
 
-**Agreed next (John, 2026-09-25): packages — ordering plus SEAD/DEAD escorts.**
-- **The hook is there:** each mission with `needs_suppression` lists its `suppression_threats` (SAM site ids, plus `DEF_…_radar_missile_launchers_*` groups). That's about 72 % of missions offline.
-- **Build first:** the stubbed `suppression_of_air_defenses` (`EngageGroup`, anti-radiation missiles) and `destruction_of_air_defenses` (`AttackGroup`) mission types. Their rosters, loadouts, attack altitudes and attack method are already in the data (`built = false`).
-- **Then packages:** a suppression line whose time on target is 3–5 min before the strike's, on the sites the strike crosses (§1.9 rule 3).
-- **Decide:** how the package shares one start and time-on-target plan; whether a flagged strike without an available suppression flight is dropped or flies anyway; and how the airborne cap counts package members.
+**Session 8 (2026-09-26) changed direction to air denial;** the current candidates list is at the top, under "Where we are". The list below is the older backlog, still valid.
 
-**Also wanted:** CAP and scrambles (§1.10), interdiction (convoy `AttackGroup`) and close air support flights, then the brief (stage 7).
+**Also wanted after that:** interdiction (convoy `AttackGroup`) and close air support flights, then the brief (stage 7).
 
 1. **Front targets** (the known gap above): John draws zones near the front, or a front-target rule. For example, measure "front" for targets from this roll's front gap like the SAM front belt does, or allow armor / artillery at `mid`. Also Red supply depots with no road access.
 2. **Rest of stage 4: mobile units.** One Red supply convoy is done (session 6). Still to do: Blue convoys, reinforcements, missile-launcher deployments, contacts. They need their own zones or corridors, since fixed targets use all free zones. Add them to the catalog through an adapter in `stages/catalog_targets.lua`; spawn any static objects before units.
    - **Air tasking polish:**
      - Red Su-34s sometimes fly at the edge of their reach (677 km of 700); lower `combat_radius_km` if they run dry;
-     - mid-mission spawns while a player flies: batch them across frames if they freeze the sim;
-     - `SpawnAircraftGroups` only builds `bomb_critical_objects` attacks so far.
+     - mid-mission spawns freeze the sim on a type's first spawn (next session's bug); check ordinary spawns with a player aircraft present once that's fixed;
+     - `SpawnAircraftGroups` builds bombing, AttackGroup, EngageGroup, patrol, AWACS and intercept tasks; `engage_in_zone` (close air support) isn't built yet.
 3. **SAM sites on the map's revetments** (`prepared_sam_position = "revetments"`, 7 zones): John wants SAMs spawned in those dug-in positions later. It's a SAM-stage change, so ask first.
 4. ~~First DCS run of the SAM network and tuning~~, done 2026-09-23. Still open: fly against it and check the Patriot's two-radar layout engages; optionally a Blue rear-density tweak.
 5. ~~Rest of stage 3~~, done 2026-09-24 (fixed ground targets + catalog). Deferred from it:
@@ -821,6 +1077,8 @@ Write `Saved Games\DCS\kola_f16_history.lua` (or JSON-ish) after each plan: date
 
 ### 1.9 The ATO model
 
+> **⚠ MID-REWORK (session 8, 2026-09-26): the air war is being redesigned around air denial.** Flight structures, weapons, tactics and strategy are all changing, in steps, with the details decided as we go (John). Where this section disagrees with "Where we are" at the top of the doc, "Where we are" wins. Don't build from this section without checking with John first. Most affected here: coherence rules 2 (CAP covers packages) and 4 (escort by proximity), the Red ATO and the performance budget (filling the airborne cap). The new direction is fewer, smaller flights, targets near the front only, and losses that change what a side does next.
+
 Instead of planning one mission, the generator plans an **Air Tasking Order for a ~6-hour window** starting at mission time. Every line is a flight with a callsign, aircraft, mission type, target or station, and times. One Blue line is the player's; AI flies the rest. Red gets its own ATO.
 
 #### ATO line structure
@@ -874,6 +1132,8 @@ This is a big step up from "one tasking." Plan to build the *data model* fully f
 At every layer the F10 `ATO` view shows only lines that actually execute — never fake lines.
 
 ### 1.10 Reaction model — keep it simple
+
+> **⚠ MID-REWORK (session 8, 2026-09-26): the air war is being redesigned around air denial.** Flight structures, weapons, tactics and strategy are all changing, in steps, with the details decided as we go (John). Where this section disagrees with "Where we are" at the top of the doc, "Where we are" wins. Don't build from this section without checking with John first. The rule that no side reads the other side's plan still stands. What's changing: scrambles and CAP are off for now, and when they come back they're expected to be leashed to own and contested airspace. Strikers that abort and loss budgets are under discussion.
 **Hard rule: no side reads the other side's plan.** Neither planner predicts the other's behavior. Each side has objectives and planned missions built from the static picture; responsiveness comes from *one* cheap reaction loop per side plus DCS's native AI.
 
 #### Plan-time: static facts only
@@ -1094,11 +1354,15 @@ Each session rolls one **primary** from the weighted pool, then 0–2 **secondar
 - Helicopter FARP
 
 ### 4.3 Threat layers (independent rolls)
+
+> **⚠ MID-REWORK (session 8, 2026-09-26): the air war is being redesigned around air denial.** Flight structures, weapons, tactics and strategy are all changing, in steps, with the details decided as we go (John). Where this section disagrees with "Where we are" at the top of the doc, "Where we are" wins. Don't build from this section without checking with John first.
 - **Air threat:** none / CAP on station / QRA scramble on detection / both. Red fighter pool: MiG-29A/S, MiG-31, Su-27, Su-33 (from Severomorsk-3), Su-34.
 - **IADS density:** low / med / high — controls how many *extra* SAMs spawn along the ingress corridor beyond the target's own defenses.
 - **Point defense:** as Syria threat tiers, plus SA-15 Tor and SA-19 Tunguska at high.
 
 ### 4.4 Support layers
+
+> **⚠ MID-REWORK (session 8, 2026-09-26): the air war is being redesigned around air denial.** Flight structures, weapons, tactics and strategy are all changing, in steps, with the details decided as we go (John). Where this section disagrees with "Where we are" at the top of the doc, "Where we are" wins. Don't build from this section without checking with John first.
 - **Tanker:** KC-135 MPRS / KC-130 on a track ~150 nm behind the front. Spawn when target distance from launch base > X nm. Give freq/TACAN in the card.
 - **AWACS:** E-3A on a racetrack over Norway/Sweden. Always-on is fine (cheap).
 - **Blue CAP:** 2-ship AI F-16/F-18 for the CAP/Escort missions and as a comfort layer at low threat.
