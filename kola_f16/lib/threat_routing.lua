@@ -4,8 +4,10 @@
 -- calls — used by the air tasking stage for routes that stay out of SAM rings wherever a
 -- reasonable way around exists.
 --
---   local map = ThreatRouting.buildMap(circles, bounds)
---       circles = { { id, x, z, radius_m } }, bounds = { min_x, max_x, min_z, max_z }
+--   local map = ThreatRouting.buildMap(circles, bounds, multiplier)
+--       circles = { { id, x, z, radius_m } }, bounds = { min_x, max_x, min_z, max_z },
+--       multiplier (optional) = function(x, z) → a cell's cost factor on top of its
+--       threats (the airspace: own, contested, enemy)
 --   local points = ThreatRouting.route(map, from, to, max_length_m)
 --       { { x, z } }, from … to; max_length_m (optional) keeps the search to paths no
 --       longer than that — the straight line when none exists
@@ -54,7 +56,7 @@ end
 
 -- ── the grid ────────────────────────────────────────────────────
 
-function ThreatRouting.buildMap(circles, bounds)
+function ThreatRouting.buildMap(circles, bounds, multiplier)
     local map = { circles = {}, x0 = bounds.min_x, z0 = bounds.min_z }
     for _, c in ipairs(circles) do
         map.circles[#map.circles + 1] = { id = c.id, x = c.x, z = c.z, r2 = c.radius_m * c.radius_m }
@@ -65,7 +67,8 @@ function ThreatRouting.buildMap(circles, bounds)
     for iz = 0, map.nz - 1 do
         for ix = 0, map.nx - 1 do
             local n = countAt(map, map.x0 + ix * CELL_M, map.z0 + iz * CELL_M)
-            map.weight[iz * map.nx + ix + 1] = 1 + THREAT_COST * n
+            local x, z = map.x0 + ix * CELL_M, map.z0 + iz * CELL_M
+            map.weight[iz * map.nx + ix + 1] = (1 + THREAT_COST * n) * (multiplier and multiplier(x, z) or 1)
         end
     end
     return map
@@ -75,6 +78,20 @@ local function cellOf(map, p)
     local ix = math.max(0, math.min(map.nx - 1, math.floor((p.x - map.x0) / CELL_M + 0.5)))
     local iz = math.max(0, math.min(map.nz - 1, math.floor((p.z - map.z0) / CELL_M + 0.5)))
     return ix, iz
+end
+
+-- What flying a → b costs on the grid: each sample's length times the weight of the
+-- grid point nearest it.
+local function segmentCost(map, a, b)
+    local d = math.sqrt((b.x - a.x) ^ 2 + (b.z - a.z) ^ 2)
+    local steps = math.max(1, math.ceil(d / SAMPLE_M))
+    local cost = 0
+    for i = 1, steps do
+        local t = (i - 0.5) / steps
+        local ix, iz = cellOf(map, { x = a.x + t * (b.x - a.x), z = a.z + t * (b.z - a.z) })
+        cost = cost + map.weight[iz * map.nx + ix + 1]
+    end
+    return cost * d / steps
 end
 
 -- ── path search (A*, 8 neighbours) ──────────────────────────────
@@ -166,8 +183,12 @@ local function search(map, from, to, max_length_m)
 end
 
 -- Drops path points while the straight line between the kept points is no more exposed
--- than the stretch of path it replaces.
+-- than the stretch of path it replaces: it enters no more threat circles at once, and it
+-- costs no more (so a path that keeps to own airspace isn't cut straight across the
+-- contested zone).
 local function smooth(map, pts)
+    local along = { 0 }   -- cost of the path from pts[1] to pts[k]
+    for k = 2, #pts do along[k] = along[k - 1] + segmentCost(map, pts[k - 1], pts[k]) end
     local out, i = { pts[1] }, 1
     while i < #pts do
         local best = i + 1
@@ -176,7 +197,12 @@ local function smooth(map, pts)
             local n = countAt(map, pts[j].x, pts[j].z)
             if n > limit then limit = n end
             if j > i + 1 then
-                if segmentMax(map, pts[i], pts[j]) <= limit then best = j else break end
+                if segmentMax(map, pts[i], pts[j]) <= limit
+                   and segmentCost(map, pts[i], pts[j]) <= along[j] - along[i] + 1 then
+                    best = j
+                else
+                    break
+                end
             end
         end
         out[#out + 1] = pts[best]
@@ -186,7 +212,10 @@ local function smooth(map, pts)
 end
 
 function ThreatRouting.route(map, from, to, max_length_m)
-    if segmentMax(map, from, to) == 0 then return { { x = from.x, z = from.z }, { x = to.x, z = to.z } } end
+    -- straight when the straight line crosses no circle and costs no more than its length
+    if segmentMax(map, from, to) == 0 and segmentCost(map, from, to) <= Util.dist(from, to) + 1 then
+        return { { x = from.x, z = from.z }, { x = to.x, z = to.z } }
+    end
     return smooth(map, search(map, from, to, max_length_m))
 end
 

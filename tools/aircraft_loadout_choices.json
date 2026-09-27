@@ -21,14 +21,18 @@
     "airfield_strike":             "liberation:STRIKE",
     "suppression_of_air_defenses": "liberation:Liberation SEAD",
     "destruction_of_air_defenses": "liberation:Liberation DEAD",
-    "close_air_support":           "hand:Syria CAS"
+    "close_air_support":           "hand:Syria CAS",
+    "combat_air_patrol":           "liberation:Liberation BARCAP",
+    "interception":                "liberation:Liberation BARCAP"
   },
   "F-16C_50": {
     "strike":                      "liberation:Liberation Strike",
     "airfield_strike":             "liberation:Liberation Strike",
     "suppression_of_air_defenses": "liberation:Liberation SEAD",
     "destruction_of_air_defenses": "liberation:Liberation DEAD",
-    "close_air_support":           "hand:Syria CAS"
+    "close_air_support":           "hand:Syria CAS",
+    "combat_air_patrol":           "dcs:AIM-120C*4, AIM-9X*2, FUEL*3",
+    "interception":                "dcs:AIM-120C*4, AIM-9X*2, FUEL*3"
   },
   "F-15ESE": {
     "strike":                      "liberation:Liberation Strike",
@@ -43,5 +47,31 @@
   },
   "A-10C_2": {
     "close_air_support":           "hand:Syria CAS"
+  },
+  "Su-27": {
+    "combat_air_patrol":           "liberation:CAP",
+    "interception":                "liberation:CAP"
+  },
+  "Su-30": {
+    "combat_air_patrol":           "liberation:CAP",
+    "interception":                "liberation:CAP"
+  },
+  "Su-33": {
+    "combat_air_patrol":           "liberation:CAP",
+    "interception":                "liberation:CAP"
+  },
+  "MiG-31": {
+    "combat_air_patrol":           "liberation:CAP",
+    "interception":                "liberation:CAP"
+  },
+  "F-15C": {
+    "combat_air_patrol":           "liberation:CAP",
+    "interception":                "liberation:CAP"
+  },
+  "A-50": {
+    "airborne_early_warning":      "hand:Clean"
+  },
+  "E-3A": {
+    "airborne_early_warning":      "hand:Clean"
   }
 }

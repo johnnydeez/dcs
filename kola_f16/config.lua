@@ -62,6 +62,8 @@ CONFIG = {
     DRAW_FIXED_GROUND_TARGETS = true,   -- label + ring per fixed ground target site
     DRAW_CONVOYS     = true,    -- planned route line + start and parking labels per convoy
     DRAW_AIR_TASKING_ORDERS = true,   -- planned route line + target label per flight
+    DRAW_AIR_ZONES   = false,   -- defended air zones (scramble triggers) as dashed circles
+    DRAW_AIRSPACE    = true,    -- Blue / Red / contested airspace filled, plus the front line
 
     -- One-off: survey every airfield's footprint (aprons, airfield buildings) and write
     -- Saved Games\DCS\kola_airbase_footprints.lua; copy it to data\airbase_footprints.lua

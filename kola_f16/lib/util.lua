@@ -150,3 +150,13 @@ function Util.writeFile(relPath, text)
     f:close()
     return path
 end
+
+-- ── Timing (requires de-sanitized os) ────────────────────────────
+
+-- Wall-clock seconds, for timing work inside one sim frame (timer.getTime doesn't move
+-- until the frame ends). On Windows os.clock is elapsed wall time, so it counts DCS
+-- loading files, not only CPU. 0 if os is sanitized.
+function Util.clock()
+    local ok, t = pcall(function() return os.clock() end)
+    return ok and t or 0
+end

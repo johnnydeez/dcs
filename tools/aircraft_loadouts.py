@@ -42,7 +42,8 @@ OUT = os.path.join(DATA, "aircraft_loadouts.lua")
 SKIPPED = []   # payload files this reader can't parse (none of them on our rosters so far)
 
 MISSION_TYPES = ["strike", "airfield_strike", "suppression_of_air_defenses",
-                 "destruction_of_air_defenses", "interdiction", "close_air_support"]
+                 "destruction_of_air_defenses", "interdiction", "close_air_support",
+                 "combat_air_patrol", "interception", "airborne_early_warning"]
 
 
 # ── Reading ─────────────────────────────────────────────────────

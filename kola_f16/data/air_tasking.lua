@@ -20,9 +20,8 @@
 --   max_attack_points  bomb_critical_objects: at most this many Bombing tasks per flight
 --   ingress_km   the ingress point sits this far before the target, on the way in
 --   egress_km    the egress point sits this far past the target, turned toward home
---   escort_only  true: never planned on its own, only in another mission's package.
---                Suppression flights fly their package's route, so their own ingress_km
---                and egress_km are not used
+--                Suppression flights (planned_as "escort") fly their package's route, so
+--                their own ingress_km and egress_km are not used
 --   missiles_per_threat  suppression: anti-radiation missiles a flight keeps for each
 --                group it engages; with the profile's anti_radiation_missiles this sets
 --                how many groups one flight takes
@@ -34,11 +33,39 @@
 --                killers in DCS and otherwise shoot the anti-radiation missiles down
 --   return_when_out_of  pydcs WeaponType name: the flight heads home once these are gone —
 --                straight home, off its route, so only for flights with nothing in the way
+--   planned_as   how the stage plans it: "mission" (default: from the weighted
+--                mission_types, against a catalog target), "escort" (only in another
+--                mission's package), "station" (defensive air: a racetrack held over the
+--                window, AIR_DEFENSE), "response" (never planned: scrambled at run time
+--                by consumers/run_scrambles.lua)
+--   flight_size  { min, max }: overrides the aircraft profile's for this mission type
+--   rules_of_engagement  "open_fire" (default) | "weapons_free" (engage anything
+--                found: patrols) | "weapons_hold" (never fire: AWACS)
+--   engage_range_km  engage_aircraft_on_station / intercept: enemy aircraft within this
+--                distance of the flight's route are engaged
+--   takeoff      "parking" (default, hot) | "runway" (hot on the runway: AWACS at start,
+--                scrambles — no parking spot needed, airborne in about a minute)
+--   keeps_gun    true: the gun stays loaded (fighters), whatever the profile says
+--   may_jettison true: the flight may jettison stores (fighters drop tanks to fight);
+--                otherwise jettisoning is prohibited, so attack flights keep their bombs
+--
+-- Attack kinds for the defensive types (on the station waypoint):
+--   engage_aircraft_on_station  EngageTargetsInZone (air) over the station's defended zone
+--                (engage_range_km around the sites it protects), then a race-track Orbit
+--                between the station's two ends until the flight's time on station is up
+--                (Syria's blue_air_support lesson: the engage task stands for the whole
+--                orbit, and the flight is weapons free)
+--   early_warning_on_station    the AWACS task, then the same Orbit until the window ends
+--   intercept                   EngageGroup on the detected intruder, plus EngageTargets
+--                (air) within engage_range_km for whatever else it meets
 --
 -- Every attack flight also gets, on its first waypoint: rules of engagement "open fire"
 -- (attack the assigned target, don't wander off after others — weapons free is for
 -- search tasks), reaction to threat "evade fire", return at bingo fuel, no jettisoning
--- stores, and an empty gun unless its profile keeps_gun.
+-- stores unless may_jettison, and an empty gun unless its profile keeps_gun.
+-- Patrols are "open_fire" too (2026-09-27): weapons free let them go after anything the
+-- AWACS datalink showed, far off their route and zone and into enemy SAMs; open fire
+-- keeps them to their task, enemy aircraft inside their station's defended zone.
 
 AIR_MISSION_TYPE = {
     strike = {
@@ -54,7 +81,7 @@ AIR_MISSION_TYPE = {
     -- straight home, over whatever SAMs lie on the line (first package run, 2026-09-25);
     -- the flight stays on the package's route and comes home the way it went in
     suppression_of_air_defenses = {
-        built = true, escort_only = true, group_task = "SEAD", attack = "engage_group",
+        built = true, planned_as = "escort", group_task = "SEAD", attack = "engage_group",
         weapon_type = "arm", ingress_km = 40, egress_km = 30,
         missiles_per_threat = 2, max_groups_per_flight = 2,
     },
@@ -62,6 +89,24 @@ AIR_MISSION_TYPE = {
     destruction_of_air_defenses = {
         built = true, group_task = "CAS", attack = "attack_group",
         weapon_type = "auto", ingress_km = 30, egress_km = 20,
+    },
+    -- ── defensive air ──
+    -- single ships for now (John, 2026-09-25: easier to watch what they do)
+    combat_air_patrol = {
+        built = true, planned_as = "station", group_task = "CAP", attack = "engage_aircraft_on_station",
+        weapon_type = "auto", ingress_km = 0, egress_km = 0, flight_size = { 1, 1 },
+        rules_of_engagement = "open_fire", engage_range_km = 60, keeps_gun = true, may_jettison = true,
+    },
+    airborne_early_warning = {
+        built = true, planned_as = "station", group_task = "AWACS", attack = "early_warning_on_station",
+        weapon_type = "auto", ingress_km = 0, egress_km = 0, flight_size = { 1, 1 },
+        rules_of_engagement = "weapons_hold", takeoff = "runway",
+    },
+    interception = {
+        built = true, planned_as = "response", group_task = "Intercept", attack = "intercept",
+        weapon_type = "auto", ingress_km = 0, egress_km = 0, flight_size = { 1, 1 },
+        rules_of_engagement = "weapons_free", engage_range_km = 40, takeoff = "runway", keeps_gun = true,
+        may_jettison = true,
     },
     -- ── not built yet ──
     interdiction = {
@@ -87,20 +132,36 @@ AIR_WEAPON_TYPE = {
 --                       flights in their packages
 --   mission_types       { { mission type, weight } } — only built types are used
 --   max_airborne_aircraft  aircraft of this coalition in the air at once, counting every
---                       flight of every package
+--                       flight of every package, the patrols, the AWACS and the scrambles
+--                       (one shared cap for now, John 2026-09-25)
 --   window_s            missions start between first_start_s and the end of this window
 --   first_start_s       earliest start (mission time), so the first flights are soon
 --   taxi_s / attack_s / landing_s   time on the ground before takeoff, over the target,
 --                       and from the landing base's overhead to shutdown (for timing only)
 AIR_TASKING_PER_COALITION = {
     red = {
-        missions = { 4, 6 }, max_airborne_aircraft = 10,
+        missions = { 4, 6 }, max_airborne_aircraft = 16,
         mission_types = { { "strike", 3 }, { "airfield_strike", 2 }, { "destruction_of_air_defenses", 1 } },
     },
     blue = {
-        missions = { 6, 8 }, max_airborne_aircraft = 10,
+        missions = { 6, 8 }, max_airborne_aircraft = 16,
         mission_types = { { "strike", 3 }, { "airfield_strike", 2 }, { "destruction_of_air_defenses", 2 } },
     },
+}
+
+-- Which targets ground attack missions go after (plan doc, session 8: air denial — jets
+-- work the front, not the enemy's rear):
+--   max_km_past_contested  a target lies in the contested airspace or at most this far
+--                          from it (so at most this deep in enemy airspace)
+--   facing_search_km       how far from a target to look for own held ground; the region
+--                          found there is the only one whose bases fly against it, so no
+--                          flight crosses enemy ground to reach another front (a pocket)
+--   enemy_airspace_slack_km  a route may fly this much more in enemy airspace on its way
+--                          to the target than the target's depth (the grid is coarse)
+AIR_TARGETING = {
+    max_km_past_contested   = 40,
+    facing_search_km        = 200,
+    enemy_airspace_slack_km = 20,
 }
 
 AIR_TASKING_TIMING = {
@@ -117,12 +178,119 @@ AIR_TASKING_SKILL = { "Average", "Good", "High" }
 -- Packages. A mission whose route still crosses threat rings (needs_suppression) gets
 -- suppression flights for them, or isn't flown at all: a flight that needs suppression
 -- never goes without it. Each suppression flight takes the next threats in the order the
--- route meets them, as many as its missiles allow (max_groups_per_flight at most). It flies the package's route from its
--- own base and is over the target suppression_lead_s before the mission it escorts, so
--- it reaches every ring on the way that much earlier too.
+-- route meets them, as many as its missiles allow (max_groups_per_flight at most). It
+-- flies the package's route from its own base and is over the target suppression_lead_s
+-- before the mission it escorts, so it reaches every ring on the way that much earlier.
 --   suppression_lead_s  { min, max } seconds each suppression flight is ahead
 AIR_PACKAGE = {
     suppression_lead_s = { 180, 300 },
+}
+
+-- Defensive air (plan doc "Defensive air — design"). Planned before the attack missions
+-- ("support up first"), so the patrols and the AWACS always have their share of the cap.
+--
+-- Kill zones (John, 2026-09-27: SAMs don't fire out to their full drawn range, so jets
+-- may work close to a ring or a little inside it, just not fly into the kill zone):
+--   killzone_fraction     patrols and the AWACS keep out of each enemy threat's kill zone,
+--                         this fraction of its drawn engagement ring (SAM sites) or reach
+--                         (Pantsir / Tor at bases), with no routing margin. Their routes,
+--                         orbits and defended zones use it. Attack flights still route
+--                         around the full ring + AIR_ROUTING.threat_margin_km.
+--
+-- Patrol stations, per coalition (air denial, session 8): patrols deny their own and the
+-- contested airspace to the enemy and protect the coalition's installations near the
+-- front. Stations are placed greedily over the defended sites:
+--   defended sites        own catalog targets (SAM / early-warning sites, fixed ground
+--                         targets) in the contested airspace or at most defended_depth_km
+--                         behind it
+--   each station          covers the sites within the patrol's engage_range_km of the
+--                         best-valued uncovered site; its patrols engage enemy aircraft
+--                         inside that circle (the defended zone, centred on the covered
+--                         sites' value-weighted centre, cut short of every enemy kill
+--                         zone, never below min_zone_radius_km).
+--                         Patrols hold that engage task from takeoff, so one still on
+--                         its way defends the zone too. The race-track sits as close to
+--                         that centre as it can while on own held ground and
+--                         station_clearance_km outside every enemy kill zone, walked out
+--                         from the nearest own base in the same region; its legs run across
+--                         the line to the nearest enemy base
+--   max_stations          at most this many stations per coalition
+--   min_defended_value    a station must cover sites worth at least this much (catalog
+--                         value: 1 low … 3 high)
+--   min_zone_radius_km    a defended zone cut short by enemy rings keeps at least this
+--   station_spacing_km    race-tracks of one coalition at least this far apart
+--   station_leg_km        length of the race-track
+--   step_km               how finely a station's walk out is stepped
+--   on_station_s          each patrol flight's time on station
+--   rotation_overlap_s    the next patrol arrives this long before the last one leaves
+-- Patrols launch only from bases in the station's region (never across enemy ground)
+-- whose route to the station enters no enemy kill zone (patrols get no suppression) and
+-- at most station_enemy_airspace_km of enemy airspace (the AWACS too; the grid is
+-- coarse, so a route along the border may clip a cell). Without that check the Kuusamo
+-- patrols to the Banak station flew ~300 km across Red Lapland (John's run, 2026-09-27).
+--
+-- Commit areas (John, 2026-09-27: two fighters 54 nm apart over contested airspace
+-- wouldn't both do nothing): besides its defended zone, each patrol engages enemy
+-- aircraft in circles laid over the own and contested airspace of its sector, from
+-- takeoff. Circle centres sit on a commit_spacing_km lattice within commit_range_km of
+-- the station's race-track, on own or contested cells of the station's region; each
+-- circle is commit_radius_km, shrunk until it holds no enemy airspace and no enemy kill
+-- zone, and dropped below commit_min_radius_km. So an enemy jet over the contested
+-- airspace near a patrol is engaged, one in its own airspace isn't. Once engaged, DCS
+-- may chase it further (the leash is on the AI behaviour list).
+--
+-- AWACS, one per coalition, on the runway at mission start:
+--   early_warning_start_s      mission time it is spawned
+--   early_warning_standoff_km  its orbit stays at least this far from every enemy base, in
+--                              own (not contested) airspace, and outside every enemy kill
+--                              zone by early_warning_clearance_km
+--   early_warning_leg_km       length of its race-track
+--
+-- Scrambles (the plan holds the posture, consumers/run_scrambles.lua reacts):
+--   alert_posture_planned  false: no alert bases are planned (scrambles are off in init.lua
+--                         until the AI behaviour rules are designed, session 8)
+--   alert_bases           at most this many alert bases per coalition: held fighter and hub
+--                         bases that can launch an interception type, nearest the enemy
+--   scrambles_per_base    launches each alert base has for the window
+--   scramble_cooldown_s   an alert base waits this long between launches
+--   check_interval_s      how often the radar picture is checked
+--   air_zone_heavy_base_km  defended air zone around each own heavy base
+--   air_zone_ring_margin_km defended air zone around each own medium / long-range SAM
+--                         site: its engagement ring plus this
+--   detection             "radar": only aircraft the coalition's own radars see (early-
+--                         warning sites, SAM search radars, the AWACS) trigger a scramble
+AIR_DEFENSE = {
+    planned               = true,
+    killzone_fraction     = 0.85,
+    max_stations          = 3,
+    defended_depth_km     = 60,
+    min_defended_value    = 2,
+    min_zone_radius_km    = 20,
+    station_spacing_km    = 60,
+    station_leg_km        = 50,
+    station_clearance_km  = 0,
+    step_km               = 10,
+    on_station_s          = 3600,
+    rotation_overlap_s    = 600,
+    station_enemy_airspace_km = 5,
+    commit_range_km       = 120,
+    commit_spacing_km     = 50,
+    commit_radius_km      = 40,
+    commit_min_radius_km  = 15,
+
+    early_warning_start_s      = 5,
+    early_warning_standoff_km  = 200,
+    early_warning_clearance_km = 30,
+    early_warning_leg_km       = 80,
+
+    alert_posture_planned = false,
+    alert_bases           = 3,
+    scrambles_per_base    = 3,
+    scramble_cooldown_s   = 900,
+    check_interval_s      = 30,
+    air_zone_heavy_base_km  = 100,
+    air_zone_ring_margin_km = 20,
+    detection             = "radar",
 }
 
 -- How attack flights route around what they can't overfly. Flights cruise at least
@@ -139,9 +307,14 @@ AIR_PACKAGE = {
 --   descent_km_per_km    the descent from cruise to attack altitude starts this many km
 --                        before the ingress point per km of altitude lost (at least
 --                        min_descent_km)
+--   airspace_cost        what a km costs, on top of its threats, by the airspace it lies
+--                        in as seen from the flight's coalition (plan.airspace): routes
+--                        keep to own airspace, cross the contested zone where it's
+--                        narrowest and avoid enemy airspace
 -- Every enemy site is known (fixed sites are found by intelligence); a flight that has to
 -- cross a ring lists it in suppression_threats, and its package gets suppression flights.
 AIR_ROUTING = {
+    airspace_cost         = { own = 1, contested = 3, enemy = 10 },
     min_cruise_altitude_m = 7500,
     threat_layers         = { medium_range = true, long_range = true },
     threat_margin_km      = 10,

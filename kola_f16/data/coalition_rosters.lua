@@ -96,6 +96,12 @@ COALITION_AIRCRAFT = {
         suppression_of_air_defenses = { { "Su-34", 2 }, { "Su-24M", 1 } },
         destruction_of_air_defenses = { { "Su-34", 1 } },
         interdiction                = { { "Su-34", 1 } },
+        -- Su-27 / Su-30: the fighter regiments; Su-33: Severomorsk-3's naval fighters;
+        -- MiG-31: the long-range interceptors, mostly on alert. (MiG-29S left out: its
+        -- loadouts carry missiles aircraft_pylons.lua doesn't know)
+        combat_air_patrol           = { { "Su-27", 3 }, { "Su-30", 2 }, { "Su-33", 1 }, { "MiG-31", 1 } },
+        interception                = { { "MiG-31", 3 }, { "Su-27", 2 }, { "Su-30", 1 } },
+        airborne_early_warning      = { { "A-50", 1 } },
     },
     blue = {
         -- F/A-18C for Finland's Hornets, F-16C for Norway's F-35 and Sweden's Gripen (neither
@@ -106,6 +112,10 @@ COALITION_AIRCRAFT = {
         destruction_of_air_defenses = { { "F-15ESE", 1 }, { "F-16C_50", 1 }, { "FA-18C_hornet", 1 } },
         interdiction                = { { "F-15ESE", 2 }, { "B-1B", 1 } },
         close_air_support           = { { "A-10C_2", 2 }, { "F-16C_50", 1 }, { "FA-18C_hornet", 1 } },
+        -- F-16C for Norway, F/A-18C for Finland, F-15C for US reinforcement
+        combat_air_patrol           = { { "F-16C_50", 3 }, { "FA-18C_hornet", 2 }, { "F-15C", 2 } },
+        interception                = { { "F-16C_50", 2 }, { "FA-18C_hornet", 2 }, { "F-15C", 1 } },
+        airborne_early_warning      = { { "E-3A", 1 } },
     },
 }
 
