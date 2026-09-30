@@ -6,15 +6,15 @@ What's coming after session 10 (2026-09-30), when the mission became playable by
 
 Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means Red unless it says otherwise.
 
-**Order (John, 2026-09-30):** radar functions → scrambles → CAP visibility → AWACS calls (text) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Two optional extras sit at the end, with no place in the order yet: radar jamming, and the threat picture on the map for players (after fog of war).
+**Order (John, 2026-09-30):** radar functions → scrambles → event log → AI behaviour logic → CAP visibility → AWACS calls (text) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Four optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, and the threat picture on the map for players (after fog of war).
 
 ---
 
 ## 1. Radar functions: one shared radar picture
 
-**Status: built 2026-09-30, tested offline; waiting for its first DCS run (watch and log only).** As built: `plan.md`, *Radar picture*.
+**Status: done for now (2026-09-30).** Built, run once in DCS (session 11) and used by scrambles and the leash. As built, and what the run showed: `plan.md`, *Radar picture*.
 
-**Goal:** each coalition builds its own threat picture from what its radars actually report, and keeps it as the mission runs. Scrambles (2), AWACS calls (4), live intel for fog of war (8) and any later AI behaviour rule all read it. So it's built once, and those features act only on what the defenders could really know.
+**Goal:** each coalition builds its own threat picture from what its radars actually report, and keeps it as the mission runs. Scrambles (2), AWACS calls (6), live intel for fog of war (10) and any later AI behaviour rule all read it. So it's built once, and those features act only on what the defenders could really know.
 
 **What it's for:** the picture is for our script, not for the AI's own awareness. DCS already shares radar contacts between same-coalition AI over its built-in datalink, and a script can't add to that. The script uses the picture to decide things and passes the result to the AI as tasks: who scrambles, against which group (`EngageGroup`), when they go home (the leash), what the AWACS tells the player. It's runtime state kept in memory (like the scheduler's), not part of the plan. Planning stages never read it: frags are built before anything flies.
 
@@ -29,7 +29,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
   - line of sight and terrain masking, and the radar horizon;
   - the target's size, roughly;
   - fighter radars' forward search cone.
-- **A radar that's switched off sees nothing:** alarm state green, or a site that Skynet (item 7) keeps dark.
+- **A radar that's switched off sees nothing:** alarm state green, or a site that Skynet (item 9) keeps dark.
 
 **Where it stands:**
 - `consumers/run_scrambles.lua` (session 7, switched off) already polls a planned list of radar groups with `Controller:getDetectedTargets(RADAR)` every 30 s. The polling works in DCS: `31 of 31 answered` (Red), `21 of 21` (Blue).
@@ -118,7 +118,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
    - every `log_every_s`: `RED picture: 3 contacts (own 1, contested 2), 28 of 30 sensors answered`;
    - on each event: `RED picture: new MSN2014 (F-16C) seen by early_warning SAM_OLEN_55G6_1, contested, 62 km from Olenya`, and `… entered own airspace`, `… stale`, `… dropped`.
 
-**What it leaves alone:** `run_scrambles.lua` stays off, with its old poll, until item 2. There it gets reworked to listen for `airspace_changed`, and its `radarPicture()` is deleted.
+**What it leaves alone:** `run_scrambles.lua` stays off, with its old poll, until item 2. There it gets reworked onto the picture (the `picture_updated` event added then), and its `radarPicture()` is deleted.
 
 **Testing:**
 1. **luae harness:** a stubbed `Controller` returns scripted detections. It checks the round robin, merging, going stale, events and airspace tags.
@@ -132,6 +132,8 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 ## 2. Fighter scrambles against enemy incursions
 
+**Status: done for now (2026-09-30).** Rebuilt, run once in DCS (session 11): scrambles burned straight at their raids and the leash brought them home. Afterwards, alert jets return 30 min after landing, and scramble ids read `MSN2901_SCRAM`. The high losses of that run lead into item 4 (AI behaviour logic). As built, and what the run showed: `plan.md`, *Scrambles and the leash*. Found while testing and built in (John's intent, not new direction): no alert at a base inside an enemy kill zone; no scramble at a raid under enemy SAM cover; the picture's `inbound` is the time-to-threat test, so the leash's "heading away" means the same as the trigger. Raids: one scramble per raid, `EngageGroup` on each group (John: my judgment; tune as we go). After the target is dead: home.
+
 **Goal:** quick-reaction fighters launch when enemy aircraft come into own airspace, triggered by what own radars actually see (item 1), not by knowledge the defenders couldn't have.
 
 **Where it stands:**
@@ -144,29 +146,113 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
   - in session 7 they helped wipe out whole packages, the opposite of air denial's rare, meaningful losses;
   - they share the airborne cap with patrols and packages.
 - **Why have them at all:** QRA is real (Finland, Norway, Russia). Session 9's fourth run showed the gap: a Red raid on Rovaniemi came in under Red's own Sodankylä SA-10, where no Blue commit circle may reach, and only the SAMs answered. A scramble from Rovaniemi or Kemi-Tornio against a raid over Blue's own airspace is what would really happen.
-- The constrained redesign below was agreed in direction in session 9; the details are still open.
+- **Why session 7's scrambles were slow and indirect** (John noticed; found in `consumers/spawn_aircraft_groups.lua`):
+  - `EngageGroup` sat on waypoint 2, the intruder's position *at launch*, and DCS starts a waypoint's tasks only on arrival. So the fighter flew to an old, empty spot before hunting.
+  - Every waypoint had `speed_locked` at `cruise_speed_mps` (230–250 m/s), so the AI never used afterburner.
 
-**Approach:**
-- **Trigger:** an intruder in the radar picture over own airspace, or over contested airspace near an alert base. This replaces the defended-air-zone circles.
-- **Tasking:** `open_fire`, `EngageGroup` on that one intruder, plus engage circles over own and contested airspace kept out of enemy kill zones, like the patrols' commit circles. No `EngageTargets` on everything.
-- **Leash:** the 30 s scramble loop sends the scramble home when the intruder goes back to its own airspace, or when the scramble's path would enter an enemy kill zone. This is the first runtime behaviour rule. Build it once, in the one place for AI behaviour rules (`plan.md` backlog, "AI behaviour rules, one place"), so patrols can use it too.
-- **Budget:** launches per alert base and cooldowns, within the shared airborne cap.
+**Design (agreed with John, 2026-09-30).** The idea (John): a scramble answers an immediate threat. It burns straight at that one intruder and either chases it away or kills it, without flying head first into enemy airspace.
+- **Trigger: warning time, not distance,** from the radar picture (item 1), checked every picture round (30 s):
+  - **Time to threat:** project each tracked contact's heading. If the line passes within ~30 km of an own asset (a held base, a SAM site, a catalog target of value), the time to arrive there is the distance ÷ speed. **Scramble when it's under `scramble_warning_min` (15 min),** whatever airspace the contact is in, including one still over its own airspace. 100 km was far too close (John: a jet at 60 nm can have weapons on the base in ~5 minutes).
+  - **Any contact over own airspace** is answered, whatever its heading.
+  - "Inbound" must hold for **two rounds in a row** (60 s), so a Red patrol turning on its race-track doesn't trigger one.
+  - Only `tracked` contacts with a known range; **helicopters are skipped** (optional helicopters item at the end).
+- **Skip when a patrol covers it:** no scramble if an airborne patrol's defended zone or commit circle covers where the contact is (John agreed).
+- **One-ships** from the alert bases:
+  - **Alert bases:** any held base whose runway fits an interception type, the 3 nearest the enemy, at least one per pocket (John agreed; replaces hub / fighter only).
+  - **Budget:** 3 alert jets per base, 15 min cooldown; a jet that lands is back on alert 30 min later, one shot down is gone (John, after the first run).
+  - **Pick:** the nearest alert base with a launch ready, in the region facing the contact, with the intercept point in reach, and a way there with ≤ 5 km of enemy airspace and no enemy kill zone.
+- **Reaction delay:** 1–2 min (cockpit alert), then a hot runway start.
+- **Airborne cap:** scrambles may go up to **2 over** `max_airborne_aircraft` (John agreed).
+- **Flying it (the session 7 fixes):**
+  - `EngageGroup` on the intruder goes on the **takeoff waypoint**, so it's active from wheels-up, and the AI flies its own intercept at the target;
+  - `open_fire`, with no `EngageTargets` on everything;
+  - **dash speed** (a new `dash_speed_mps` per fighter in `data/aircraft_profiles.lua`, Mach 1.1–1.5) with afterburner explicitly allowed;
+  - the intercept point (the contact pushed ahead along its heading) is capped at own or contested airspace, outside enemy kill zones;
+  - the scheduler tracks the flight; `TrackRadarPicture.addFlight` makes it a `scramble` sensor.
+  - **To test in DCS:** does `EngageGroup` give the AI the target's position before its own radar finds it? If not, re-point its route every round from the picture.
+- **The leash: the first AI behaviour rule,** in `consumers/enforce_air_behaviour_rules.lua` (`EnforceAirBehaviourRules`), with settings in `data/air_behaviour_rules.lua`:
+  - modules register the flights they want watched (`watch(flight, rule, target)`); it checks them every picture round;
+  - **a scramble goes home when:** its target is dead; the target is dropped from the picture; the target is back over its own airspace (John: break off, chase them away or kill them); the scramble goes > 5 km into enemy airspace; or it enters an enemy kill zone (85 % of a ring). While the target is only stale, it keeps going to the last known position;
+  - **going home:** `Controller:setTask` with a route home from where the jet is, and rules of engagement "return fire". Once sent home, it stays sent home. Fuel is DCS's (bingo);
+  - later rules (strikes go home if their SEAD dies, patrols' leash) are new checks in the same module.
+- **Logging** (grep `scramble`, `leash`): each launch with base, type, target, reason and minutes to threat; each refusal (once per reason); each leash decision with its reason.
 
-**To switch on:**
-- `AIR_DEFENSE.alert_posture_planned = true` (alert bases, radars);
-- un-comment `RunScrambles.start` in `init.lua`;
-- rework `planAlertPosture` (the trigger area) and `consumers/run_scrambles.lua` (tasking, leash);
-- `interception` loses `weapons_free` in `data/air_tasking.lua`.
+**What changes in existing files:**
+- **`planAlertPosture`:** the new alert-base pick; the defended air zones and the radar list go.
+- **`data/air_tasking.lua`:** `interception` → `open_fire`, loses `engage_range_km`. `AIR_DEFENSE` → `alert_posture_planned = true`, loses `detection` and the air-zone settings, gains the trigger settings.
+- **`consumers/spawn_aircraft_groups.lua`:** the `intercept` attack kind loses `EngageTargets`; attack tasks can go on the takeoff waypoint; scrambles fly at dash speed.
+- **`consumers/run_scrambles.lua`:** rewritten around the picture.
+- **Radar picture:** one more event, `picture_updated`, at the end of each round.
+- **`init.lua`:** start `EnforceAirBehaviourRules`; un-comment `RunScrambles.start`.
 
-**Open:**
-- What counts as an "incursion": any contact over own airspace, only fighters, or only contacts heading inward?
-- Response size: single ship (as now, to watch them) or pairs?
-- Alert bases: re-check the hub / fighter pick against the session 9 runway reclassification.
-- Session 9's order put scrambles after front targets (`plan.md` backlog), so there's more traffic to judge them by. Decide whether that still holds.
+**Testing:** luae harness with fake picture contacts (trigger, pick, refusals, every leash reason); then in DCS, John flies into Red airspace high, then low.
 
 ---
 
-## 3. AI CAP routes easy to see: where and when
+## 3. Event log: a readable file to watch during the mission
+
+**Goal:** a plain-language log of what's happening in the air war, in a file of its own that John can tail and watch while the mission runs, without grepping `dcs.log` (John, 2026-09-30).
+
+**Where it stands:** nothing built. Everything is in `dcs.log` today, mixed with DCS's own lines and written for grepping (`MSN…`, `track:`, `picture`, `scramble`).
+
+**Approach (proposed):**
+- **One file per mission,** e.g. `Saved Games\DCS\kola_events.log`, started fresh when the mission loads. Every line is flushed at once, so `Get-Content -Wait` (PowerShell) or `tail -f` shows it live.
+- **Human-readable lines,** mission time (local clock) first, both coalitions:
+  - `12:43 RED scramble: MiG-31 from Monchegorsk after MSN2014 (F-16C), 11 min from Olenya`
+  - `12:47 BLUE MSN2014 (F-16C) shot down by MSN5901 (MiG-31), 20 km inside Red airspace`
+  - `12:51 RED MSN5901 (MiG-31) heading home: target back in Blue airspace`
+- **Events worth a line:** takeoffs and landings, packages pushing, weapons released on targets, target objects destroyed, aircraft lost (by what), scrambles and leash decisions, new radar contacts over own airspace. Not the every-2-minute `track:` lines.
+- **One small module** (`consumers/write_event_log.lua`, `WriteEventLog`) that the scheduler, scrambles, the leash and the radar picture hand events to. The same structured events can later feed the AI radio calls (item 8).
+
+**Open:**
+- Which events: the list above, or fewer?
+- Both coalitions in one file, or one file each?
+- Keep old files (a file per mission start) or overwrite each time?
+
+---
+
+## 4. AI behaviour logic: conditional orders to flights in the air
+
+**Goal:** fewer, more meaningful losses (air denial), by having the script give AI flights conditional orders while they fly, instead of only a plan at spawn. John (2026-09-30): "the only way we will reduce losses is to start using our AI logic to begin giving conditional in-game commands to flights." It won't be perfect, because the DCS AI is built to fight; the aim is the best scenario we can make.
+
+**Why now:** the first scramble run (2026-09-30) lost 12 aircraft in 48 minutes (Blue 4, Red 8). Both Blue packages were caught by Red fighters and both Red packages were destroyed, mostly by aircraft that kept flying their route while being engaged.
+
+**Where it stands:**
+- `consumers/enforce_air_behaviour_rules.lua` exists, with one rule (the scramble leash). Every radar-picture round (30 s) it checks each watched flight and can send it home (`Controller:setTask`) or change its options (`setOption`).
+- Each coalition's radar picture (item 1) says which enemy aircraft its radars see, where they are, and where they're heading.
+- The rules collected so far (from the `plan.md` backlog, "AI behaviour rules, one place"): patrols leashed to own and contested airspace; strikes go home if their SEAD fails; no second wave into what killed the first (doctrine idea).
+
+### 4a. The logic layer: conditional orders
+
+**Approach (to design with John):**
+- Every AI flight is watched, not only scrambles, each with the rules for its mission type.
+- **The orders DCS offers a script:**
+  - `Controller:setTask`: a new mission, e.g. go home;
+  - `pushTask` / `popTask`: a task on top of the current one, then back to the mission (for "deal with this, then get back on task");
+  - `setOption`: rules of engagement, reaction to threat, radar use, afterburner.
+- Each rule is a check (from the radar picture, the flight's position, its package) plus an order, in one module, as the leash is.
+
+### 4b. Attack flights defend themselves, then get back on task
+
+**Goal:** strike, SEAD and DEAD flights that see a fighter coming for them fight back early, with the air-to-air missiles they carry, then carry on to the target. Today (John): "if a CAP goes after them they just keep flying to their target and wait to get shot at. They have AMRAAMs, so should self protect much earlier and then get back on task."
+
+**Where it stands:**
+- Attack flights fly `open_fire` with a single attack task, so they only react once fired upon (reaction to threat: evade fire).
+- Many attack loadouts already carry air-to-air missiles. In the first run the DEAD F-16s had AIM-120C ×2 + AIM-9X ×2, and the Su-34s had R-73 ×2 + R-27R ×2.
+
+**Approach (proposed):**
+- **Trigger:** an enemy fighter in the coalition's radar picture that is closing on the flight within some range; or DCS's own detection by the flight (`getDetectedTargets` on the flight itself).
+- **Order:** push an `EngageGroup` on that fighter (or open fire on air targets within a range) on top of the mission. When the fighter is dead, gone or turned away, pop it, so the flight resumes its route and attack.
+- **Limits:** only flights whose loadout carries air-to-air missiles; don't chase past the leash; decide whether a flight that fought and lost its attack time still presses on or goes home.
+
+**Open (4a and 4b):**
+- Which rules first, and in what order: attack-flight self-defence, strikes going home when their SEAD fails, the patrol leash?
+- How far a self-defending flight may turn off its route, and for how long?
+- Should a package's SEAD flight protect the strike flight, or only itself?
+
+---
+
+## 5. AI CAP routes easy to see: where and when
 
 **Goal:** a player can see at a glance where own patrols will fly and when they'll be on station: to plan around them, join up, or know who covers what.
 
@@ -187,11 +273,11 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 ---
 
-## 4. AWACS calls to the player (text)
+## 6. AWACS calls to the player (text)
 
 **Goal:** the AWACS tells the player what it sees: enemy aircraft with bearing, distance, altitude and type, like a real controller's picture calls.
 
-**Decided:** text messages to the player's group (`outTextForGroup`) for now. Long-term goal (John): AWACS calls become LLM / cloud audio like the AI pilots' calls (item 6), and the text version is the step before that. Build the calls so the delivery can be swapped: the facts (who, BRAA, type) are worked out in one place, and text is only one way of sending them.
+**Decided:** text messages to the player's group (`outTextForGroup`) for now. Long-term goal (John): AWACS calls become LLM / cloud audio like the AI pilots' calls (item 8), and the text version is the step before that. Build the calls so the delivery can be swapped: the facts (who, BRAA, type) are worked out in one place, and text is only one way of sending them.
 
 **Where it stands:**
 - One AWACS per coalition flies (session 8).
@@ -211,7 +297,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 ---
 
-## 5. Cruise missile attacks (ideally from the ground, else from the air)
+## 7. Cruise missile attacks (ideally from the ground, else from the air)
 
 **Goal:** long-range missile strikes on high-value targets, part of the Ukraine-war feel: missiles for deep strikes instead of risking airframes (a session 8 doctrine idea).
 
@@ -239,7 +325,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 ---
 
-## 6. AI radio calls: flights announce their intentions (LLM / cloud)
+## 8. AI radio calls: flights announce their intentions (LLM / cloud)
 
 **Goal:** AI flights say what they're doing, so the air war can be followed by ear: "Viper 2-1, airborne Rovaniemi, heading for the station", "Hornet 1-1, SEAD, pushing", "Eagle 3-1, bingo, RTB". The words come from an LLM, so calls sound natural and varied instead of canned.
 
@@ -286,11 +372,11 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 - Voice goes through SRS, so every player needs SRS running (decided: audio only).
 - Which events are worth a call: all state changes, or only the ones that matter to a player (package pushing, station gaps, losses)?
 - Everything to every Blue player, or only flights near the player or in their package?
-- The AWACS calls (item 4) move to this voice channel once it works (John's goal); decide then whether the text version stays as a backup.
+- The AWACS calls (item 6) move to this voice channel once it works (John's goal); decide then whether the text version stays as a backup.
 
 ---
 
-## 7. Skynet IADS: SAM networks that behave like real air defences
+## 9. Skynet IADS: SAM networks that behave like real air defences
 
 **Goal:** SAM sites that fight as a network instead of each radar on its own: early-warning radars share one picture, SAM sites stay dark until a target is close, and radars shut down when a HARM comes at them. That means ambushes, little RWR warning, and SEAD that actually has to work (John: "sounds really cool").
 
@@ -307,7 +393,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 **What it changes elsewhere:**
 - **Radar picture (item 1):** dark SAM radars see nothing, so the picture then rests on early-warning radars, the AWACS and fighters. That's realistic, but check that scrambles still trigger. Also decide whether Skynet's own contact list and ours stay separate, or whether one feeds the other.
 - **SEAD packages:** "whether suppression works doesn't need tracking" (John) may change once HARMs really make sites go dark.
-- **Frag threats:** a site that stays dark is still listed as a threat. That fits the fidelity rule of fog of war (item 8).
+- **Frag threats:** a site that stays dark is still listed as a threat. That fits the fidelity rule of fog of war (item 10).
 
 **Approach (proposed):** test it first on script-spawned groups (the README covers groups placed in the ME). Prototype on one SA-11 and one early-warning radar, and fly a HARM at it. Then register the full networks.
 
@@ -319,7 +405,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 ---
 
-## 8. Fog of war: showing Red installations without revealing the whole map (last)
+## 10. Fog of war: showing Red installations without revealing the whole map (last)
 
 **Goal:** players see what Blue intelligence would plausibly know, not the planner's full picture. Enough to plan a mission, with real uncertainty left.
 
@@ -372,9 +458,45 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 ---
 
+## Optional, later: helicopters
+
+**Goal:** helicopters in the air war: attack helicopters working the front (Ka-52 / Mi-28 for Red, AH-64 for Blue), transport and utility flights behind it, and air defences and fighters that answer them.
+
+**Where it stands:** nothing built (John, 2026-09-30: "we aren't doing helicopters yet"). The radar picture (item 1) already lists enemy helicopters as contacts. Scrambles (item 2) skip them for now.
+
+**Open:**
+- Which missions: close air support at the front, anti-armour, transport and insertion, search and rescue?
+- Who answers enemy helicopters: SHORAD and MANPADS only, or also fighters (scrambles, patrols)?
+- Low-flying helicopters are often masked by terrain from ground radars, so the picture will see them late or not at all. That's realistic, but decide whether it's enough.
+
+---
+
+## Optional, later: fun callsigns for human and AI flights
+
+**Goal:** a generated data list of fun, flavourful callsigns ("Viper", "Reaper", "Moose", squadron-style names) that each flight gets, human and AI, so the air war has personality in the brief, the log and later on the radio (John, 2026-09-30).
+
+**Where it stands:** nothing built. Flights have no callsign set, so DCS gives defaults, and several flights may share one. The callsign policy in `plan.md` (*Design, not built yet*) keeps the group name (`MSN2025_DEAD`) as the machine id, never spoken, with a separate radio callsign per flight.
+
+**The catch to settle first:** DCS's own AI voices can only say callsigns from its fixed lists (Western aircraft: Enfield, Springfield, Uzi, Colt, Dodge, Ford, Chevy, Pontiac; AWACS: Overlord, Magic, Wizard, Focus, Darkstar; tankers: Texaco, Arco, Shell; Russian aircraft: numbers). A custom callsign can be printed in the brief, the comms menu and the log, but a DCS voice would still say the list name, so what's written and what's heard wouldn't match.
+- **Once AI radio calls are built (item 8, LLM / text-to-speech),** our own voice can say any callsign, so fun callsigns work everywhere.
+- **Until then:** fun callsigns in text only, or pick from DCS's list so voice and text agree.
+
+**Approach (proposed):**
+- **A data file** (`data/flight_callsigns.lua`, `FLIGHT_CALLSIGNS`), generated or hand-curated once, per coalition and role: fighters, attack, SEAD / DEAD, AWACS, tankers, human flights. Red could get Russian-flavoured names, or numbers as the real Russian air force uses.
+- **Assigned at planning time,** one per flight, never two live flights with the same one, stored on the mission (`m.callsign`, e.g. "Reaper 2", units "Reaper 2-1", "Reaper 2-2").
+- **Used by** the brief and frags, the comms menu, the event log (item 3), AWACS calls (item 6) and AI radio calls (item 8).
+- **Human flights** get a reserved set, so a player's callsign stands out.
+
+**Open:**
+- Generate the list (e.g. from real squadron nicknames and brevity-friendly words) or hand-pick it?
+- Text-only until item 8, or DCS list names for now?
+- Themed per base or squadron (every Bodø flight is a "Viking"), or random from the role's list?
+
+---
+
 ## Optional, later: the threat picture on the map for players
 
-**Goal:** once fog of war (item 8) hides the full map, draw Blue's own radar picture (item 1) for Blue players, so they see the air threat the way their side's radars see it (John: "might be a really cool way to see the threat picture for the human players").
+**Goal:** once fog of war (item 10) hides the full map, draw Blue's own radar picture (item 1) for Blue players, so they see the air threat the way their side's radars see it (John: "might be a really cool way to see the threat picture for the human players").
 
 **Where it stands:** nothing built, on purpose. John doesn't want contacts drawn while debugging: the full map already shows every aircraft, and more marks would clutter it. It only makes sense after fog of war.
 

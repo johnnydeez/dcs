@@ -36,8 +36,11 @@ RADAR_PICTURE = {
         interception           = "scramble",
     },
 
-    inbound_within_deg = 60,    -- heading within this of the bearing to the nearest own base
-    inbound_min_speed_mps = 50, -- slower than this is never called inbound (orbiting, hovering)
+    -- inbound: the contact's heading line passes within threat_pass_km of an own asset (a
+    -- held base or a catalog target) ahead of it; the soonest one is its threat_asset,
+    -- threat_minutes away. Scrambles trigger on it; the leash uses it for "heading away"
+    threat_pass_km        = 30,
+    inbound_min_speed_mps = 50, -- slower than this is never inbound (orbiting, hovering)
 
     -- test aids for the first DCS run (roadmap item 1): log the first time a ground
     -- sensor's radar tracks each enemy group (Unit:getRadar), and count the missiles the

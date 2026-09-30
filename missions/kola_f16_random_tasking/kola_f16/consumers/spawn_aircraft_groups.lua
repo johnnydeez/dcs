@@ -9,12 +9,14 @@
 --   waypoint 1 takeoff from parking or the runway, hot, plus the behaviour options
 --              (data/air_tasking.lua): the mission's rules of engagement (open fire unless
 --              it says otherwise), evade fire, return at bingo, no jettisoning unless the
---              mission may_jettison (fighters), and return when out of its main weapon
---              if the mission says so
+--              mission may_jettison (fighters), return when out of its main weapon
+--              if the mission says so, and afterburner allowed if it says afterburner
+--              (scrambles)
 --   the waypoint with carries_attack_tasks (the ingress; for suppression flights the
 --              waypoint before their first ring; for patrols and the AWACS the station):
 --              the attack tasks, in pydcs's parameter shape — Bombing per attack point,
---              AttackGroup / EngageGroup per group, a race-track Orbit held until the time
+--              AttackGroup / EngageGroup per group (a scramble's EngageGroup goes on the
+--              takeoff waypoint: its route marks takeoff carries_attack_tasks), a race-track Orbit held until the time
 --              on station is up (patrols engage from takeoff: EngageTargetsInZone on their
 --              station's defended zone and each commit circle, on waypoint 1), the AWACS
 --              task + that Orbit.
@@ -42,6 +44,7 @@ local OPTION_REACTION_ON_THREAT, EVADE_FIRE        = 1, 2
 local OPTION_RETURN_AT_BINGO_FUEL                  = 6
 local OPTION_PROHIBIT_JETTISON                     = 15
 local OPTION_RETURN_WHEN_OUT_OF_AMMUNITION         = 10
+local OPTION_PROHIBIT_AFTERBURNER                  = 16
 
 local function option(number, name, value)
     return { number = number, auto = false, id = "WrappedAction", enabled = true,
@@ -112,11 +115,12 @@ local function attackTasks(m, first)
             stopCondition = { time = a.until_s },
         })
     elseif a.kind == "intercept" then
+        -- a scramble: only the raid it was sent after, in order (John, 2026-09-30: burn
+        -- straight at that threat and kill it); on the takeoff waypoint, so it is active
+        -- from wheels-up
         for i, id in ipairs(groupIds(m, a.groups)) do
             add("EngageGroup", { groupId = id, weaponType = a.weapon_type, priority = i, visible = false })
         end
-        add("EngageTargets", { targetTypes = { [1] = "Air" }, value = "Air;", priority = 0,
-                               maxDistEnabled = true, maxDist = a.engage_range_m })
     else
         Log.warn(string.format("%s: attack kind '%s' isn't built — the flight has no attack task", m.id, a.kind))
     end
@@ -181,6 +185,9 @@ local function buildGroup(m, launchId, landingId)
             end
             if m.return_when_out_of then
                 tasks[#tasks + 1] = option(#tasks + 1, OPTION_RETURN_WHEN_OUT_OF_AMMUNITION, m.return_when_out_of)
+            end
+            if m.afterburner then   -- scrambles: afterburner explicitly allowed
+                tasks[#tasks + 1] = option(#tasks + 1, OPTION_PROHIBIT_AFTERBURNER, false)
             end
             for _, t in ipairs(zoneEngageTasks(m, #tasks + 1)) do tasks[#tasks + 1] = t end
             if r.carries_attack_tasks then

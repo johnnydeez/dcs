@@ -23,7 +23,7 @@
 
 ---
 
-## Where we are — pick up here  *(2026-09-30, end of session 10)*
+## Where we are — pick up here  *(2026-09-30, end of session 11)*
 
 **Status:** the whole pipeline runs in DCS and the mission is playable by one human player.
 - **Stage 1:** territory roll, 37 airfields.
@@ -33,14 +33,16 @@
 - **Airspace map:** own / contested / enemy, with regions and pockets.
 - **Air tasking for both coalitions:** front-only strike, airfield strike and DEAD, with SEAD packages; front CAP stations with commit circles; one AWACS each.
 - **Players:** F-16C dynamic-spawn slots, two human taskings per roll, frag and steerpoints in the comms menu.
-- **Radar picture** (roadmap item 1, built 2026-09-30): each coalition's picture of the enemy aircraft its radars report. It only watches and logs, and is tested offline only (luae harness). **Next step: one DCS run to watch and log** (see *Radar picture* under *As built*).
-- **Off:** scrambles, until the AI behaviour rules are designed (roadmap item 2).
+- **Radar picture** (roadmap item 1, done 2026-09-30): each coalition's picture of the enemy aircraft its radars report (see *Radar picture* under *As built*).
+- **Scrambles and the leash** (roadmap item 2, done 2026-09-30): one-ship scrambles at raids the radar picture shows, burning straight at them from a hot ramp spot; the first AI behaviour rule (the leash) brings them home; alert jets go back on alert 30 min after landing (see *Scrambles and the leash*).
+- **Flight ids carry the mission type:** `MSN2025_DEAD`, `MSN2901_SCRAM` (see *Naming and ids*).
 
 **Last DCS runs:**
 - **Session 9, fourth run, ~2 h:** the air-denial rules held (John: "It looked good to me and like it followed our rules"). 0 patrol or AWACS track samples in enemy airspace or inside an enemy ring.
 - **Session 10, 12:18 roll:** the human taskings, frags and steerpoints read well (John: "looking good").
+- **Session 11, first radar picture + scramble run, ~48 min, watched (not flown):** everything designed showed up and nothing errored (details under *Radar picture* and *Scrambles and the leash*). John: MSN2901 and MSN5902 "did exactly what we wanted as a scramble". **Losses were high: 12 aircraft (Blue 4, Red 8)**, both Blue packages caught by Red fighters and both Red packages destroyed, mostly by aircraft that kept flying their route while engaged → roadmap item 4 (AI behaviour logic). Since then: alert jets return after landing, and flight ids carry the mission type; neither run in DCS yet.
 
-**Next:** `roadmap.md`, in John's order: radar picture → scrambles → CAP visibility → AWACS calls (text) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war (last: the full map is needed while debugging); radar jamming and a player map of the threat picture are optional, at the end. The radar picture is built and waits for its first DCS run; scrambles come next. The backlog below holds everything else.
+**Next:** `roadmap.md`, in John's order: radar picture → scrambles → event log → AI behaviour logic → CAP visibility → AWACS calls (text) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war (last: the full map is needed while debugging); radar jamming, helicopters, fun callsigns and a player map of the threat picture are optional, at the end. Radar picture and scrambles are done for now; **next: the event log (item 3), then AI behaviour logic (item 4, a later session).** The backlog below holds everything else.
 
 **Still to watch in runs:**
 - **Lone F-15E crash:** an F-15E of a Banak DEAD crashed alone in Blue airspace ~30 min after bombing (1,237 ft, no hit recorded). An AI approach crash or fuel? Watch for a repeat.
@@ -49,6 +51,9 @@
 - **Endurance:** does the AWACS stay on station the whole 6 hours (A-50 fuel)?
 - **Frame rate** with up to 32 AI aircraft airborne: not measured yet.
 - **MiG-29S:** left out of the Red rosters, because its loadouts carry CLSIDs `aircraft_pylons.lua` doesn't know.
+- **Su-34 takeoff crash** (session 11): MSN5024_2 ejected at 161 ft 32 s after spawning at Poduzhemye. Watch for a repeat at that field.
+- **Alert jets back on alert:** built after the session 11 run; check the `landed — its jet is back on alert` lines and a second launch by the same jet.
+- **Scramble trigger misses dog-legs** (session 11, not changed): "inbound" follows the current heading, so a raid on a leg around SAM rings reads as heading elsewhere. Red's Su-34s attacking `SAM_KUUS_SA11_1` read as 19 / 25 min from other assets and were never scrambled against (a Blue patrol got them). Possible addition: a contact in contested airspace within a few minutes' flight of any own asset counts, whatever its heading.
 
 **Reading a run (grep `dcs.log`):**
 
@@ -62,7 +67,9 @@
 | `HUMAN TASKING` | every frag and steerpoint list |
 | `Build summary:` | the roll's totals (moved off screen in session 10) |
 | `asked for` | a unit type DCS swapped (Leopard-2 substitution) |
-| `picture` | each coalition's radar picture: sensors at start, new / regained / stale / dropped contacts, airspace changes, a summary every 5 min, the first time a ground radar tracks each enemy group |
+| `picture` | each coalition's radar picture: sensors at start, new / regained / stale / dropped contacts (with what they're inbound on), airspace changes, a summary every 5 min, the first time a ground radar tracks each enemy group |
+| `scramble` | alert bases (at planning), each scramble decision (base, type, raid, why, intercept distance, delay, alert jets ready), refusals (once per reason), stood down before launch, landed and back on alert |
+| `leash` | a scramble sent home or stood down on the ramp, and why |
 
 ---
 
@@ -90,14 +97,14 @@ Decide with John, step by step. Roadmap items are in `roadmap.md`.
 - Blue: JSOW, SLAM-ER, AGM-86C;
 - Red: Kh-29 / KAB, bomber cruise missiles.
 
-Overlaps roadmap item 5 (cruise missiles).
+Overlaps roadmap item 7 (cruise missiles).
 
 **AI behaviour rules, one place** (John, session 8): collect the list first, then build it as one module instead of per-flight hacks:
 - leash to own and contested airspace;
 - strikes go home if their SEAD fails;
 - scrambles that identify one jet and kill it only in certain airspace.
 
-The scramble leash (roadmap item 2) is the first rule.
+Built: `consumers/enforce_air_behaviour_rules.lua`, with the scramble leash as its first rule (see *Scrambles and the leash*). The rest, plus attack flights defending themselves, is now roadmap item 4 (AI behaviour logic).
 
 **Escorts:** fighter escorts for attack packages; on hold since the session 8 change of direction.
 - **Hook:** a package gets one more member, like its SEAD flights.
@@ -161,12 +168,12 @@ Then:
 5. `PreloadAircraftTypes`.
 6. `ScheduleAirTaskingOrders.start`.
 7. `TrackRadarPicture.start` (after the scheduler, before anything that reads the picture).
-8. `DrawAirTaskingOrders`.
-9. `BriefAirTasking.start` (comms menu).
-10. Build summary to `dcs.log`.
-11. `BriefAirTasking.showStart` (start text, 3 min).
+8. `EnforceAirBehaviourRules.start`, then `RunScrambles.start`.
+9. `DrawAirTaskingOrders`.
+10. `BriefAirTasking.start` (comms menu).
+11. Build summary to `dcs.log`.
+12. `BriefAirTasking.showStart` (start text, 3 min).
 
-`RunScrambles.start` stays commented out.
 
 ### Stage 1: territory (`stages/roll_territory.lua`, `data/clusters.lua`)
 
@@ -511,8 +518,8 @@ One Red supply convoy per mission (`CONVOYS_PER_COALITION`: Red 1, Blue 0).
   - race-track orbit (80 km) toward the nearest enemy fighter base, 200 km from every enemy base;
   - orbit in own airspace, `early_warning_clearance_km` 30 outside enemy rings;
   - feeds AI datalink.
-- **Alert posture off** (`AIR_DEFENSE.alert_posture_planned = false`); scrambles are roadmap item 2.
-- **Mission types:** `combat_air_patrol`, `airborne_early_warning`, `interception`, with `planned_as` (mission / escort / station / response), per-type `flight_size`, `rules_of_engagement`, `takeoff`, `keeps_gun`, `engage_range_km`.
+- **Alert posture** (`AIR_DEFENSE.alert_posture_planned = true`, `planAlertPosture`): see *Scrambles and the leash*.
+- **Mission types:** `combat_air_patrol`, `airborne_early_warning`, `interception`, with `planned_as` (mission / escort / station / response), per-type `flight_size`, `rules_of_engagement`, `takeoff`, `keeps_gun`, `engage_range_km` (patrols).
 - **Loadouts:**
   - Liberation `CAP` for the Russian fighters and F-15C;
   - `dcs:AIM-120C*4, AIM-9X*2, FUEL*3` for the F-16;
@@ -546,7 +553,7 @@ How it's built:
 
 ### Radar picture (`consumers/track_radar_picture.lua`, `data/radar_picture.lua`)
 
-Built 2026-09-30 (roadmap item 1). Each coalition keeps a picture of the enemy aircraft its own radars report, so scrambles, AWACS calls and later fog of war act only on what the defenders could really know. The script uses it to decide things and gives the AI tasks; it can't add contacts to the AI's own awareness (DCS's built-in datalink already shares contacts between same-coalition AI). **It watches and logs only:** no orders, no spawns, nothing written to the plan. Tested offline only so far.
+Built 2026-09-30 (roadmap item 1). Each coalition keeps a picture of the enemy aircraft its own radars report, so scrambles, AWACS calls and later fog of war act only on what the defenders could really know. The script uses it to decide things and gives the AI tasks; it can't add contacts to the AI's own awareness (DCS's built-in datalink already shares contacts between same-coalition AI). **The picture itself only watches and logs:** no orders, no spawns, nothing written to the plan; scrambles and the leash act on it. First DCS run: session 11.
 - **Sensors:**
   - **Ground, found once at start:** SAM sites (`early_warning` by layer, otherwise `sam_search`, including each site's `<id>_escort`) and base-defense groups of the `radar_missile_launchers` component (`base_defense`), counted only when a unit carries a radar (`Unit:hasSensors`). Gun fire-control radars don't count (John).
   - **Flights, while airborne:** `awacs`, `patrol`, `scramble`, from the mission type (`RADAR_PICTURE.flight_sensor_kinds`). Attack flights and human flights aren't sensors. `TrackRadarPicture.addFlight` adds a flight spawned at run time (scrambles, item 2).
@@ -554,23 +561,65 @@ Built 2026-09-30 (roadmap item 1). Each coalition keeps a picture of the enemy a
   - On the 14:36 plan: Red 40 ground sensors, Blue 32 (3 Blue escorts without a radar skipped), 22 sensor flights each.
 - **Polling:** every sensor once per `poll_interval_s` (30 s; John: plenty often, also for AWACS calls), spread over 10 steps 3 s apart. `Controller:getDetectedTargets(RADAR)` only, never `DLINK`.
 - **Contacts:** one per enemy group, updated at the end of each round:
-  - `group`, `first_seen`, `last_seen`, `seen_by` (sensor kind → count), `state` (`tracked` / `stale`);
+  - `group`, `category` (`airplane` / `helicopter`), `first_seen`, `last_seen`, `seen_by` (sensor kind → count), `state` (`tracked` / `stale`);
   - `pos`, `altitude_m`, `heading_deg`, `speed_mps` (`getPoint` / `getVelocity`);
   - `type_known` (this round), and `type` only once some sensor knew it (it stays after that);
   - `range_known` (false = bearing only);
-  - `airspace` (`DivideAirspace.kindFor`), `nearest_base` / `nearest_base_km` (own held base), `inside_own_sam_ring` (site id), `inbound` (heading within 60° of the bearing to that base, faster than 50 m/s).
+  - `airspace` (`DivideAirspace.kindFor`), `nearest_base` / `nearest_base_km` (own held base), `inside_own_sam_ring` (site id);
+  - **`inbound`, `threat_asset`, `threat_minutes`:** the contact's heading line passes within `threat_pass_km` (30) of an own asset (a held base or a catalog target) ahead of it, at more than 50 m/s; the soonest such asset and the minutes to it. One definition for the scramble trigger and the leash's "heading away". (The first version used "heading within 60° of the nearest own base", which called a raid flying past that base toward Olenya "heading away": found in the scramble harness.)
 - **Memory:** stale after 60 s unseen (two missed rounds), dropped after 300 s.
-- **Events** (`TrackRadarPicture.on(coalition, event, fn)`), fired once per round, each listener run under `pcall`: `new_contact`, `airspace_changed` (extra = the airspace before), `contact_stale`, `contact_dropped`.
+- **Events** (`TrackRadarPicture.on(coalition, event, fn)`), fired once per round, each listener run under `pcall`: `new_contact`, `airspace_changed` (extra = the airspace before), `contact_stale`, `contact_dropped`, then `picture_updated` once the round is complete (scrambles and the behaviour rules run on it).
 - **Calls:** `contacts(coalition, filter)`, `contactsNear(coalition, pos, radius_m)`, `contact(coalition, group)`, `sensors(coalition)`. Contacts come back as kept: read them, never change them.
 - **Test aids for the first DCS run** (`log_radar_tracking`, `count_missiles`): the first time a ground sensor's radar tracks each enemy group (`Unit:getRadar`), and the number of missiles the radars listed since the last summary.
-- **What the first DCS run should answer:**
-  - do the `picture` lines match the `track:` lines and what the flights did?
-  - terrain masking: does a low flyer go stale in front of a ground radar?
-  - are missiles listed (the summary count)?
-  - does `getRadar()` report a SAM site's track (the `radar tracking` lines)?
-  - how do `type_known` / `range_known` behave (`type unknown`, `bearing only` in the lines)?
+- **What the first DCS run showed** (session 11, ~48 min): 32 Red / 34 Blue ground sensors, every sensor answering every round.
+  - **Missiles are listed, but rarely:** 2 in one 5-min window while many were fired. Not reliable for air-to-air missiles; cruise missiles still to test (item 7).
+  - **`getRadar()` works:** `SAM_ENON_SA11_1` tracking the Su-33, `SAM_ALTA_SA11_1` tracking the F-15C.
+  - **Type known** for 6 of 16 new contacts.
+  - **Bearing only** once: the F-15C, which carries an internal jammer in DCS. A good sign that DCS reports jammed contacts as range-unknown (optional jamming item).
+  - **Low flyers:** the AWACS picked up aircraft at 1,100–4,500 ft from 160–210 km. Most first detections were 120–210 km out, which roughly fits the 15-min scramble warning.
+  - **No flicker:** 0 "regained" lines; contacts went stale, then dropped.
+  - A wreck can be seen once more after the kill (MSN5901_SCRAM), so a leash reason can read "heading away" instead of "destroyed". Wording only.
 - **Offline harness:** `radar_picture_harness.lua` (session scratchpad; not kept) ran the module on the real 14:36 plan with stubbed radars: one Blue jet from Rovaniemi to Olenya, seen from T+60 to T+700. New at T+90, four airspace changes, stale at T+780, dropped at T+1020, a failing listener caught, missiles counted, the tracking line logged.
-- `run_scrambles.lua` still has its old poll; it's reworked onto the picture in item 2.
+
+### Scrambles and the leash (`consumers/run_scrambles.lua`, `consumers/enforce_air_behaviour_rules.lua`)
+
+Rebuilt 2026-09-30 (roadmap item 2; design agreed with John, recorded there). A scramble answers an immediate threat: it burns straight at the one raid it was sent after and chases it away or kills it, without flying head first into enemy airspace. First DCS run: session 11.
+
+**Alert posture** (`planAlertPosture`, `AIR_DEFENSE`):
+- held bases whose runway and parking fit an interception type (`COALITION_AIRCRAFT[c].interception`), the `alert_bases` (3) nearest the enemy, plus the nearest of each other region, so a pocket answers for itself;
+- **not a base inside an enemy kill zone** (found in the harness: Vuojarvi under a Blue ring had no way out that didn't start in the kill zone);
+- **3 alert jets per base** (`alert_aircraft_per_base`), 15 min cooldown between launches. A jet that lands is back on alert `scramble_turnaround_s` (30 min) later; one shot down is gone for the mission (John, 2026-09-30: a base shouldn't run out if its jets came back; replaced the first version's fixed 3 launches, which ran Red dry ~1.5 h into the first run). `plan.air_tasking_orders[c].alert = { bases = { { base, code, region, aircraft, pos, enemy_km, alert_aircraft, cooldown_s } }, max_airborne_aircraft, first_number }`.
+- Session 11's roll: Red Alakurtti, Koshka Yavr, Banak; Blue Kuusamo, Ivalo, Vuojarvi.
+
+**Trigger** (every radar-picture round):
+- a tracked contact with a known range, not a helicopter, that is over own airspace, or that the picture has inbound on an own asset it will reach within `scramble_warning_min` (15) minutes for `scramble_inbound_rounds` (2) rounds in a row, in whatever airspace it is now;
+- **refused** (logged once per reason, checked again every round) when a live scramble is already after it, when an airborne patrol's defended zone or commit circle covers where it is, or **while it is inside an enemy kill zone** ("under enemy SAM cover": the leash would only bring the fighter home again; found in the harness, where a raid loitering under Blue SAMs burned 4 launches in 15 minutes).
+
+**The raid:** the trigger plus the other contacts within `raid_radius_km` (20) on a heading within `raid_heading_deg` (45); one scramble takes them all, `EngageGroup` on each, in order.
+
+**The base:** the nearest ready alert base in the region facing the raid (`DivideAirspace.facingRegion`) whose intercept point is in reach and at least `scramble_min_leg_km` (10) out, with a free ramp spot; the coalition may go up to `scramble_over_cap` (2) over `max_airborne_aircraft`. The intercept point is the raid pushed ahead along its heading by the scramble's flight time, pulled back in 5 km steps until it lies in own or contested airspace outside enemy kill zones.
+
+**The launch:**
+- after `scramble_reaction_s` (60–120 s, cockpit alert), **hot on a free ramp spot, never the runway** (John: no spawning on top of jets lined up there). The spot is chosen at spawn time from `Airbase:getParking(true)`, nearest the runway, not a player slot or a parked-aircraft static. If the raid is gone by then, or no spot is free, the scramble is **stood down before launch** and its jet stays on alert;
+- **the session 7 fixes:** `EngageGroup` on the takeoff waypoint, so it's active from wheels-up and the AI flies its own intercept (it used to sit on waypoint 2, the intruder's position at launch, and DCS starts a waypoint's tasks only on arrival); waypoints at the profile's `dash_speed_mps` (F-16 / F/A-18 325, F-15C / Su-27 / Su-30 / Su-33 355, MiG-31 440 m/s) with afterburner explicitly allowed (option 16 false), instead of `speed_locked` at cruise speed; `open_fire`, no `EngageTargets` on everything; one-ship, `interception` loadout, gun kept, may jettison;
+- then `ScheduleAirTaskingOrders.track`, `TrackRadarPicture.addFlight` (its radar joins the picture) and `EnforceAirBehaviourRules.watch(m, "leash", { targets })`.
+- Ids `MSN2901_SCRAM+` / `MSN5901_SCRAM+`.
+
+**The leash** (`data/air_behaviour_rules.lua`), checked every picture round per watched flight:
+- **home** when every raid group is dead, dropped from the picture, or back over its own airspace **heading away** (not `inbound`; a raid that only dips over its own airspace on the way in is still a raid); or when the scramble itself is more than 5 km into enemy airspace (distance to the nearest contested cell) or inside an enemy kill zone (85 % of a live medium / long-range ring);
+- **stood down** (the group removed) if the raid is gone before it leaves the ramp;
+- going home: `Controller:setTask` with a new airborne mission (from where it is to a landing at its base, cruise speed) and rules of engagement "return fire". Once sent home it isn't watched any more; the scheduler removes it after landing. Fuel is DCS's (bingo).
+- `EnforceAirBehaviourRules.watching(id)` tells scrambles whether a flight is still hunting.
+
+**Offline harness** (`scramble_harness.lua`, session scratchpad; not kept): real 14:36 plan with air tasking re-planned, the real picture, rules, scrambles and aircraft spawner over stubbed DCS; one Blue jet Rovaniemi → Olenya. Checked: the spawned group (hot ramp start, `EngageGroup` on waypoint 1, afterburner option, dash speed and interception altitude on waypoint 2), the leash's `setTask` / return-fire option, stood down before launch, patrol cover, SAM cover, and the kill-zone leash when the scramble chases into Blue's rings.
+
+**First DCS run** (session 11, ~48 min, watched): Red decided 6 scrambles, Blue 4.
+- **Burning straight at the raid works:** John: MSN2901 and MSN5902 "did exactly what we wanted as a scramble", though MSN2901's path looked a little odd (its intercept point was 239 km out; once airborne the AI flies its own intercept geometry).
+- **Kills:** scrambles scored 4 kills for 2 losses. MSN2901 (F-15C) killed a Su-33 patrol with an AIM-120 fired just before the kill-zone leash sent it home; MSN5901 (Su-30) killed both F-16s of a Blue DEAD; MSN5903 (Su-27) killed a SEAD F/A-18, then fell to a Blue patrol.
+- **Every leash reason fired:** kill zone, target destroyed, target lost from the picture, heading away; plus stood down on the ramp (MSN2904) and stood down before launch (MSN5904, MSN5906).
+- **`setTask` home lands them:** MSN2902 was sent home just after takeoff (its target was already gone), circled in the landing pattern and landed 5 min later (John agreed: going home is right when the target is gone). MSN2901 landed ~17 min after its leash.
+- **Refusals:** "under enemy SAM cover" 7 times (mostly Blue patrols orbiting under Blue SAMs), "covered by patrol" twice. A scramble at an enemy patrol that looks like a raid is fine (John: Blue can't know a jet's intentions).
+- **Budget:** the first version's 3 launches per base would have run Red dry ~1.5 h in → alert jets now return after landing (above).
 
 ### Player slots (`data/player_slots.lua`)
 
@@ -691,7 +740,7 @@ The runtime can read the mission's weather, time and date, but can't change them
 
 ## Design, not built yet
 
-**Threat-intel fidelity rule** (for the brief and fog of war, roadmap item 8). Fidelity follows the threat's real-world nature, not a difficulty setting:
+**Threat-intel fidelity rule** (for the brief and fog of war, roadmap item 10). Fidelity follows the threat's real-world nature, not a difficulty setting:
 
 | Threat class | In the brief as | Map |
 |---|---|---|
@@ -715,7 +764,7 @@ Roll it per mobile SAM each session. Surprise threats then have a realistic just
 - **Two identities:** the DCS group name is the machine id (`MSN2041`) and is never spoken. The radio callsign is a separate field drawn from DCS's built-in callsign enum, which drives the AI voiceovers *and* is what the brief prints, so what's written matches what's heard.
 - **Blue pools per role:** fighters `{Springfield, Colt, Dodge, Ford, Chevy, Uzi, Enfield, Pontiac}`, tankers `{Texaco, Arco, Shell}`, AWACS `{Magic, Overlord, Wizard, Darkstar}`. The player gets a reserved fighter callsign by role (SEAD → Springfield, strike → Colt, CAP → Dodge…).
 - **Audible but not overwhelming:** enum callsigns go to player-relevant Blue air (own flight, package-mates, covering CAP, tanker, AWACS); the airborne cap limits simultaneous transmitters.
-- Roadmap item 6 (AI radio calls) builds on this.
+- Roadmap item 8 (AI radio calls) builds on this.
 
 **Weather as a planner input** (reading works; the planner doesn't use it yet):
 
@@ -790,7 +839,8 @@ kola_f16\
     coalition_rosters.lua        -- the only file that knows red from blue (ground, SAM, targets, aircraft)
     air_tasking.lua              -- mission types, tasking, timing, packages, AIR_DEFENSE, routing, HUMAN_TASKING
     airspace.lua                 -- airspace grid settings
-    radar_picture.lua            -- radar picture settings: polling, stale / drop times, sensor kinds
+    radar_picture.lua            -- radar picture settings: polling, stale / drop times, sensor kinds, inbound
+    air_behaviour_rules.lua      -- the rules enforced on AI flights after launch (the leash)
     aircraft_profiles.lua        -- per aircraft type: runway, parking, reach, speeds, altitudes (hand)
     aircraft_loadouts.lua        -- one loadout per type × mission (aircraft_loadouts.py)
     aircraft_pylons.lua          -- pylon → CLSID, generated; offline validation only, not loaded
@@ -805,7 +855,8 @@ kola_f16\
     preload_aircraft_types.lua   -- first-spawn freeze fix
     schedule_air_tasking_orders.lua  -- spawns flights on the clock; logs shots, kills, losses; statusOf
     track_radar_picture.lua      -- each coalition's radar picture: contacts, events, queries
-    run_scrambles.lua            -- off until roadmap item 2
+    enforce_air_behaviour_rules.lua  -- rules on AI flights after launch: the scramble leash
+    run_scrambles.lua            -- one-ship scrambles at raids the radar picture shows
     brief_air_tasking.lua        -- start text + comms menu
     draw_airspace.lua  draw_base_defenses.lua  draw_sam_sites.lua  draw_fixed_ground_targets.lua
     draw_convoys.lua  draw_air_tasking_orders.lua    -- F10 map marks (all ToAll(-1) until fog of war)
@@ -823,7 +874,7 @@ Load order: `lib\*` → `data\*` → `stages\*` → `consumers\*`, then the run 
 | SAM / EW site | `SAM_<CODE>_<system>_<n>`; escort `<id>_escort` | `SAM_SEV1_SA10_1` |
 | Fixed ground target | `TGT_<CODE>_<kind>_<n>`; statics `<id>_static_<n>` | `TGT_IVAL_communications_site_1` |
 | Convoy | `CONVOY_<FROM CODE>_supply_convoy_<n>` | |
-| Flight | `MSN<n>`: Blue 2001+, Red 5001+ (scrambles 2901+ / 5901+) | `MSN2023` |
+| Flight | `MSN<n>_<tag>`: Blue 2001+, Red 5001+ (scrambles 2901+ / 5901+); units `<id>_<n>`. MSN = mission number, as in a real air tasking order. Tag = the mission type's `group_name_tag`: `STRIKE`, `OCA` (offensive counter-air: airfield strike), `SEAD`, `DEAD`, `CAP`, `AEW`, `SCRAM` (John, 2026-09-30) | `MSN2025_DEAD`, `MSN2901_SCRAM` |
 | Package | `PKG<n>`, n = the mission it escorts | |
 | Patrol station / AWACS station | `CAP_<CODE>_<kind>_<n>` / `AEW_<CODE>_1` | |
 | Player slot group | `f16_<base>` (placed by John) | `f16_rovaniemi` |
