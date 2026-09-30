@@ -5,9 +5,7 @@
 --   it engages. Defensive air: each patrol station and the AWACS orbit as a solid
 --   race-track with one label listing its flights, a patrol station's defended zone as a
 --   dashed circle and its commit circles as faint dotted ones, human flights' routes
---   dashed yellow, each alert base's
---   posture, and (with CONFIG.DRAW_AIR_ZONES, off: the map got too cluttered) the defended air zones as
---   dashed circles.
+--   dashed yellow, and each alert base's posture.
 -- Reads the plan; writes nothing back to it.
 
 DrawAirTaskingOrders = {}
@@ -97,14 +95,9 @@ function DrawAirTaskingOrders.apply(plan)
             for _, b in ipairs(alert.bases) do
                 local types = {}
                 for _, e in ipairs(b.aircraft) do types[#types + 1] = e[1] end
-                trigger.action.markToAll(_mark, string.format("ALERT %s %s\n%s\n%d launches, %d min between",
-                    coalition:upper(), b.base, table.concat(types, " / "), b.scrambles, math.floor(b.cooldown_s / 60)),
+                trigger.action.markToAll(_mark, string.format("ALERT %s %s\n%s\n%d alert jets, %d min between launches",
+                    coalition:upper(), b.base, table.concat(types, " / "), b.alert_aircraft, math.floor(b.cooldown_s / 60)),
                     Util.toVec3(b.pos), true, "")
-                _mark = _mark + 1
-            end
-            for _, z in ipairs(CONFIG.DRAW_AIR_ZONES and alert.zones or {}) do
-                trigger.action.circleToAll(-1, _mark, Util.toVec3(z), z.radius_m, SIDE_COLOR[coalition], NO_FILL,
-                    LINE_DASHED, true, "")
                 _mark = _mark + 1
             end
         end

@@ -1,7 +1,7 @@
 -- Stages 5–6: the air tasking orders — each coalition's air plan over the mission window.
 -- Defensive air first ("support up first"): one AWACS, combat air patrols rotating over
--- stations near the front, and (when planned) the scramble posture (alert bases, defended air zones, the radars
--- that watch; consumers/run_scrambles.lua reacts at run time). Then the ground attack
+-- stations near the front, and (when planned) the scramble posture (the alert bases;
+-- consumers/run_scrambles.lua reacts to the radar picture at run time). Then the ground attack
 -- missions: strike, airfield strike and destruction of air defenses, one flight per
 -- mission, each with the suppression flights its route needs (a package), filling what
 -- the airborne cap leaves. Each coalition is planned from the target catalog and its own
@@ -71,10 +71,9 @@
 --                           ends = { a, b }, defends = { catalog ids }, defended_value,
 --                           zone = { x, z, radius_m }, commit = { { x, z, radius_m } },
 --                           label, patrols } },
---            alert = { bases = { { base, code, aircraft = { { type, weight } }, pos,
---                                  enemy_km, scrambles, cooldown_s } },
---                      zones = { { id, x, z, radius_m } }, radars = { DCS group names },
---                      detection, check_interval_s, max_airborne_aircraft, first_number },
+--            alert = { bases = { { base, code, region, aircraft = { { type, weight } }, pos,
+--                                  enemy_km, alert_aircraft, cooldown_s } },
+--                      max_airborne_aircraft, first_number },
 --            summary = { missions, suppression_flights, flights, by_type, not_planned,
 --                        failures = { reason = n }, patrols, stations, early_warning,
 --                        alert_bases } },
@@ -106,8 +105,9 @@
 --   and for patrols and the AWACS station (orbit start) and station_end;
 --   the attack tasks go on the waypoint with carries_attack_tasks
 --   times are mission time in seconds (timer.getTime())
--- Ids: MSN<number>, the DCS group name; Blue numbers from 2001, Red from 5001 (plan.md
--- "Naming and ids"); scrambles, spawned at run time, from 2901 / 5901. Units are <id>_<n>. A package
+-- Ids: MSN<number>_<mission type's group_name_tag> (MSN2002_CAP), the DCS group name; Blue
+-- numbers from 2001, Red from 5001 (plan.md "Naming and ids"); scrambles, spawned at run
+-- time, from 2901 / 5901 (MSN2901_SCRAM). Units are <id>_<n>. A package
 -- is PKG<number of the mission it escorts>; a station CAP_<CODE>_<kind>_<n> / AEW_<CODE>_1.
 
 PlanAirTasking = {}
@@ -173,10 +173,13 @@ function PlanAirTasking.validate()
         if m.takeoff and not TAKEOFFS[m.takeoff] then
             bad(string.format("mission type '%s': takeoff '%s' is unknown", mt, tostring(m.takeoff)))
         end
+        if type(m.group_name_tag) ~= "string" or not m.group_name_tag:match("^%u+$") then
+            bad(string.format("mission type '%s' needs a group_name_tag in capital letters", mt))
+        end
         if m.flight_size and (type(m.flight_size) ~= "table" or #m.flight_size ~= 2 or m.flight_size[1] > m.flight_size[2]) then
             bad(string.format("mission type '%s': flight_size must be { min, max }", mt))
         end
-        if (m.attack == "engage_aircraft_on_station" or m.attack == "intercept") and type(m.engage_range_km) ~= "number" then
+        if m.attack == "engage_aircraft_on_station" and type(m.engage_range_km) ~= "number" then
             bad(string.format("mission type '%s' needs engage_range_km", mt))
         end
     end
@@ -189,9 +192,15 @@ function PlanAirTasking.validate()
                          "station_enemy_airspace_km", "commit_range_km", "commit_spacing_km", "commit_radius_km",
                          "commit_min_radius_km",
                          "early_warning_standoff_km", "early_warning_clearance_km", "early_warning_leg_km",
-                         "alert_bases", "scrambles_per_base", "scramble_cooldown_s", "check_interval_s",
-                         "air_zone_heavy_base_km", "air_zone_ring_margin_km" }) do
+                         "alert_bases", "alert_aircraft_per_base", "scramble_turnaround_s", "scramble_cooldown_s", "scramble_warning_min",
+                         "scramble_inbound_rounds", "scramble_over_cap",
+                         "scramble_min_leg_km", "raid_radius_km", "raid_heading_deg" }) do
         if type(AIR_DEFENSE[f]) ~= "number" or AIR_DEFENSE[f] < 0 then bad("AIR_DEFENSE needs a non-negative " .. f) end
+    end
+    local reaction = AIR_DEFENSE.scramble_reaction_s
+    if type(reaction) ~= "table" or type(reaction[1]) ~= "number" or type(reaction[2]) ~= "number"
+       or reaction[1] < 0 or reaction[1] > reaction[2] then
+        bad("AIR_DEFENSE.scramble_reaction_s must be { min, max } seconds")
     end
     if type(AIR_DEFENSE.killzone_fraction) ~= "number" or AIR_DEFENSE.killzone_fraction <= 0
        or AIR_DEFENSE.killzone_fraction > 1 then
@@ -287,6 +296,9 @@ function PlanAirTasking.validate()
                 local p = AIRCRAFT_PROFILE[t]
                 if p and type(p.attack_altitude_m) == "table" and type(p.attack_altitude_m[mt]) ~= "number" then
                     bad(string.format("COALITION_AIRCRAFT.%s.%s: profile '%s' has no attack_altitude_m.%s", c, mt, t, mt))
+                end
+                if p and mt == INTERCEPTION and (type(p.dash_speed_mps) ~= "number" or p.dash_speed_mps <= 0) then
+                    bad(string.format("COALITION_AIRCRAFT.%s.%s: profile '%s' needs a positive dash_speed_mps", c, mt, t))
                 end
                 if p and mt == SUPPRESSION and (type(p.anti_radiation_missiles) ~= "number" or p.anti_radiation_missiles <= 0) then
                     bad(string.format("COALITION_AIRCRAFT.%s.%s: profile '%s' needs a positive anti_radiation_missiles", c, mt, t))
@@ -944,7 +956,8 @@ local function commitFlight(ctx, f, packageId)
         f.route[1].x, f.route[1].z = round(f.spots[1][1]), round(f.spots[1][2])
     end
     local mission = {
-        id = "MSN" .. number, number = number, coalition = ctx.coalition, package = packageId,
+        id = string.format("MSN%d_%s", number, f.mt.group_name_tag), number = number,
+        coalition = ctx.coalition, package = packageId,
         mission_type = f.mission_type, group_task = f.mt.group_task,
         flown_by = f.player_slot and "human" or "ai",
         player_slot = f.player_slot and { group = f.player_slot.group, spot = f.player_slot.spot,
@@ -973,7 +986,7 @@ local function commitFlight(ctx, f, packageId)
 end
 
 local function logFlight(ctx, m, extra)
-    Log.info(string.format("  %-7s %-4s %s%-27s %dx %-13s %-22s → %-34s %4d km (%d flown, %d in enemy airspace, target %d km past contested)  start %s  TOT %s  back %s%s",
+    Log.info(string.format("  %-13s %-4s %s%-27s %dx %-13s %-22s → %-34s %4d km (%d flown, %d in enemy airspace, target %d km past contested)  start %s  TOT %s  back %s%s",
         m.id, ctx.coalition:upper(), m.flown_by == "human" and "HUMAN " or "", m.mission_type, m.count,
         m.aircraft_type, m.launch_base, m.target,
         m.distance_km, m.route_km, m.enemy_airspace_km or 0, m.target_depth_km or 0,
@@ -1464,62 +1477,54 @@ local function planEarlyWarning(ctx)
     return m, station
 end
 
--- The scramble posture: alert bases, the aircraft they hold, what they defend, and the
--- radars that watch for intruders. Nothing here spawns; consumers/run_scrambles.lua
--- launches from it at run time.
-local function planAlertPosture(ctx, earlyWarning)
+-- The scramble posture: the alert bases and the aircraft they hold. Nothing here spawns;
+-- consumers/run_scrambles.lua launches from it at run time, on what the radar picture
+-- shows. Alert bases: held bases whose runway and parking fit an interception type (in
+-- wartime every usable runway is used: Finnish and Swedish dispersal doctrine), the
+-- AIR_DEFENSE.alert_bases nearest the enemy, each holding alert_aircraft_per_base jets, plus the nearest of each other region that
+-- has one, so a pocket can answer for itself. A base inside an enemy kill zone holds no
+-- alert: nobody keeps quick-reaction fighters under the enemy's SAM umbrella, and every
+-- way out of it would start inside the kill zone.
+local function planAlertPosture(ctx)
     local D = AIR_DEFENSE
     local roster = COALITION_AIRCRAFT[ctx.coalition][INTERCEPTION]
     local enemiesAll = basesOf(ctx, BASE_CLASSES, true)
+    local typesAt = {}
+    for _, e in ipairs(roster) do
+        for _, b in ipairs(launchBases(ctx, e[1])) do
+            typesAt[b] = typesAt[b] or {}
+            table.insert(typesAt[b], { e[1], e[2] })
+        end
+    end
     local candidates = {}
-    for _, name in ipairs(basesOf(ctx, ALERT_BASE_CLASSES)) do
-        local types = {}
-        for _, e in ipairs(roster) do
-            for _, b in ipairs(launchBases(ctx, e[1])) do
-                if b == name then types[#types + 1] = { e[1], e[2] } end
-            end
-        end
-        if #types > 0 then
-            local _, d = nearestBase(ctx, ctx.plan.world.airbases[name].pos, enemiesAll)
-            candidates[#candidates + 1] = { base = name, code = AIRBASE_CODE[name], aircraft = types,
-                                            pos = ctx.plan.world.airbases[name].pos, enemy_km = round((d or 0) / 1000) }
-        end
-    end
-    table.sort(candidates, function(a, b) return a.enemy_km < b.enemy_km end)
-    local alert = {}
-    for i = 1, math.min(D.alert_bases, #candidates) do
-        local c = candidates[i]
-        c.scrambles = D.scrambles_per_base
-        c.cooldown_s = D.scramble_cooldown_s
-        alert[i] = c
-    end
-
-    -- defended air zones: around the heavy bases and the medium / long-range SAM sites
-    local zones = {}
     for _, name in ipairs(ctx.held) do
-        local b = ctx.plan.base_defenses and ctx.plan.base_defenses.bases[name]
-        if b and b.level == "heavy" then
+        if typesAt[name] and clearOfThreats(ctx, ctx.plan.world.airbases[name].pos, 0) then
             local pos = ctx.plan.world.airbases[name].pos
-            zones[#zones + 1] = { id = "base " .. name, x = pos.x, z = pos.z, radius_m = D.air_zone_heavy_base_km * 1000 }
+            local _, d = nearestBase(ctx, pos, enemiesAll)
+            candidates[#candidates + 1] = { base = name, code = AIRBASE_CODE[name], aircraft = typesAt[name],
+                                            region = ctx.base_region[name], pos = pos,
+                                            enemy_km = round((d or 0) / 1000) }
         end
     end
-    local radars = {}
-    for _, s in ipairs(ctx.plan.sam_sites and ctx.plan.sam_sites.sites or {}) do
-        if s.side == ctx.coalition then
-            radars[#radars + 1] = s.id
-            if AIR_ROUTING.threat_layers[s.layer] and (s.engage_m or 0) > 0 then
-                zones[#zones + 1] = { id = s.id, x = s.pos.x, z = s.pos.z,
-                                      radius_m = s.engage_m + D.air_zone_ring_margin_km * 1000 }
-            end
-        end
+    table.sort(candidates, function(a, b)
+        if a.enemy_km ~= b.enemy_km then return a.enemy_km < b.enemy_km end
+        return a.base < b.base
+    end)
+    local alert, regions = {}, {}
+    local function take(c)
+        c.alert_aircraft = D.alert_aircraft_per_base
+        c.cooldown_s = D.scramble_cooldown_s
+        alert[#alert + 1] = c
+        regions[c.region] = true
     end
-    if earlyWarning then radars[#radars + 1] = earlyWarning.id end
-    local codes = {}
-    for _, c in ipairs(alert) do codes[#codes + 1] = c.base end
-    Log.info(string.format("  %s alert bases: %s; %d defended air zones; %d radars watching",
-        ctx.coalition:upper(), #codes > 0 and table.concat(codes, ", ") or "none", #zones, #radars))
-    return { bases = alert, zones = zones, radars = radars, detection = D.detection,
-             check_interval_s = D.check_interval_s, max_airborne_aircraft = ctx.per.max_airborne_aircraft,
+    for i = 1, math.min(D.alert_bases, #candidates) do take(candidates[i]) end
+    for _, c in ipairs(candidates) do
+        if not regions[c.region] then take(c) end   -- the nearest of a region not covered yet
+    end
+    local names = {}
+    for _, c in ipairs(alert) do names[#names + 1] = string.format("%s (%d km from the enemy)", c.base, c.enemy_km) end
+    Log.info(string.format("  %s alert bases: %s", ctx.coalition:upper(), #names > 0 and table.concat(names, ", ") or "none"))
+    return { bases = alert, max_airborne_aircraft = ctx.per.max_airborne_aircraft,
              first_number = FIRST_NUMBER[ctx.coalition] + 900 }
 end
 
@@ -1775,7 +1780,7 @@ function PlanAirTasking.run(plan)
             local patrols = planPatrols(ctx, stations)
             if orbit then table.insert(stations, 1, orbit) end
             res.stations = stations
-            if AIR_DEFENSE.alert_posture_planned then res.alert = planAlertPosture(ctx, earlyWarning) end
+            if AIR_DEFENSE.alert_posture_planned then res.alert = planAlertPosture(ctx) end
             res.summary.patrols, res.summary.stations = #patrols, #stations - (orbit and 1 or 0)
             res.summary.early_warning = earlyWarning and 1 or 0
             res.summary.alert_bases = res.alert and #res.alert.bases or 0

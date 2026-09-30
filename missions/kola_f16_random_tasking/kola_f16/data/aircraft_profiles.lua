@@ -11,6 +11,10 @@
 --   flight_size         { min, max } aircraft per flight
 --   combat_radius_km    farthest target from the launch base, with its mission load
 --   cruise_speed_mps    true airspeed in transit
+--   dash_speed_mps      interception types only: the speed a scramble flies at the
+--                       intruder, afterburner allowed (about Mach 1.1 for F-16 / F/A-18,
+--                       1.2 for F-15C / Su-27 / Su-30 / Su-33, 1.5 for the MiG-31, at
+--                       altitude where Mach 1 is ~295 m/s)
 --   cruise_altitude_m   transit altitude, held until the descent point before the ingress.
 --                       At least 7,500 m (~25k ft) for every attack flight: above guns,
 --                       shoulder-launched missiles and short-range SAMs (SA-8, SA-15, Roland,
@@ -58,6 +62,7 @@ AIRCRAFT_PROFILE = {
         flight_size = { 2, 2 }, combat_radius_km = 550,
         -- JDAMs from medium-high altitude; Mavericks and HARMs lower
         cruise_speed_mps = 230, cruise_altitude_m = 7500,
+        dash_speed_mps = 325,
         attack_altitude_m = { strike = 7000, airfield_strike = 7000, suppression_of_air_defenses = 6000,
                               destruction_of_air_defenses = 7000, close_air_support = 4500,
                               combat_air_patrol = 8000, interception = 8500 },
@@ -67,6 +72,7 @@ AIRCRAFT_PROFILE = {
         min_runway_m = 1500, parking = { 72, 104 },
         flight_size = { 2, 2 }, combat_radius_km = 550,
         cruise_speed_mps = 230, cruise_altitude_m = 7500,
+        dash_speed_mps = 325,
         attack_altitude_m = { strike = 7000, airfield_strike = 7000, suppression_of_air_defenses = 6000,
                               destruction_of_air_defenses = 7000, close_air_support = 4500,
                               combat_air_patrol = 8000, interception = 8500 },
@@ -101,12 +107,14 @@ AIRCRAFT_PROFILE = {
         min_runway_m = 2000, parking = { 104, 72 },
         flight_size = { 1, 2 }, combat_radius_km = 700,
         cruise_speed_mps = 240, cruise_altitude_m = 9000,
+        dash_speed_mps = 355,
         attack_altitude_m = { combat_air_patrol = 8000, interception = 9000 },
     },
     ["Su-30"] = {
         min_runway_m = 2000, parking = { 104, 72 },
         flight_size = { 1, 2 }, combat_radius_km = 800,
         cruise_speed_mps = 240, cruise_altitude_m = 9000,
+        dash_speed_mps = 355,
         attack_altitude_m = { combat_air_patrol = 8000, interception = 9000 },
     },
     -- Su-33: the Northern Fleet's carrier fighters, ashore at Severomorsk-3
@@ -114,6 +122,7 @@ AIRCRAFT_PROFILE = {
         min_runway_m = 2000, parking = { 104, 72 },
         flight_size = { 1, 2 }, combat_radius_km = 650,
         cruise_speed_mps = 240, cruise_altitude_m = 9000,
+        dash_speed_mps = 355,
         attack_altitude_m = { combat_air_patrol = 8000, interception = 9000 },
     },
     -- MiG-31: the long-range interceptor, fast and high
@@ -121,12 +130,14 @@ AIRCRAFT_PROFILE = {
         min_runway_m = 2200, parking = { 104, 72 },
         flight_size = { 1, 2 }, combat_radius_km = 700,
         cruise_speed_mps = 280, cruise_altitude_m = 10000,
+        dash_speed_mps = 440,
         attack_altitude_m = { combat_air_patrol = 10000, interception = 11000 },
     },
     ["F-15C"] = {
         min_runway_m = 2000, parking = { 104, 72 },
         flight_size = { 1, 2 }, combat_radius_km = 900,
         cruise_speed_mps = 240, cruise_altitude_m = 9000,
+        dash_speed_mps = 355,
         attack_altitude_m = { combat_air_patrol = 8500, interception = 9000 },
     },
 

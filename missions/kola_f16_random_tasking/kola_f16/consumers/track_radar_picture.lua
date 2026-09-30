@@ -11,14 +11,16 @@
 --      Controller:getDetectedTargets(RADAR) — radar only, never DLINK, or every unit
 --      would echo what the others share
 --   3. at the end of the round each enemy group seen becomes or refreshes a contact:
---      position, altitude, heading, speed, who saw it, type (only if a sensor knew it),
---      whether the range is known, airspace, nearest own base, own SAM ring, inbound
---   4. contacts not seen turn stale, then drop; events go to the listeners
+--      airplane or helicopter, position, altitude, heading, speed, who saw it, type (only if a sensor knew it),
+--      whether the range is known, airspace, nearest own base, own SAM ring, and the own
+--      asset its heading will bring it to (inbound) and in how many minutes
+--   4. contacts not seen turn stale, then drop; events go to the listeners, then
+--      picture_updated once the round is complete
 --
 -- Log lines (grep "picture"):
 --   "RED picture: 3 contacts (own 1, contested 2, enemy 0; 1 stale), 28 of 30 sensors answered"
 --   "RED picture: new MSN2014 (F-16C_50) seen by early_warning SAM_OLEN_55G6_1 (+2 more), 24000 ft,
---    contested airspace, 62 km from Olenya, inbound"
+--    contested airspace, 62 km from Olenya, inbound Olenya in 11 min"
 --   "RED picture: MSN2014 (F-16C_50) entered own airspace (was contested), …"
 --   "RED picture: MSN2014 stale (last seen 45 s ago)" / "… regained by …" / "… dropped …"
 --   "RED picture: SAM_OLEN_SA10_1 radar tracking MSN2014 (F-16C_50)"   the first time only
@@ -33,7 +35,8 @@ TrackRadarPicture = {}
 local SIDE  = { red = 1, blue = 2 }             -- coalition.side
 local ENEMY = { red = "blue", blue = "red" }
 local FEET_PER_METRE = 3.28084
-local EVENTS = { new_contact = true, airspace_changed = true, contact_stale = true, contact_dropped = true }
+local EVENTS = { new_contact = true, airspace_changed = true, contact_stale = true, contact_dropped = true,
+                 picture_updated = true }
 
 local _plan
 local _pictures = {}   -- coalition → picture (below)
@@ -134,9 +137,9 @@ local function kindOf(obj)
     end)
     if not ok then return nil end
     if category == Object.Category.WEAPON then return "missile" end
-    if category == Object.Category.UNIT
-        and (unitCategory == Unit.Category.AIRPLANE or unitCategory == Unit.Category.HELICOPTER) then
-        return "aircraft"
+    if category == Object.Category.UNIT then
+        if unitCategory == Unit.Category.AIRPLANE then return "aircraft", "airplane" end
+        if unitCategory == Unit.Category.HELICOPTER then return "aircraft", "helicopter" end
     end
     return nil
 end
@@ -173,16 +176,30 @@ local function ownSamRing(coalitionName, pos)
     return nil
 end
 
-local function angleBetween(a, b)
-    local d = math.abs(a - b) % 360
-    return d > 180 and 360 - d or d
+-- The own asset (held base or catalog target) the contact's heading line passes within
+-- RADAR_PICTURE.threat_pass_km of, soonest ahead, and the minutes until it gets there.
+local function threatOf(p, c)
+    if c.speed_mps < RADAR_PICTURE.inbound_min_speed_mps then return nil end
+    local r = math.rad(c.heading_deg)
+    local hx, hz = math.cos(r), math.sin(r)   -- x north, z east
+    local passM = RADAR_PICTURE.threat_pass_km * 1000
+    local best, bestMin
+    for _, a in ipairs(p.assets) do
+        local dx, dz = a.pos.x - c.pos.x, a.pos.z - c.pos.z
+        local along = dx * hx + dz * hz
+        if along > 0 and math.abs(dx * hz - dz * hx) <= passM then
+            local minutes = along / c.speed_mps / 60
+            if not bestMin or minutes < bestMin then best, bestMin = a.name, minutes end
+        end
+    end
+    return best, bestMin
 end
 
 -- Position, motion and the facts derived from them, from one sighting.
-local function locate(c, coalitionName, sighting)
-    local p, v = sighting.point, sighting.velocity
-    c.pos = { x = p.x, z = p.z }
-    c.altitude_m = p.y
+local function locate(p, c, coalitionName, sighting)
+    local pt, v = sighting.point, sighting.velocity
+    c.pos = { x = pt.x, z = pt.z }
+    c.altitude_m = pt.y
     c.speed_mps = math.sqrt(v.x * v.x + v.z * v.z)
     local heading = math.deg(math.atan2(v.z, v.x))
     if heading < 0 then heading = heading + 360 end
@@ -191,18 +208,18 @@ local function locate(c, coalitionName, sighting)
     local base, d = nearestOwnBase(coalitionName, c.pos)
     c.nearest_base, c.nearest_base_km = base, d and d / 1000
     c.inside_own_sam_ring = ownSamRing(coalitionName, c.pos)
-    c.inbound = false
-    if base and c.speed_mps >= RADAR_PICTURE.inbound_min_speed_mps then
-        local toBase = Util.bearing(c.pos, _plan.world.airbases[base].anchor)
-        c.inbound = angleBetween(c.heading_deg, toBase) <= RADAR_PICTURE.inbound_within_deg
-    end
+    c.threat_asset, c.threat_minutes = threatOf(p, c)
+    c.inbound = c.threat_asset ~= nil
 end
 
 local function whereText(c)
     local text = string.format("%.0f ft, %s airspace", c.altitude_m * FEET_PER_METRE, c.airspace)
     if c.nearest_base then text = text .. string.format(", %.0f km from %s", c.nearest_base_km, c.nearest_base) end
     if c.inside_own_sam_ring then text = text .. ", inside " .. c.inside_own_sam_ring end
-    if c.inbound then text = text .. ", inbound" end
+    if c.inbound then
+        text = text .. (c.threat_minutes < 1 and (", passing " .. c.threat_asset)
+            or string.format(", inbound %s in %.0f min", c.threat_asset, c.threat_minutes))
+    end
     if not c.range_known then text = text .. ", bearing only" end
     return text
 end
@@ -228,7 +245,8 @@ local function poll(p, sensor)
     p.answered = p.answered + 1
     for _, t in ipairs(list) do
         local obj = t.object
-        local kind = obj and kindOf(obj)
+        local kind, category
+        if obj then kind, category = kindOf(obj) end
         if kind == "missile" then
             if RADAR_PICTURE.count_missiles then
                 local okName, name = pcall(function() return obj:getName() end)
@@ -241,7 +259,8 @@ local function poll(p, sensor)
             if okRead and groupName then
                 local s = p.sightings[groupName]
                 if not s then
-                    s = { type_known = false, range_known = false, seen_by = {}, point = point, velocity = velocity }
+                    s = { type_known = false, range_known = false, seen_by = {}, point = point, velocity = velocity,
+                          category = category }
                     p.sightings[groupName] = s
                 end
                 s.type_name = typeName
@@ -288,7 +307,8 @@ local function finishRound(p, now)
         c.type_known = s.type_known
         c.type = s.type_known and s.type_name or c.type   -- once identified, stays identified
         c.range_known = s.range_known
-        locate(c, p.coalition, s)
+        c.category = s.category
+        locate(p, c, p.coalition, s)
         local by = string.format("%s %s", s.first_sensor.kind, s.first_sensor.id)
         if s.sensor_count > 1 then by = by .. string.format(" (+%d more)", s.sensor_count - 1) end
         if isNew then
@@ -364,6 +384,7 @@ local function step(p, now)
         p.last_asked, p.last_answered = p.asked, p.answered
         if now >= p.next_log_s then summary(p, now) end
         startRound(p)
+        fire(p, "picture_updated")
     end
 end
 
@@ -372,7 +393,7 @@ local function newPicture(coalitionName)
     for event in pairs(EVENTS) do listeners[event] = {} end
     return {
         coalition = coalitionName, label = coalitionName:upper(),
-        ground_sensors = {}, flight_sensors = {},
+        ground_sensors = {}, flight_sensors = {}, assets = {},
         contacts = {}, sightings = {}, missiles = {}, tracking_logged = {},
         listeners = listeners, queue = {}, slice = 0,
         asked = 0, answered = 0, last_asked = 0, last_answered = 0, next_log_s = 0,
@@ -389,6 +410,15 @@ function TrackRadarPicture.start(plan)
         local p = _pictures[coalitionName]
         local withoutRadar
         p.ground_sensors, withoutRadar = groundSensors(coalitionName)
+        -- what the coalition defends: its held bases and its catalog targets
+        p.assets = {}
+        for name, b in pairs(plan.territory.bases) do
+            if b.side == coalitionName then p.assets[#p.assets + 1] = { name = name, pos = plan.world.airbases[name].pos } end
+        end
+        for id, t in pairs(plan.target_catalog and plan.target_catalog.targets or {}) do
+            if t.coalition == coalitionName and t.pos then p.assets[#p.assets + 1] = { name = id, pos = t.pos } end
+        end
+        table.sort(p.assets, function(x, y) return x.name < y.name end)
         p.flight_sensors = flightSensors(coalitionName)
         local byKind, kinds = {}, {}
         for _, s in ipairs(p.ground_sensors) do byKind[s.kind] = (byKind[s.kind] or 0) + 1 end
@@ -418,7 +448,9 @@ end
 -- ── Calls for other code ────────────────────────────────────────
 
 -- fn(contact, extra) on `event` in `coalition`'s picture: new_contact, airspace_changed
--- (extra = the airspace before), contact_stale, contact_dropped.
+-- (extra = the airspace before), contact_stale, contact_dropped; and picture_updated
+-- (no contact) at the end of every round, after the others: scrambles and the
+-- behaviour rules run on it.
 function TrackRadarPicture.on(coalitionName, event, fn)
     if not EVENTS[event] then error("TrackRadarPicture.on: unknown event " .. tostring(event)) end
     local list = _pictures[coalitionName].listeners[event]

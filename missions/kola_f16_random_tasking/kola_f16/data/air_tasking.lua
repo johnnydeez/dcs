@@ -1,6 +1,10 @@
 -- The air mission types and how many each coalition flies. Plain data, no logic.
 --
 -- AIR_MISSION_TYPE[mission type] — names match the target catalog's mission_types:
+--   group_name_tag  the mission type in every flight's DCS group name: MSN<number>_<tag>
+--                (MSN2002_CAP, MSN2025_DEAD, MSN2901_SCRAM; John, 2026-09-30). Real-world
+--                terms: OCA is offensive counter-air (attacking enemy airfields); SCRAM
+--                is a scramble (John: easier to remember than QRA)
 --   built        false: planned for later; the stage skips it (the entry records how it
 --                will attack, so nothing is forgotten)
 --   group_task   the DCS group task (the Mission Editor's spelling). It only decides which
@@ -41,10 +45,11 @@
 --   flight_size  { min, max }: overrides the aircraft profile's for this mission type
 --   rules_of_engagement  "open_fire" (default) | "weapons_free" (engage anything
 --                found: patrols) | "weapons_hold" (never fire: AWACS)
---   engage_range_km  engage_aircraft_on_station / intercept: enemy aircraft within this
---                distance of the flight's route are engaged
---   takeoff      "parking" (default, hot) | "runway" (hot on the runway: AWACS at start,
---                scrambles — no parking spot needed, airborne in about a minute)
+--   engage_range_km  engage_aircraft_on_station: enemy aircraft within this distance of
+--                the flight's route are engaged
+--   takeoff      "parking" (default, hot) | "runway" (hot on the runway: the AWACS at
+--                start). Scrambles start hot from a free ramp spot, never on the runway,
+--                so they can't spawn on top of jets lined up there (John, 2026-09-30)
 --   keeps_gun    true: the gun stays loaded (fighters), whatever the profile says
 --   may_jettison true: the flight may jettison stores (fighters drop tanks to fight);
 --                otherwise jettisoning is prohibited, so attack flights keep their bombs
@@ -56,8 +61,11 @@
 --                (Syria's blue_air_support lesson: the engage task stands for the whole
 --                orbit, and the flight is weapons free)
 --   early_warning_on_station    the AWACS task, then the same Orbit until the window ends
---   intercept                   EngageGroup on the detected intruder, plus EngageTargets
---                (air) within engage_range_km for whatever else it meets
+--   intercept                   EngageGroup on each group of the intruding raid, on the
+--                takeoff waypoint so it's active from wheels-up and the AI flies its own
+--                intercept at the target; nothing else is engaged unless it shoots first
+--                (open fire). The scramble flies at the profile's dash_speed_mps with
+--                afterburner allowed
 --
 -- Every attack flight also gets, on its first waypoint: rules of engagement "open fire"
 -- (attack the assigned target, don't wander off after others — weapons free is for
@@ -69,11 +77,11 @@
 
 AIR_MISSION_TYPE = {
     strike = {
-        built = true, group_task = "Ground Attack", attack = "bomb_critical_objects",
+        group_name_tag = "STRIKE", built = true, group_task = "Ground Attack", attack = "bomb_critical_objects",
         weapon_type = "auto", max_attack_points = 4, ingress_km = 25, egress_km = 20,
     },
     airfield_strike = {
-        built = true, group_task = "Ground Attack", attack = "bomb_critical_objects",
+        group_name_tag = "OCA", built = true, group_task = "Ground Attack", attack = "bomb_critical_objects",
         weapon_type = "auto", max_attack_points = 4, ingress_km = 25, egress_km = 20,
     },
     -- EngageGroup on each threat given to the flight, anti-radiation missiles only, from
@@ -81,40 +89,41 @@ AIR_MISSION_TYPE = {
     -- straight home, over whatever SAMs lie on the line (first package run, 2026-09-25);
     -- the flight stays on the package's route and comes home the way it went in
     suppression_of_air_defenses = {
-        built = true, planned_as = "escort", group_task = "SEAD", attack = "engage_group",
+        group_name_tag = "SEAD", built = true, planned_as = "escort", group_task = "SEAD", attack = "engage_group",
         weapon_type = "arm", ingress_km = 40, egress_km = 30,
         missiles_per_threat = 2, max_groups_per_flight = 2,
     },
     -- AttackGroup on each of the SAM or early-warning site's groups, from the ingress point
     destruction_of_air_defenses = {
-        built = true, group_task = "CAS", attack = "attack_group",
+        group_name_tag = "DEAD", built = true, group_task = "CAS", attack = "attack_group",
         weapon_type = "auto", ingress_km = 30, egress_km = 20,
     },
     -- ── defensive air ──
     -- single ships for now (John, 2026-09-25: easier to watch what they do)
     combat_air_patrol = {
-        built = true, planned_as = "station", group_task = "CAP", attack = "engage_aircraft_on_station",
+        group_name_tag = "CAP", built = true, planned_as = "station", group_task = "CAP", attack = "engage_aircraft_on_station",
         weapon_type = "auto", ingress_km = 0, egress_km = 0, flight_size = { 1, 1 },
         rules_of_engagement = "open_fire", engage_range_km = 60, keeps_gun = true, may_jettison = true,
     },
     airborne_early_warning = {
-        built = true, planned_as = "station", group_task = "AWACS", attack = "early_warning_on_station",
+        group_name_tag = "AEW", built = true, planned_as = "station", group_task = "AWACS", attack = "early_warning_on_station",
         weapon_type = "auto", ingress_km = 0, egress_km = 0, flight_size = { 1, 1 },
         rules_of_engagement = "weapons_hold", takeoff = "runway",
     },
+    -- a scramble: burns straight at the one raid it was sent after (John, 2026-09-30)
     interception = {
-        built = true, planned_as = "response", group_task = "Intercept", attack = "intercept",
+        group_name_tag = "SCRAM", built = true, planned_as = "response", group_task = "Intercept", attack = "intercept",
         weapon_type = "auto", ingress_km = 0, egress_km = 0, flight_size = { 1, 1 },
-        rules_of_engagement = "weapons_free", engage_range_km = 40, takeoff = "runway", keeps_gun = true,
+        rules_of_engagement = "open_fire", takeoff = "parking", keeps_gun = true,
         may_jettison = true,
     },
     -- ── not built yet ──
     interdiction = {
-        built = false, group_task = "CAS", attack = "attack_group",
+        group_name_tag = "INTERDICTION", built = false, group_task = "CAS", attack = "attack_group",
         weapon_type = "auto", ingress_km = 25, egress_km = 20,
     },
     close_air_support = {
-        built = false, group_task = "CAS", attack = "engage_in_zone",
+        group_name_tag = "CAS", built = false, group_task = "CAS", attack = "engage_in_zone",
         weapon_type = "auto", ingress_km = 20, egress_km = 15,
     },
 }
@@ -269,19 +278,37 @@ HUMAN_TASKING = {
 --                              zone by early_warning_clearance_km
 --   early_warning_leg_km       length of its race-track
 --
--- Scrambles (the plan holds the posture, consumers/run_scrambles.lua reacts):
---   alert_posture_planned  false: no alert bases are planned (scrambles are off in init.lua
---                         until the AI behaviour rules are designed, session 8)
---   alert_bases           at most this many alert bases per coalition: held fighter and hub
---                         bases that can launch an interception type, nearest the enemy
---   scrambles_per_base    launches each alert base has for the window
+-- Scrambles (roadmap.md item 2; the plan holds the alert posture, consumers/run_scrambles.lua
+-- reacts to the radar picture every round, consumers/enforce_air_behaviour_rules.lua
+-- brings them home):
+--   alert_posture_planned  false: no alert bases are planned, so nothing scrambles
+--   alert_bases           alert bases per coalition: held bases whose runway and parking
+--                         fit an interception type, nearest the enemy; plus the nearest of
+--                         each other region (pocket) that has one (John, 2026-09-30)
+--   alert_aircraft_per_base  alert jets each alert base holds. A jet that lands is back on
+--                         alert scramble_turnaround_s later (refuelled and rearmed); a jet
+--                         that is shot down is gone for the mission (John, 2026-09-30: a base
+--                         shouldn't run out if its jets came back)
+--   scramble_turnaround_s after landing, this long until the jet can scramble again
 --   scramble_cooldown_s   an alert base waits this long between launches
---   check_interval_s      how often the radar picture is checked
---   air_zone_heavy_base_km  defended air zone around each own heavy base
---   air_zone_ring_margin_km defended air zone around each own medium / long-range SAM
---                         site: its engagement ring plus this
---   detection             "radar": only aircraft the coalition's own radars see (early-
---                         warning sites, SAM search radars, the AWACS) trigger a scramble
+--   scramble_warning_min  answer a raid the radar picture has inbound on an own asset (held
+--                         base, catalog target; RADAR_PICTURE.threat_pass_km) that it will
+--                         reach within this many minutes, in whatever airspace it is now
+--                         (John: 100 km was far too close; a jet at 60 nm can have weapons
+--                         on a base in ~5 minutes)
+--   scramble_inbound_rounds  radar-picture rounds in a row (30 s each) a contact must stay
+--                         inbound, so one turn of a patrol's race-track doesn't trigger
+--   scramble_reaction_s   { min, max }: cockpit alert — from the decision to the spawn,
+--                         hot on a free ramp spot
+--   scramble_over_cap     scrambles may put the coalition this many aircraft over
+--                         max_airborne_aircraft (John: up to 2)
+--   scramble_min_leg_km   the intercept point (the raid pushed ahead along its heading,
+--                         pulled back to own or contested airspace and out of enemy kill
+--                         zones) must be at least this far from the base, or there's no
+--                         way to the raid and the base doesn't answer
+--   raid_radius_km, raid_heading_deg  contacts within this distance of the one that
+--                         triggered, and within this many degrees of its heading, are one
+--                         raid: one scramble, EngageGroup on each of them
 AIR_DEFENSE = {
     planned               = true,
     killzone_fraction     = 0.85,
@@ -306,14 +333,18 @@ AIR_DEFENSE = {
     early_warning_clearance_km = 30,
     early_warning_leg_km       = 80,
 
-    alert_posture_planned = false,
+    alert_posture_planned = true,
     alert_bases           = 3,
-    scrambles_per_base    = 3,
+    alert_aircraft_per_base = 3,
+    scramble_turnaround_s = 1800,
     scramble_cooldown_s   = 900,
-    check_interval_s      = 30,
-    air_zone_heavy_base_km  = 100,
-    air_zone_ring_margin_km = 20,
-    detection             = "radar",
+    scramble_warning_min  = 15,
+    scramble_inbound_rounds = 2,
+    scramble_reaction_s   = { 60, 120 },
+    scramble_over_cap     = 2,
+    scramble_min_leg_km   = 10,
+    raid_radius_km        = 20,
+    raid_heading_deg      = 45,
 }
 
 -- How attack flights route around what they can't overfly. Flights cruise at least
