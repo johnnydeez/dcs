@@ -31,11 +31,11 @@ COST_CONFIG.display = {
 --  Values = approximate real-world flyaway cost in M USD.
 -- ============================================================
 COST_CONFIG.aircraftCost = {
-    ["A-10CII"]         = 65.0,  -- A-10C II (no longer produced; estimated today's replacement cost ~$50-80M)
+    ["A-10C_2"]         = 65.0,  -- A-10C II (no longer produced; estimated today's replacement cost ~$50-80M)
     ["A-10C"]           = 55.0,  -- A-10C (earlier avionics suite)
     ["F-16C_50"]        = 65.0,  -- F-16C Block 50 (~$60-70M in today's dollars; newer Block 70/72 is $80-90M)
     ["F-15C"]           = 65.0,  -- F-15C (out of production; F-15EX replacement is ~$94M)
-    ["F-15E"]           = 75.0,  -- F-15E Strike Eagle (~$65-80M inflation-adjusted)
+    ["F-15ESE"]         = 75.0,  -- F-15E Strike Eagle (~$65-80M inflation-adjusted)
     ["FA-18C_hornet"]   = 50.0,  -- F/A-18C legacy Hornet (out of production; Super Hornet is $65M+)
     ["AV8BNA"]          = 40.0,  -- AV-8B Harrier II+
     ["Su-25T"]          = 25.0,  -- Su-25T Frogfoot (Russian procurement pricing)
@@ -45,12 +45,14 @@ COST_CONFIG.aircraftCost = {
 -- ============================================================
 --  MUNITION COSTS  (deducted per S_EVENT_SHOT)
 --
---  IMPORTANT — how DCS fires events:
---    Missiles/bombs : one event per weapon released       ✓ per-round cost is correct
---    Rockets        : one event per rocket fired          ✓ per-round cost is correct
---    Guns           : one event per trigger pull (~50 rds
---                     for GAU-8 burst) — cost reflects
---                     a burst, not a single shell.
+--  How DCS fires events:
+--    Missiles/bombs : one SHOT per weapon released
+--    Rockets        : one SHOT per rocket fired
+--    Guns           : no SHOT at all; see GUN ROUND COSTS below
+--
+--  Unlisted weapons cost "default" and are logged as
+--  "(DEFAULT)" in dcs.log ([CostTracker] ... SPENT lines):
+--  that's where to find exact type names to add here.
 --
 --  Values = approximate unit procurement cost in M USD.
 -- ============================================================
@@ -108,13 +110,20 @@ COST_CONFIG.munitionCost = {
     ["FFAR Mk5 HEAT"]       = 0.002,  -- no hyphens, probably correct as-is
     ["Zuni Mk71"]           = 0.004,  -- no hyphens, probably correct as-is
 
-    -- ── Gun (cost per trigger pull — approx 50-rd GAU-8 burst)
-    --  GAU-8 round ~$50 each x ~50 rds = ~$2,500 per burst
-    --  Slash/space in name: form uncertain, both kept.
-    ["GAU_8/A Avenger"]     = 0.0025, ["GAU-8/A Avenger"] = 0.0025,
-
     -- ── Default fallback ─────────────────────────────────────
     ["default"]             = 0.010,  -- Unknown munition
+}
+
+-- ============================================================
+--  GUN ROUND COSTS  (per round fired, by player aircraft type)
+--  DCS reports a trigger pull as SHOOTING_START / SHOOTING_END;
+--  the rounds fired are counted from the ammo difference.
+-- ============================================================
+COST_CONFIG.gunRoundCost = {
+    ["A-10C_2"]         = 0.00005,  -- GAU-8 30 mm, ~$50/round
+    ["A-10C"]           = 0.00005,
+    ["AV8BNA"]          = 0.00004,  -- GAU-12 25 mm
+    ["default"]         = 0.00003,  -- M61 20 mm (F-16, F/A-18, F-15), ~$30/round
 }
 
 -- ============================================================
@@ -147,20 +156,22 @@ COST_CONFIG.killValue = {
     -- Sources: battery contract prices ÷ vehicle count, export deal inflation-adjustment,
     -- ForecastInternational archives, Ukraine war damage assessments.
     ["S-300PS 64H6E sr"]    = 18,   -- Big Bird phased-array search radar; most expensive S-300 vehicle
-    ["S-300PS 40B6M tr"]    = 12,   -- S-300PS launcher; ~$120-150M battery ÷ ~10 vehicles
-    ["SA-11 Buk LN"]        = 14,   -- 9A310 TELAR; ~$100M battery ÷ 4 TELARs + support
-    ["SA-11 Buk SR"]        = 8,    -- 9S18 Snow Drift acquisition radar
-    ["SA-6 Kub BM"]         = 7,    -- 2K12 Kub launcher vehicle (user-confirmed benchmark)
-    ["SA-6 Kub SR"]         = 8.5,  -- 1S91 SURN radar/illuminator; nerve center of battery
+    ["S-300PS 40B6M tr"]    = 12,   -- S-300PS fire-control radar (Flap Lid); ~$120-150M battery ÷ ~10 vehicles
+    ["SA-11 Buk LN 9A310M1"] = 14,   -- 9A310 TELAR; ~$100M battery ÷ 4 TELARs + support
+    ["SA-11 Buk SR 9S18M1"] = 8,    -- 9S18 Snow Drift acquisition radar
+    ["Kub 2P25 ln"]         = 7,    -- 2K12 Kub launcher vehicle (user-confirmed benchmark)
+    ["Kub 1S91 str"]        = 8.5,  -- 1S91 SURN radar/illuminator; nerve center of battery
     ["2S6 Tunguska"]        = 15,   -- ForecastInternational explicit cite: $15.1M unit cost
     ["Osa 9A33 ln"]         = 9,    -- SA-8 Gecko; all-in-one (radar + missiles on one chassis)
     ["ZSU-23-4 Shilka"]     = 2.5,  -- Libya 1972 export price × CPI to 2026
     ["Strela-10M3"]         = 5,    -- SA-13 Gopher on MT-LB chassis
     ["Strela-1 9P31"]       = 3.5,  -- SA-9 Gaskin on BRDM-2; older/simpler seeker than SA-13
-    ["SA-3 S-125 TR"]       = 4,    -- SNR-125 Low Bow fire-control radar
+    ["snr s-125 tr"]        = 4,    -- SNR-125 Low Bow fire-control radar
     ["5p73 s-125 ln"]       = 2.5,  -- SA-3 4-rail launcher (passive; fully dependent on Low Bow)
-    ["SNR_75V tr"]          = 4,    -- SA-2 Fan Song radar; India battery deal backs out to ~$4M
+    ["SNR_75V"]             = 4,    -- SA-2 Fan Song radar; India battery deal backs out to ~$4M
     ["S_75M_Volhov"]        = 3,    -- SA-2 S-75 launcher; India deal ~$3M/launcher ex-missiles
+    ["RD_75"]               = 2,    -- SA-2 site height-finder radar (Amazonka)
+    ["p-19 s-125 sr"]       = 3,    -- P-19 Flat Face search radar (SA-2 / SA-3 sites)
     ["SA-18 Igla manpad"]   = 0.35, -- Per gripstock + 2-missile set; complete 9K38 system ~$528K
     ["Ural-375 ZU-23"]      = 0.25, -- ZU-23-2 gun ($15-20K) + Ural truck + military markup
 

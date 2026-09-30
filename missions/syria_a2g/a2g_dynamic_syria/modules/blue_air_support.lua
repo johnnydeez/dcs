@@ -88,7 +88,7 @@ local function countAlive()
     local living = {}
     for _, name in ipairs(_activeGroups) do
         local grp = Group.getByName(name)
-        if grp and grp:getSize() > 0 then
+        if grp and grp:isExist() and grp:getSize() > 0 then
             count = count + grp:getSize()
             table.insert(living, name)
         end
@@ -281,17 +281,17 @@ end
 
 -- ── Recurring loop ────────────────────────────────────────────────────────────
 
-local function loop(_, t)
+local function loop()
     local alive = countAlive()
 
     if alive >= MAX_AIRCRAFT then
         Log.debug(string.format("BlueAirSupport: cap reached (%d/%d), skipping", alive, MAX_AIRCRAFT))
-        return t + SPAWN_INTERVAL
+        return
     end
 
     local blueBase, redBase = selectBases()
     if not blueBase then
-        return t + SPAWN_INTERVAL
+        return
     end
 
     local acType  = pick(AIRCRAFT_POOL)
@@ -303,7 +303,6 @@ local function loop(_, t)
     end
 
     spawnGroup(blueBase, redBase, acType, acCount)
-    return t + SPAWN_INTERVAL
 end
 
 -- ── Land event handler — despawn groups after RTB ────────────────────────────
@@ -311,33 +310,35 @@ end
 -- When any BAS unit lands, schedule a check 120s later.  If by then no unit in
 -- the group is still airborne, the whole group is destroyed so parking slots and
 -- the alive-count cap are freed up.
-local _landHandler = {}
-function _landHandler:onEvent(event)
+local function despawnIfAllLanded(groupName)
+    local grp = Group.getByName(groupName)
+    if not grp or not grp:isExist() then return end
+    for _, u in pairs(grp:getUnits()) do
+        if u:isExist() and u:inAir() then return end   -- someone still flying, abort
+    end
+    grp:destroy()
+    Log.info("BlueAirSupport: despawned " .. groupName .. " (RTB complete)")
+end
+
+local function onLand(event)
     if event.id ~= world.event.S_EVENT_LAND then return end
     local unit = event.initiator
-    if not unit then return end
+    if not unit or type(unit.getName) ~= "function" then return end
     local unitName = unit:getName()
-    local groupName = unitName:match("^(BAS_%d+)_")
+    local groupName = unitName and unitName:match("^(BAS_%d+)_")
     if not groupName then return end
 
-    local checkTime = timer.getTime() + 120
-    timer.scheduleFunction(function(_, _t)
-        local grp = Group.getByName(groupName)
-        if not grp then return end
-        for _, u in pairs(grp:getUnits()) do
-            if u:inAir() then return end   -- someone still flying, abort
-        end
-        grp:destroy()
-        Log.info("BlueAirSupport: despawned " .. groupName .. " (RTB complete)")
-    end, nil, checkTime)
+    timer.scheduleFunction(Log.protect("BlueAirSupport despawn", function()
+        despawnIfAllLanded(groupName)
+    end), nil, timer.getTime() + 120)
 end
 
 -- ── Public API ────────────────────────────────────────────────────────────────
 
 function BlueAirSupport.init(assignments)
     _assignments = assignments
-    world.addEventHandler(_landHandler)
+    Log.addEventHandler("BlueAirSupport landing", onLand)
     -- First spawn delayed 10s to let all other init complete; subsequent every 20 min.
-    timer.scheduleFunction(loop, nil, timer.getTime() + 10)
+    Log.repeating("BlueAirSupport spawn loop", loop, timer.getTime() + 10, SPAWN_INTERVAL)
     Log.info("BlueAirSupport: initialized — interval " .. SPAWN_INTERVAL .. "s, cap " .. MAX_AIRCRAFT)
 end

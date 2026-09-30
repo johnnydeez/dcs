@@ -231,23 +231,19 @@ local function spawnBattleSmoke(townPos)
     Log.info(string.format("CasMission: spawned %d battle fire/smoke effects", count))
 end
 
-local function loopSmoke(zoneName, _)
-    local zone = trigger.misc.getZone(zoneName)
-    if zone then
-        local p   = zone.point
-        local alt = land.getHeight({ x = p.x, y = p.z })
-        trigger.action.smoke({ x = p.x, y = alt, z = p.z }, trigger.smokeColor.Green)
-        timer.scheduleFunction(loopSmoke, zoneName, timer.getTime() + 270)
-    end
-end
+-- Green smoke burns ~5 minutes; relit every 270 s for the rest of the session.
+local SMOKE_RELIGHT_SECONDS = 270
 
 local function startSmoke(zoneName)
     local zone = trigger.misc.getZone(zoneName)
     if zone then
         local p   = zone.point
         local alt = land.getHeight({ x = p.x, y = p.z })
-        trigger.action.smoke({ x = p.x, y = alt, z = p.z }, trigger.smokeColor.Green)
-        timer.scheduleFunction(loopSmoke, zoneName, timer.getTime() + 270)
+        local smokePos = { x = p.x, y = alt, z = p.z }
+        trigger.action.smoke(smokePos, trigger.smokeColor.Green)
+        Log.repeating("CasMission smoke " .. zoneName, function()
+            trigger.action.smoke(smokePos, trigger.smokeColor.Green)
+        end, timer.getTime() + SMOKE_RELIGHT_SECONDS, SMOKE_RELIGHT_SECONDS)
         Log.info("CasMission: started green smoke at zone '" .. zoneName .. "'")
     else
         Log.warn("CasMission: smoke zone not found '" .. zoneName .. "'")

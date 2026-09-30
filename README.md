@@ -11,6 +11,7 @@ missions/
     notes.md                  status and design: start here
     a2g_dynamic_syria.miz
     a2g_dynamic_syria/        scripts → Saved Games\DCS\Scripts\a2g_dynamic_syria\
+    offline_test_harness.lua  runs the scripts outside DCS with luae.exe (usage in its header)
   kola_f16_random_tasking/    F-16 tasking generator on Kola (air denial, human strike missions)
     plan.md                   status and design: start at "Where we are"
     kola_f16_random_tasking.miz

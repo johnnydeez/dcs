@@ -381,10 +381,10 @@ function SdMission.generate(assignments, missionsMenu)
                 local launchTime = formatAbsTime(timer.getAbsTime() + duration)
                 local gNames = m.telGroupNames
                 local tVec3  = m.targetVec3
-                timer.scheduleFunction(function(_, _t)
+                timer.scheduleFunction(Log.protect("SdMission launch", function()
                     Log.info("SdMission: M" .. m.idx .. " launch — " .. #gNames .. " TEL(s) → " .. m.targetName)
                     Spawner.fireGroups(gNames, tVec3, 4)
-                end, nil, timer.getTime() + duration)
+                end), nil, timer.getTime() + duration)
                 Log.info(string.format("  M%d: launch in %ds at %s → %s", m.idx, duration, launchTime, m.targetName))
                 infoStr = string.format(
                     "M%d [%s] Missile Site — %s\n   GPS: %s\n   Target: %s | Launch: %s | %s",

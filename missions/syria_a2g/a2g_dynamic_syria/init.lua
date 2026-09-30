@@ -26,12 +26,11 @@ Log.info("  Mission scripts loading")
 Log.info("  Script dir: " .. SCRIPT_DIR)
 Log.info("============================================")
 
--- Uncomment the next line to dump all airbase names for debugging.
--- Log.dumpAirbases()
--- Uncomment the next line to dump all group names for debugging.
-Log.dumpGroups()
--- Activates debug groups A-D and logs unit type strings; remove after type strings are confirmed.
-Log.dumpLateGroupUnits({"A", "B", "C", "D", "E"})
+-- Debugging aids (logger.lua), off in play:
+--   Log.dumpAirbases()                        every airbase name on the map
+--   Log.dumpGroups()                          every group name in the mission
+--   Log.dumpLateGroupUnits({"A", "B", ...})   ACTIVATES those late-activation groups and
+--                                             logs their unit type strings
 
 if not load("lib\\spawner.lua")             then return end
 if not load("modules\\coalition_setup.lua") then return end
@@ -47,14 +46,20 @@ if not load("modules\\cost_ui.lua")            then return end
 if not load("modules\\blue_air_support.lua")   then return end
 
 -- ── Run startup sequence ─────────────────────────────────────
-local assignments, clusterSides = CoalitionSetup.assign()
-DefenseSetup.spawn(assignments)
+-- Coalition assignment is the one step everything else depends on. Each later step
+-- runs protected, so one failing module doesn't stop the others from spawning.
+local assignments, clusterSides
+if not Log.run("CoalitionSetup.assign", function()
+    assignments, clusterSides = CoalitionSetup.assign()
+end) then return end
 
 local samMenu      = missionCommands.addSubMenuForCoalition(coalition.side.BLUE, "SAM Threats")
 local missionsMenu = missionCommands.addSubMenuForCoalition(coalition.side.BLUE, "Missions")
-SamSetup.spawn(clusterSides, assignments, samMenu)
-ConvoySetup.spawn(clusterSides, assignments, missionsMenu)
-MissionSetup.generate(assignments, missionsMenu)
-BlueAirSupport.init(assignments)
+
+Log.run("DefenseSetup.spawn",    DefenseSetup.spawn,    assignments)
+Log.run("SamSetup.spawn",        SamSetup.spawn,        clusterSides, assignments, samMenu)
+Log.run("ConvoySetup.spawn",     ConvoySetup.spawn,     clusterSides, assignments, missionsMenu)
+Log.run("MissionSetup.generate", MissionSetup.generate, assignments, missionsMenu)
+Log.run("BlueAirSupport.init",   BlueAirSupport.init,   assignments)
 
 Log.info("Init complete.")
