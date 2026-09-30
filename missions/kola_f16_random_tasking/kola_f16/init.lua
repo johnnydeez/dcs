@@ -51,6 +51,7 @@ if not load("data\\aircraft_profiles.lua")        then return end
 if not load("data\\aircraft_loadouts.lua")        then return end
 if not load("data\\air_tasking.lua")              then return end
 if not load("data\\airspace.lua")                 then return end
+if not load("data\\radar_picture.lua")            then return end
 if not load("gather.lua")                  then return end
 if not load("stages\\roll_territory.lua")  then return end
 if not load("stages\\plan_base_defenses.lua")     then return end
@@ -71,6 +72,7 @@ if not load("consumers\\draw_convoys.lua")        then return end
 if not load("consumers\\spawn_aircraft_groups.lua") then return end
 if not load("consumers\\preload_aircraft_types.lua") then return end
 if not load("consumers\\schedule_air_tasking_orders.lua") then return end
+if not load("consumers\\track_radar_picture.lua") then return end
 if not load("consumers\\run_scrambles.lua")      then return end
 if not load("consumers\\draw_air_tasking_orders.lua") then return end
 if not load("consumers\\brief_air_tasking.lua")   then return end
@@ -134,6 +136,9 @@ local function run()
     PreloadAircraftTypes.run(plan)
     -- aircraft spawn later, each at its planned start time
     ScheduleAirTaskingOrders.start(plan)
+    -- each coalition's radar picture: what its radars report, kept as the mission runs;
+    -- watches and logs only (grep "picture"). Before scrambles and the brief, which read it.
+    TrackRadarPicture.start(plan)
     -- OFF until the AI behaviour rules are designed (session 8): no alert posture is
     -- planned (AIR_DEFENSE.alert_posture_planned), so there is nothing to scramble.
     -- RunScrambles.start(plan)   -- reacts to what the radars see; spawns scrambles as needed

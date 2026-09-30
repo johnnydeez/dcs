@@ -33,13 +33,14 @@
 - **Airspace map:** own / contested / enemy, with regions and pockets.
 - **Air tasking for both coalitions:** front-only strike, airfield strike and DEAD, with SEAD packages; front CAP stations with commit circles; one AWACS each.
 - **Players:** F-16C dynamic-spawn slots, two human taskings per roll, frag and steerpoints in the comms menu.
+- **Radar picture** (roadmap item 1, built 2026-09-30): each coalition's picture of the enemy aircraft its radars report. It only watches and logs, and is tested offline only (luae harness). **Next step: one DCS run to watch and log** (see *Radar picture* under *As built*).
 - **Off:** scrambles, until the AI behaviour rules are designed (roadmap item 2).
 
 **Last DCS runs:**
 - **Session 9, fourth run, ~2 h:** the air-denial rules held (John: "It looked good to me and like it followed our rules"). 0 patrol or AWACS track samples in enemy airspace or inside an enemy ring.
 - **Session 10, 12:18 roll:** the human taskings, frags and steerpoints read well (John: "looking good").
 
-**Next:** `roadmap.md`, in John's order: radar picture → scrambles → CAP visibility → AWACS calls (text) → cruise missiles → AI radio calls (LLM / cloud) → fog of war (last: the full map is needed while debugging). The backlog below holds everything else.
+**Next:** `roadmap.md`, in John's order: radar picture → scrambles → CAP visibility → AWACS calls (text) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war (last: the full map is needed while debugging); radar jamming and a player map of the threat picture are optional, at the end. The radar picture is built and waits for its first DCS run; scrambles come next. The backlog below holds everything else.
 
 **Still to watch in runs:**
 - **Lone F-15E crash:** an F-15E of a Banak DEAD crashed alone in Blue airspace ~30 min after bombing (1,237 ft, no hit recorded). An AI approach crash or fuel? Watch for a repeat.
@@ -61,6 +62,7 @@
 | `HUMAN TASKING` | every frag and steerpoint list |
 | `Build summary:` | the roll's totals (moved off screen in session 10) |
 | `asked for` | a unit type DCS swapped (Leopard-2 substitution) |
+| `picture` | each coalition's radar picture: sensors at start, new / regained / stale / dropped contacts, airspace changes, a summary every 5 min, the first time a ground radar tracks each enemy group |
 
 ---
 
@@ -122,12 +124,6 @@ First step suggested: a loss summary per run, so later changes have a before and
 - They join the catalog through an adapter in `stages/catalog_targets.lua`; any static objects spawn before units.
 - Interdiction (convoy `AttackGroup`) and close air support flights: `engage_in_zone` isn't built in `SpawnAircraftGroups`.
 
-**Skynet IADS** (open, leaning yes, later; John: "sounds really cool"). Findings from its README:
-- **Dependencies:** needs MIST; MOOSE is optional. Both would load unmodified alongside `kola_f16`.
-- **Behaviour:** early-warning radars share one picture; SAM sites stay dark until a target is inside their go-live range (ambushes, little RWR warning). Radars within ~15° of a HARM's path, out to ~20 nm, shut down. `addPointDefence` covers SHORAD guarding a site. Command centres and power sources can be destroyed, which leaves sites autonomous.
-- **Fit:** register each `plan.sam_sites.sites` entry by `layer` (`addSAMSite` / `addEarlyWarningRadar`; not by prefix, since early-warning ids also start `SAM_`); each `<id>_escort` → `addPointDefence`; one network per coalition.
-- **Test first:** script-spawned groups (the README covers ME-placed ones). Prototype on one SA-11 + one early-warning radar and fly a HARM at it.
-
 **SAMs on the map's revetments** (`prepared_sam_position = "revetments"`, 7 zones): John wants SAMs in those dug-in positions later. It's a SAM-stage change, so ask first.
 
 **Smaller items:**
@@ -164,10 +160,11 @@ Then:
 4. Draws.
 5. `PreloadAircraftTypes`.
 6. `ScheduleAirTaskingOrders.start`.
-7. `DrawAirTaskingOrders`.
-8. `BriefAirTasking.start` (comms menu).
-9. Build summary to `dcs.log`.
-10. `BriefAirTasking.showStart` (start text, 3 min).
+7. `TrackRadarPicture.start` (after the scheduler, before anything that reads the picture).
+8. `DrawAirTaskingOrders`.
+9. `BriefAirTasking.start` (comms menu).
+10. Build summary to `dcs.log`.
+11. `BriefAirTasking.showStart` (start text, 3 min).
 
 `RunScrambles.start` stays commented out.
 
@@ -547,6 +544,34 @@ How it's built:
 - **Fix:** for every coalition and aircraft type in the plan, spawn one real group 9 km above a base that type flies from, with one unit per distinct loadout (so weapon models load too), then destroy it at once.
 - **Cost:** ~13 types in ~18 s at start-up (F-15C 13.7 s, F-15E 2.5 s). No mid-mission freeze since.
 
+### Radar picture (`consumers/track_radar_picture.lua`, `data/radar_picture.lua`)
+
+Built 2026-09-30 (roadmap item 1). Each coalition keeps a picture of the enemy aircraft its own radars report, so scrambles, AWACS calls and later fog of war act only on what the defenders could really know. The script uses it to decide things and gives the AI tasks; it can't add contacts to the AI's own awareness (DCS's built-in datalink already shares contacts between same-coalition AI). **It watches and logs only:** no orders, no spawns, nothing written to the plan. Tested offline only so far.
+- **Sensors:**
+  - **Ground, found once at start:** SAM sites (`early_warning` by layer, otherwise `sam_search`, including each site's `<id>_escort`) and base-defense groups of the `radar_missile_launchers` component (`base_defense`), counted only when a unit carries a radar (`Unit:hasSensors`). Gun fire-control radars don't count (John).
+  - **Flights, while airborne:** `awacs`, `patrol`, `scramble`, from the mission type (`RADAR_PICTURE.flight_sensor_kinds`). Attack flights and human flights aren't sensors. `TrackRadarPicture.addFlight` adds a flight spawned at run time (scrambles, item 2).
+  - Dead groups drop out, so losing the AWACS thins the picture by itself.
+  - On the 14:36 plan: Red 40 ground sensors, Blue 32 (3 Blue escorts without a radar skipped), 22 sensor flights each.
+- **Polling:** every sensor once per `poll_interval_s` (30 s; John: plenty often, also for AWACS calls), spread over 10 steps 3 s apart. `Controller:getDetectedTargets(RADAR)` only, never `DLINK`.
+- **Contacts:** one per enemy group, updated at the end of each round:
+  - `group`, `first_seen`, `last_seen`, `seen_by` (sensor kind → count), `state` (`tracked` / `stale`);
+  - `pos`, `altitude_m`, `heading_deg`, `speed_mps` (`getPoint` / `getVelocity`);
+  - `type_known` (this round), and `type` only once some sensor knew it (it stays after that);
+  - `range_known` (false = bearing only);
+  - `airspace` (`DivideAirspace.kindFor`), `nearest_base` / `nearest_base_km` (own held base), `inside_own_sam_ring` (site id), `inbound` (heading within 60° of the bearing to that base, faster than 50 m/s).
+- **Memory:** stale after 60 s unseen (two missed rounds), dropped after 300 s.
+- **Events** (`TrackRadarPicture.on(coalition, event, fn)`), fired once per round, each listener run under `pcall`: `new_contact`, `airspace_changed` (extra = the airspace before), `contact_stale`, `contact_dropped`.
+- **Calls:** `contacts(coalition, filter)`, `contactsNear(coalition, pos, radius_m)`, `contact(coalition, group)`, `sensors(coalition)`. Contacts come back as kept: read them, never change them.
+- **Test aids for the first DCS run** (`log_radar_tracking`, `count_missiles`): the first time a ground sensor's radar tracks each enemy group (`Unit:getRadar`), and the number of missiles the radars listed since the last summary.
+- **What the first DCS run should answer:**
+  - do the `picture` lines match the `track:` lines and what the flights did?
+  - terrain masking: does a low flyer go stale in front of a ground radar?
+  - are missiles listed (the summary count)?
+  - does `getRadar()` report a SAM site's track (the `radar tracking` lines)?
+  - how do `type_known` / `range_known` behave (`type unknown`, `bearing only` in the lines)?
+- **Offline harness:** `radar_picture_harness.lua` (session scratchpad; not kept) ran the module on the real 14:36 plan with stubbed radars: one Blue jet from Rovaniemi to Olenya, seen from T+60 to T+700. New at T+90, four airspace changes, stale at T+780, dropped at T+1020, a failing listener caught, missiles counted, the tracking line logged.
+- `run_scrambles.lua` still has its old poll; it's reworked onto the picture in item 2.
+
 ### Player slots (`data/player_slots.lua`)
 
 - **Templates:** John places F-16C dynamic-spawn templates (group `f16_<base>`, one per base) in `kola_f16_random_tasking.miz`; DCS spawns the player on the template's exact spot. In the ME, the always-Blue / always-Red bases have their coalition set; contested ones are neutral and the script sets them.
@@ -666,7 +691,7 @@ The runtime can read the mission's weather, time and date, but can't change them
 
 ## Design, not built yet
 
-**Threat-intel fidelity rule** (for the brief and fog of war, roadmap item 7). Fidelity follows the threat's real-world nature, not a difficulty setting:
+**Threat-intel fidelity rule** (for the brief and fog of war, roadmap item 8). Fidelity follows the threat's real-world nature, not a difficulty setting:
 
 | Threat class | In the brief as | Map |
 |---|---|---|
@@ -765,6 +790,7 @@ kola_f16\
     coalition_rosters.lua        -- the only file that knows red from blue (ground, SAM, targets, aircraft)
     air_tasking.lua              -- mission types, tasking, timing, packages, AIR_DEFENSE, routing, HUMAN_TASKING
     airspace.lua                 -- airspace grid settings
+    radar_picture.lua            -- radar picture settings: polling, stale / drop times, sensor kinds
     aircraft_profiles.lua        -- per aircraft type: runway, parking, reach, speeds, altitudes (hand)
     aircraft_loadouts.lua        -- one loadout per type × mission (aircraft_loadouts.py)
     aircraft_pylons.lua          -- pylon → CLSID, generated; offline validation only, not loaded
@@ -778,6 +804,7 @@ kola_f16\
     spawn_static_objects.lua  spawn_ground_groups.lua  spawn_aircraft_groups.lua
     preload_aircraft_types.lua   -- first-spawn freeze fix
     schedule_air_tasking_orders.lua  -- spawns flights on the clock; logs shots, kills, losses; statusOf
+    track_radar_picture.lua      -- each coalition's radar picture: contacts, events, queries
     run_scrambles.lua            -- off until roadmap item 2
     brief_air_tasking.lua        -- start text + comms menu
     draw_airspace.lua  draw_base_defenses.lua  draw_sam_sites.lua  draw_fixed_ground_targets.lua
