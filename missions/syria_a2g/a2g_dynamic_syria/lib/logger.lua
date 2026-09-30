@@ -8,7 +8,7 @@ local LEVEL = { DEBUG = 0, INFO = 1, WARN = 2, ERROR = 3 }
 local LEVEL_NAME = { [0] = "DEBUG", [1] = "INFO", [2] = "WARN", [3] = "ERROR" }
 
 -- Set to LEVEL.INFO in production, LEVEL.DEBUG when diagnosing issues.
-Log.currentLevel = LEVEL.DEBUG
+Log.currentLevel = LEVEL.INFO
 
 local function write(level, msg)
     if level < Log.currentLevel then return end
@@ -27,6 +27,72 @@ function Log.debug(msg) write(LEVEL.DEBUG, msg) end
 function Log.info(msg)  write(LEVEL.INFO,  msg) end
 function Log.warn(msg)  write(LEVEL.WARN,  msg) end
 function Log.error(msg) write(LEVEL.ERROR, msg) end
+
+-- ── Error protection ─────────────────────────────────────────────
+-- An error inside a timer function, event handler or F10 menu callback makes DCS
+-- show a script error box and, for timers, stops the loop for good. Every callback
+-- goes through Log.protect / Log.run instead: the error and its stack trace go to
+-- dcs.log, the first error per label also shows on screen once, and play goes on.
+
+local errorCounts = {}
+
+local function reportError(label, err)
+    errorCounts[label] = (errorCounts[label] or 0) + 1
+    local count = errorCounts[label]
+    env.info(string.format("[DCS-MISSION] [ERROR] %s (error #%d): %s", label, count, tostring(err)))
+    if count == 1 then
+        trigger.action.outText("Mission script error in " .. label .. " (details in dcs.log, play continues)", 10)
+    end
+end
+
+local function traceback(err)
+    if debug and debug.traceback then
+        return debug.traceback(tostring(err), 2)
+    end
+    return tostring(err)
+end
+
+-- Runs fn(...) protected. Returns ok, then fn's first result.
+function Log.run(label, fn, ...)
+    local args  = { ... }
+    local count = select("#", ...)
+    local ok, result = xpcall(function() return fn(unpack(args, 1, count)) end, traceback)
+    if not ok then
+        reportError(label, result)
+        return false, nil
+    end
+    return true, result
+end
+
+-- Returns a protected version of fn, for timer.scheduleFunction, event handlers and
+-- menu callbacks. A protected timer function that fails returns nil, so a repeating
+-- timer must reschedule itself through Log.repeating instead.
+function Log.protect(label, fn)
+    return function(...)
+        local _, result = Log.run(label, fn, ...)
+        return result
+    end
+end
+
+-- Schedules fn(time) every `interval` seconds, starting at firstTime. fn's errors are
+-- logged and the loop keeps going. fn may return a different next time to override
+-- the interval once.
+function Log.repeating(label, fn, firstTime, interval)
+    timer.scheduleFunction(function(_, time)
+        local _, nextTime = Log.run(label, fn, time)
+        return nextTime or (time + interval)
+    end, nil, firstTime)
+end
+
+-- Registers a world event handler whose onEvent is protected.
+function Log.addEventHandler(label, onEvent)
+    local handler = {}
+    function handler:onEvent(event)
+        Log.run(label, onEvent, event)
+    end
+    world.addEventHandler(handler)
+    return handler
+end
 
 -- Dumps every group name to the log.
 -- Run this once to verify group name strings match BASE_GROUPS in coalition_setup.lua.

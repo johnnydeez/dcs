@@ -9,83 +9,131 @@
 --    1. cost_config.lua
 --    2. cost_logic.lua
 --    3. cost_ui.lua
+--
+--  Rules:
+--    Spent      munitions (per weapon released, gun per round fired) and lost
+--               aircraft (crash, ejection, pilot killed, destroyed), charged once
+--               per sortie. No charge after landing at a Blue airfield, and none
+--               for leaving the slot or disconnecting.
+--    Destroyed  Red units and statics a player killed. If Blue AI finishes off a
+--               unit, the last player who hit it within HIT_CREDIT_SECONDS gets it.
+--               Every victim is credited at most once.
+--
+--  Why it works from remembered facts instead of the event objects: by the time
+--  DCS sends a loss or kill event, the player's aircraft may no longer exist, and
+--  calling methods on a dead object fails. So who flies what is recorded when the
+--  aircraft is born, and who fired what when it is fired.
 -- ============================================================
 
 CostTracker = {}
 
--- ============================================================
---  STATE TABLES
--- ============================================================
-
 -- Per-player running totals.
--- Key   = player name string (as returned by unit:getPlayerName())
+-- Key   = player name
 -- Value = { spent, destroyed, net }
 CostTracker.playerScores = {}
 
--- Tracks which unit IDs have safely landed at a blue airfield.
--- Cleared when the unit is destroyed (one-time flag per sortie).
--- Key = unitID (number), Value = true
-CostTracker.safeUnits = {}
+local HIT_CREDIT_SECONDS    = 300   -- a player's hit earns an AI-finished kill for this long
+local WEAPON_MEMORY_SECONDS = 600   -- how long a fired weapon is remembered for attribution
+local CLEANUP_INTERVAL      = 120
 
--- Tracks which unit IDs have ejected — prevents safe-landing
--- credit even if the empty aircraft somehow touches down.
--- Key = unitID (number), Value = true
-CostTracker.ejectedUnits = {}
+-- Sorties of human-flown aircraft, by unit name and by DCS object id.
+-- { playerName, typeName, groupId, landedSafe, lossCharged, ended, shellsAtTriggerPull }
+local sortieByUnitName = {}
+local sortieByObjectId = {}
 
--- Kill attribution via HIT→DEAD chain (fallback for multi-hit kills / statics).
--- Updated on S_EVENT_HIT, consumed on S_EVENT_DEAD.
--- Key = unit name (string) — more stable than getID() across event types.
-CostTracker.lastHitBy = {}
+-- Weapon object id → { playerName, time } for weapons fired by players.
+local shooterOfWeapon = {}
 
--- Maps weapon object -> player name for HIT attribution when initiator is a weapon.
--- Key = weapon userdata object, Value = playerName (string)
-CostTracker.weaponToPlayer = {}
+-- Victim unit/static name → { playerName, time } of the last player hit.
+local lastPlayerHit = {}
 
--- Tracks units already credited via S_EVENT_KILL so S_EVENT_DEAD doesn't double-count.
--- Key = unit name (string), Value = true
-CostTracker.killCredited = {}
+-- Victim names already settled (credited, or killed by AI with no player hit).
+local settledVictims = {}
 
 -- ============================================================
---  INTERNAL HELPERS
+--  SAFE OBJECT ACCESS
+--  Methods on a dead or despawned DCS object raise errors; these return nil instead.
 -- ============================================================
 
--- Returns the player name for a unit, or nil if AI / invalid.
--- Guard order matters: weapon objects lack getCategory entirely, so check that
--- before calling isExist() (which also doesn't exist on weapon objects).
-local function getPlayerName(unit)
-    if not unit then return nil end
-    if type(unit.getCategory) ~= "function" then return nil end
-    if unit:getCategory() ~= Object.Category.UNIT then return nil end
-    if not unit:isExist() then return nil end
-    return unit:getPlayerName()  -- nil for AI units
+local function call(object, method, ...)
+    if object == nil or type(object[method]) ~= "function" then return nil end
+    local ok, result = pcall(object[method], object, ...)
+    if ok then return result end
+    return nil
 end
 
--- Looks up a value in a config table with fallback to "default".
+local function categoryOf(object)
+    if object == nil then return nil end
+    local ok, category = pcall(Object.getCategory, object)
+    if ok then return category end
+    return nil
+end
+
+local function objectIdOf(object)
+    if type(object) == "table" then return object.id_ end
+    return nil
+end
+
+local function isUnitOrStatic(object)
+    local category = categoryOf(object)
+    return category == Object.Category.UNIT or category == Object.Category.STATIC
+end
+
+-- ============================================================
+--  LOOKUPS
+-- ============================================================
+
 local function lookup(tbl, key)
-    if tbl[key] ~= nil then
+    if key ~= nil and tbl[key] ~= nil then
         return tbl[key]
     end
     return tbl["default"] or 0
 end
 
-local function getMunitionCost(typeName)
-    return lookup(COST_CONFIG.munitionCost, typeName)
+local function getMunitionCost(typeName)  return lookup(COST_CONFIG.munitionCost, typeName) end
+local function getKillValue(typeName)     return lookup(COST_CONFIG.killValue, typeName)    end
+local function getAircraftCost(typeName)  return lookup(COST_CONFIG.aircraftCost, typeName) end
+local function getGunRoundCost(typeName)  return lookup(COST_CONFIG.gunRoundCost, typeName) end
+
+local function findSortie(unit)
+    if unit == nil then return nil end
+    local name = call(unit, "getName")
+    if name and sortieByUnitName[name] then return sortieByUnitName[name] end
+    local objectId = objectIdOf(unit)
+    if objectId then return sortieByObjectId[objectId] end
+    return nil
 end
 
-local function getKillValue(typeName)
-    return lookup(COST_CONFIG.killValue, typeName)
+-- The player behind a unit: asked live while it exists, else from its sortie record.
+local function playerOfUnit(unit)
+    if categoryOf(unit) ~= Object.Category.UNIT then return nil end
+    local playerName = call(unit, "getPlayerName")
+    if playerName then return playerName end
+    local sortie = findSortie(unit)
+    return sortie and sortie.playerName or nil
 end
 
-local function getAircraftCost(typeName)
-    return lookup(COST_CONFIG.aircraftCost, typeName)
+-- The player behind a weapon: remembered from its SHOT event, else its launcher.
+local function playerOfWeapon(weapon)
+    if weapon == nil then return nil end
+    local objectId = objectIdOf(weapon)
+    local fired = objectId and shooterOfWeapon[objectId]
+    if fired then return fired.playerName end
+    return playerOfUnit(call(weapon, "getLauncher"))
 end
 
--- Returns true if the unit belongs to the red coalition.
-local function isEnemyUnit(unit)
-    if not unit then return false end
-    if type(unit.getCategory) ~= "function" then return false end
-    if not unit:isExist() then return false end
-    return unit:getCoalition() == coalition.side.RED
+-- The player responsible for an event: its initiator (a unit, or a weapon such as a
+-- cluster submunition), then the event's weapon.
+local function playerOfEvent(event)
+    local initiator = event.initiator
+    if categoryOf(initiator) == Object.Category.WEAPON then
+        local playerName = playerOfWeapon(initiator)
+        if playerName then return playerName end
+    else
+        local playerName = playerOfUnit(initiator)
+        if playerName then return playerName end
+    end
+    return playerOfWeapon(event.weapon)
 end
 
 -- ============================================================
@@ -93,323 +141,269 @@ end
 -- ============================================================
 
 local function ensurePlayer(playerName)
-    if not playerName then return end
     if not CostTracker.playerScores[playerName] then
-        CostTracker.playerScores[playerName] = {
-            spent  = 0,
-            destroyed = 0,
-            net    = 0,
-        }
+        CostTracker.playerScores[playerName] = { spent = 0, destroyed = 0, net = 0 }
     end
+    return CostTracker.playerScores[playerName]
 end
 
 -- Adds to 'spent' (munitions, lost aircraft). Value should be positive.
-local function addSpent(playerName, amount)
+local function addSpent(playerName, amount, what)
     if not playerName or amount <= 0 then return end
-    ensurePlayer(playerName)
-    local s = CostTracker.playerScores[playerName]
-    s.spent  = s.spent + amount
-    s.net    = s.destroyed - s.spent
-    env.info(string.format("[CostTracker] %s SPENT %.3fM | spent=%.3f destroyed=%.3f net=%.3f",
-        playerName, amount, s.spent, s.destroyed, s.net))
+    local s = ensurePlayer(playerName)
+    s.spent = s.spent + amount
+    s.net   = s.destroyed - s.spent
+    env.info(string.format("[CostTracker] %s SPENT %.4fM (%s) | spent=%.3f destroyed=%.3f net=%.3f",
+        playerName, amount, what, s.spent, s.destroyed, s.net))
 end
 
--- Adds to 'destroyed' (enemy kills). Value should be positive.
-local function addDestroyed(playerName, amount)
-    if not playerName or amount <= 0 then return end
-    ensurePlayer(playerName)
-    local s = CostTracker.playerScores[playerName]
-    s.destroyed = s.destroyed + amount
-    s.net    = s.destroyed - s.spent
-    env.info(string.format("[CostTracker] %s DESTROYED %.3fM | spent=%.3f destroyed=%.3f net=%.3f",
-        playerName, amount, s.spent, s.destroyed, s.net))
-end
+-- Credits a kill once per victim and shows a confirmation to Blue.
+local function creditKill(playerName, victimName, victimType, source)
+    settledVictims[victimName] = true
+    lastPlayerHit[victimName]  = nil
 
--- Shows a brief kill confirmation on screen and logs the kill.
-local function creditKill(playerName, unitType, source)
-    local value = getKillValue(unitType)
-    local isDefault = (COST_CONFIG.killValue[unitType] == nil)
-    env.info(string.format("[CostTracker] KILL(%s) %s → %.3fM%s to %s",
-        source, unitType, value, isDefault and " (DEFAULT)" or "", playerName))
-    addDestroyed(playerName, value)
-    local s = CostTracker.playerScores[playerName]
+    local value     = getKillValue(victimType)
+    local isDefault = (COST_CONFIG.killValue[victimType] == nil)
+    local s = ensurePlayer(playerName)
+    s.destroyed = s.destroyed + value
+    s.net       = s.destroyed - s.spent
+    env.info(string.format("[CostTracker] KILL(%s) %s '%s' → %.3fM%s to %s | spent=%.3f destroyed=%.3f net=%.3f",
+        source, victimType, victimName, value, isDefault and " (DEFAULT)" or "", playerName,
+        s.spent, s.destroyed, s.net))
+
     local sign = s.net >= 0 and "+" or ""
-    local msg = string.format("[Kill +%.2fM] %s  |  Net: %s%.2fM",
-        value, unitType, sign, s.net)
-    trigger.action.outTextForCoalition(coalition.side.BLUE, msg, 6, false)
+    trigger.action.outTextForCoalition(coalition.side.BLUE,
+        string.format("[Kill +%.2fM] %s by %s  |  Net: %s%.2fM", value, victimType, playerName, sign, s.net),
+        6, false)
+end
+
+local function tellSortie(sortie, message)
+    if sortie.groupId then
+        trigger.action.outTextForGroup(sortie.groupId, message, 8, false)
+    else
+        trigger.action.outTextForCoalition(coalition.side.BLUE, message, 8, false)
+    end
+end
+
+-- Charges a lost aircraft once per sortie, unless it landed at a Blue airfield
+-- or the player already left it.
+local function chargeLoss(unit, reason)
+    local sortie = findSortie(unit)
+    if not sortie then return end
+    if sortie.lossCharged or sortie.ended then return end
+    if sortie.landedSafe then
+        env.info(string.format("[CostTracker] %s %s after a safe landing — no charge", sortie.playerName, reason))
+        return
+    end
+    sortie.lossCharged = true
+    local cost = getAircraftCost(sortie.typeName)
+    addSpent(sortie.playerName, cost, reason .. " " .. tostring(sortie.typeName))
+    tellSortie(sortie, string.format("Aircraft lost (%s): -%.2fM charged to %s", reason, cost, sortie.playerName))
+end
+
+-- Red victims only; returns name and type, or nil.
+local function redVictim(object)
+    if not isUnitOrStatic(object) then return nil end
+    if call(object, "getCoalition") ~= coalition.side.RED then return nil end
+    local name = call(object, "getName")
+    if not name then return nil end
+    return name, call(object, "getTypeName") or "unknown"
+end
+
+-- Credits a victim to the last player who hit it, if that hit is recent enough.
+local function creditLastHit(victimName, victimType, source)
+    local hit = lastPlayerHit[victimName]
+    if hit and timer.getTime() - hit.time <= HIT_CREDIT_SECONDS then
+        creditKill(hit.playerName, victimName, victimType, source)
+        return true
+    end
+    return false
+end
+
+local function shellCount(unit)
+    local total = 0
+    for _, ammo in ipairs(call(unit, "getAmmo") or {}) do
+        if ammo.desc and ammo.desc.category == Weapon.Category.SHELL then
+            total = total + (ammo.count or 0)
+        end
+    end
+    return total
 end
 
 -- ============================================================
---  EVENT HANDLER
+--  EVENT HANDLERS
 -- ============================================================
 
-local CostEventHandler = {}
+local handlers = {}
 
-function CostEventHandler:onEvent(event)
-    local ok, err = pcall(function()
+-- A human takes an aircraft: start a sortie record.
+local function startSortie(event)
+    local unit = event.initiator
+    if categoryOf(unit) ~= Object.Category.UNIT then return end
+    local playerName = call(unit, "getPlayerName")
+    if not playerName then return end
+    local name = call(unit, "getName")
+    if not name then return end
+    local existing = sortieByUnitName[name]
+    if existing and existing.playerName == playerName and not existing.ended then return end
 
-    -- ── SHOT: munition fired / released ─────────────────────
-    if event.id == world.event.S_EVENT_SHOT then
-        local playerName = getPlayerName(event.initiator)
-        if not playerName then return end
+    local sortie = {
+        playerName = playerName,
+        typeName   = call(unit, "getTypeName"),
+        groupId    = call(call(unit, "getGroup"), "getID"),
+        landedSafe = false,
+    }
+    sortieByUnitName[name] = sortie
+    local objectId = objectIdOf(unit)
+    if objectId then sortieByObjectId[objectId] = sortie end
+    ensurePlayer(playerName)
+    env.info(string.format("[CostTracker] sortie start: %s in %s (%s)", playerName, name, tostring(sortie.typeName)))
+end
 
-        local weaponType = "default"
-        if event.weapon and event.weapon:isExist() then
-            weaponType = event.weapon:getTypeName()
-            -- Cache weapon→player for HIT attribution fallback.
-            -- In S_EVENT_HIT the initiator can be the weapon rather than the aircraft.
-            CostTracker.weaponToPlayer[event.weapon] = playerName
-        end
+handlers[world.event.S_EVENT_BIRTH]             = startSortie
+handlers[world.event.S_EVENT_PLAYER_ENTER_UNIT] = startSortie
 
-        local cost = getMunitionCost(weaponType)
-        local isDefault = (COST_CONFIG.munitionCost[weaponType] == nil)
-        env.info(string.format("[CostTracker] SHOT type='%s' cost=%.4fM%s by %s",
-            weaponType, cost, isDefault and " (DEFAULT)" or "", playerName))
-        if cost > 0 then
-            addSpent(playerName, cost)
-        end
-
-    -- ── KILL: primary kill attribution ───────────────────────
-    -- S_EVENT_KILL fires with event.initiator = killer unit and event.target =
-    -- killed unit. This is more direct than HIT→DEAD and handles one-shot kills
-    -- (e.g. Maverick direct hit) where DEAD fires before HIT can record lastHitBy.
-    elseif event.id == world.event.S_EVENT_KILL then
-        local target = event.target
-        if not target then return end
-        if type(target.getCoalition) ~= "function" then return end
-        if target:getCoalition() ~= coalition.side.RED then return end
-        if type(target.getCategory) ~= "function" then return end
-        local cat = target:getCategory()
-        if cat ~= Object.Category.UNIT and cat ~= Object.Category.STATIC then return end
-
-        local unitName = target:getName()
-        local unitType = target:getTypeName()
-
-        -- Always suppress the HIT→DEAD fallback, regardless of who killed.
-        -- Without this, a human who previously hit this unit would get credited
-        -- via lastHitBy when an AI delivers the killing blow.
-        CostTracker.killCredited[unitName] = true
-        CostTracker.lastHitBy[unitName] = nil
-
-        local playerName = getPlayerName(event.initiator)
-        if not playerName then
-            env.info(string.format("[CostTracker] KILL(AI) %s — no credit", unitType))
-            return
-        end
-        creditKill(playerName, unitType, "KILL")
-
-    -- ── HIT: record last player to hit each unit (fallback chain) ──
-    -- Primary kills are handled via S_EVENT_KILL. HIT→lastHitBy feeds S_EVENT_DEAD
-    -- as a fallback for multi-hit kills and statics (which don't trigger S_EVENT_KILL).
-    elseif event.id == world.event.S_EVENT_HIT then
-        local playerName, hitMethod
-        -- Direct: initiator is the aircraft (cannon, unguided bombs in some cases)
-        playerName = getPlayerName(event.initiator)
-        if playerName then
-            hitMethod = "direct"
-        else
-            -- If initiator is a Unit (has getPlayerName) but wasn't a player, it's AI — nothing to track.
-            -- Only reach getLauncher for weapon objects (e.g. CBU submunitions where the
-            -- initiator is the BLU-108 itself, not the launching aircraft).
-            if event.initiator and type(event.initiator.getPlayerName) == "function" then return end
-            local obj = event.weapon or event.initiator
-            if obj and type(obj.getLauncher) == "function" then
-                local ok, launcher = pcall(function() return obj:getLauncher() end)
-                if ok and launcher then
-                    playerName = getPlayerName(launcher)
-                    if playerName then hitMethod = "getLauncher" end
-                elseif not ok then
-                    env.info("[CostTracker] HIT getLauncher failed: " .. tostring(launcher))
-                end
-            end
-        end
-        if not playerName then
-            -- Last-resort: weapon object key (may fail if DCS re-wraps userdata)
-            local weapon = event.weapon or event.initiator
-            if weapon then
-                playerName = CostTracker.weaponToPlayer[weapon]
-                if playerName then hitMethod = "weaponCache" end
-            end
-        end
-        local targetType = event.target and event.target:getTypeName() or "nil"
-        env.info(string.format("[CostTracker] HIT target=%s by=%s via=%s",
-            targetType, tostring(playerName), tostring(hitMethod)))
-        if not playerName then return end
-
-        local target = event.target
-        if not target then return end
-        if type(target.getCategory) ~= "function" then return end
-        if not target:isExist() then return end
-        local cat = target:getCategory()
-        if cat ~= Object.Category.UNIT and cat ~= Object.Category.STATIC then return end
-        -- Key by name: more stable than getID() which can differ between event types
-        CostTracker.lastHitBy[target:getName()] = playerName
-
-    -- ── DEAD: unit or static destroyed ───────────────────────
-    elseif event.id == world.event.S_EVENT_DEAD then
-        local deadUnit = event.initiator
-        if not deadUnit then return end
-        if type(deadUnit.getCategory) ~= "function" then return end
-        local cat = deadUnit:getCategory()
-
-        -- Clean up weapon→player cache on weapon death. DCS can reuse userdata
-        -- pointers, so a stale entry for a human's weapon could later match an
-        -- AI weapon and misattribute a hit.
-        if cat == Object.Category.WEAPON then
-            CostTracker.weaponToPlayer[deadUnit] = nil
-            return
-        end
-
-        if cat ~= Object.Category.UNIT and cat ~= Object.Category.STATIC then return end
-
-        local deadID   = deadUnit:getID()
-        local deadType = deadUnit:getTypeName()
-        local deadName = deadUnit:getName()
-
-        -- Case 1: A player's aircraft was destroyed (units only — statics have no pilot)
-        -- isExist() guard filters spurious DEAD events fired during player slot init
-        if cat == Object.Category.UNIT then
-            local playerName = getPlayerName(deadUnit)
-            if playerName and deadUnit:isExist() then
-                if not CostTracker.safeUnits[deadID] then
-                    local cost = getAircraftCost(deadType)
-                    addSpent(playerName, cost)
-                    -- getGroup() can return nil when DEAD fires; fall back to coalition message
-                    local grp = deadUnit:getGroup()
-                    local msg = string.format("Aircraft lost: -%.2fM charged to %s", cost, playerName)
-                    if grp then
-                        trigger.action.outTextForGroup(grp:getID(), msg, 8, false)
-                    else
-                        trigger.action.outTextForCoalition(coalition.side.BLUE, msg, 8, false)
-                    end
-                end
-                CostTracker.safeUnits[deadID]   = nil
-                CostTracker.ejectedUnits[deadID] = nil
-            end
-        end
-
-        -- Case 2: An enemy unit or static was destroyed — credit the killer.
-        -- Do NOT use isEnemyUnit() here: isExist() returns false on dead units,
-        -- so isEnemyUnit always returns false inside a DEAD handler.
-        if deadUnit:getCoalition() == coalition.side.RED then
-            if CostTracker.killCredited[deadName] then
-                -- Already credited via S_EVENT_KILL; clean up and skip.
-                CostTracker.killCredited[deadName] = nil
-                CostTracker.lastHitBy[deadName]    = nil
-                env.info(string.format("[CostTracker] DEAD RED %s — already credited via KILL", deadType))
-            else
-                -- S_EVENT_KILL didn't fire (multi-hit kill or static); use HIT→DEAD chain.
-                local killer = CostTracker.lastHitBy[deadName]
-                if killer then
-                    CostTracker.lastHitBy[deadName] = nil
-                    creditKill(killer, deadType, "DEAD")
-                else
-                    env.info(string.format("[CostTracker] DEAD RED %s — no killer attributed", deadType))
-                end
-            end
-        end
-
-    -- ── CRASH: aircraft hit the ground ───────────────────────
-    elseif event.id == world.event.S_EVENT_CRASH then
-        local unit = event.initiator
-        if not unit then return end
-
-        local playerName = getPlayerName(unit)
-        if not playerName then return end
-
-        local unitID = unit:getID()
-        if not CostTracker.safeUnits[unitID] then
-            local cost = getAircraftCost(unit:getTypeName())
-            addSpent(playerName, cost)
-            local grp = unit:getGroup()
-            local msg = string.format("Aircraft crashed: -%.2fM charged to %s", cost, playerName)
-            if grp then
-                trigger.action.outTextForGroup(grp:getID(), msg, 8, false)
-            else
-                trigger.action.outTextForCoalition(coalition.side.BLUE, msg, 8, false)
-            end
-        end
-
-        CostTracker.safeUnits[unitID]   = nil
-        CostTracker.ejectedUnits[unitID] = nil
-
-    -- ── EJECTION: pilot leaves the aircraft ──────────────────
-    -- Charge aircraft cost immediately. Mark unit as ejected
-    -- so a safe-landing flag cannot be applied afterward.
-    elseif event.id == world.event.S_EVENT_EJECTION then
-        local unit = event.initiator
-        if not unit then return end
-
-        local playerName = getPlayerName(unit)
-        if not playerName then return end
-
-        local unitID = unit:getID()
-
-        -- Only charge once (DEAD event may follow)
-        if not CostTracker.ejectedUnits[unitID] then
-            CostTracker.ejectedUnits[unitID] = true
-            CostTracker.safeUnits[unitID]    = nil
-
-            local cost = getAircraftCost(unit:getTypeName())
-            addSpent(playerName, cost)
-            local grp = unit:getGroup()
-            local msg = string.format("Ejection: -%.2fM charged to %s", cost, playerName)
-            if grp then
-                trigger.action.outTextForGroup(grp:getID(), msg, 8, false)
-            else
-                trigger.action.outTextForCoalition(coalition.side.BLUE, msg, 8, false)
-            end
-        end
-
-    -- ── PILOT DEAD: killed in cockpit ────────────────────────
-    elseif event.id == world.event.S_EVENT_PILOT_DEAD then
-        local unit = event.initiator
-        if not unit then return end
-
-        local playerName = getPlayerName(unit)
-        if not playerName then return end
-
-        local unitID = unit:getID()
-        if not CostTracker.ejectedUnits[unitID] then
-            local cost = getAircraftCost(unit:getTypeName())
-            addSpent(playerName, cost)
-        end
-
-    -- ── LAND: aircraft touches down ──────────────────────────
-    -- If landing at a currently Blue-coalition airfield, mark unit as safe.
-    -- Uses live coalition check so it respects session randomization.
-    elseif event.id == world.event.S_EVENT_LAND then
-        local unit = event.initiator
-        if not unit then return end
-
-        local playerName = getPlayerName(unit)
-        if not playerName then return end
-
-        local unitID = unit:getID()
-        if CostTracker.ejectedUnits[unitID] then return end
-
-        local airbase = event.place
-        if airbase and airbase:getCoalition() == coalition.side.BLUE then
-            CostTracker.safeUnits[unitID] = true
-            env.info(string.format("[CostTracker] %s landed safely at %s — aircraft cost waived",
-                playerName, airbase:getName()))
-        end
-
-    end  -- end event type dispatch
-    end)  -- end pcall
-    if not ok then
-        env.info("[CostTracker] ERROR in onEvent id=" .. tostring(event and event.id) .. ": " .. tostring(err))
+-- Leaving the slot or disconnecting ends the sortie without a charge.
+handlers[world.event.S_EVENT_PLAYER_LEAVE_UNIT] = function(event)
+    local sortie = findSortie(event.initiator)
+    if sortie and not sortie.ended then
+        sortie.ended = true
+        env.info(string.format("[CostTracker] sortie end: %s left the aircraft", sortie.playerName))
     end
-end  -- end onEvent
+end
+
+handlers[world.event.S_EVENT_TAKEOFF] = function(event)
+    local sortie = findSortie(event.initiator)
+    if sortie then sortie.landedSafe = false end
+end
+
+-- Landing at a Blue airfield waives the aircraft cost until the next takeoff.
+handlers[world.event.S_EVENT_LAND] = function(event)
+    local sortie = findSortie(event.initiator)
+    if not sortie or sortie.lossCharged then return end
+    local place = event.place
+    if place and call(place, "getCoalition") == coalition.side.BLUE then
+        sortie.landedSafe = true
+        env.info(string.format("[CostTracker] %s landed safely at %s — aircraft cost waived",
+            sortie.playerName, tostring(call(place, "getName"))))
+    end
+end
+
+-- Losses: whichever of these arrives first charges the aircraft, once.
+handlers[world.event.S_EVENT_EJECTION]   = function(event) chargeLoss(event.initiator, "ejection")     end
+handlers[world.event.S_EVENT_PILOT_DEAD] = function(event) chargeLoss(event.initiator, "pilot killed") end
+handlers[world.event.S_EVENT_CRASH]      = function(event) chargeLoss(event.initiator, "crash")        end
+
+-- Munitions: one SHOT per missile, bomb or rocket.
+handlers[world.event.S_EVENT_SHOT] = function(event)
+    local playerName = playerOfUnit(event.initiator)
+    if not playerName then return end
+
+    local weaponType = call(event.weapon, "getTypeName") or "default"
+    local objectId   = objectIdOf(event.weapon)
+    if objectId then
+        shooterOfWeapon[objectId] = { playerName = playerName, time = timer.getTime() }
+    end
+
+    local cost = getMunitionCost(weaponType)
+    local isDefault = (COST_CONFIG.munitionCost[weaponType] == nil)
+    addSpent(playerName, cost, weaponType .. (isDefault and " (DEFAULT)" or ""))
+end
+
+-- Guns: DCS reports a trigger pull as SHOOTING_START / SHOOTING_END. The rounds
+-- fired are the shell count difference between the two.
+handlers[world.event.S_EVENT_SHOOTING_START] = function(event)
+    local sortie = findSortie(event.initiator)
+    if sortie then sortie.shellsAtTriggerPull = shellCount(event.initiator) end
+end
+
+handlers[world.event.S_EVENT_SHOOTING_END] = function(event)
+    local sortie = findSortie(event.initiator)
+    if not sortie or not sortie.shellsAtTriggerPull then return end
+    local rounds = sortie.shellsAtTriggerPull - shellCount(event.initiator)
+    sortie.shellsAtTriggerPull = nil
+    if rounds > 0 then
+        addSpent(sortie.playerName, rounds * getGunRoundCost(sortie.typeName),
+            string.format("%d gun rounds", rounds))
+    end
+end
+
+-- Hits: remember the last player to damage each Red unit.
+handlers[world.event.S_EVENT_HIT] = function(event)
+    local victimName = redVictim(event.target)
+    if not victimName or settledVictims[victimName] then return end
+    local playerName = playerOfEvent(event)
+    if playerName then
+        lastPlayerHit[victimName] = { playerName = playerName, time = timer.getTime() }
+    end
+end
+
+-- Kills: the killer is in the event. A player killer is credited; an AI killer
+-- passes the credit to a recent player hit, if any.
+handlers[world.event.S_EVENT_KILL] = function(event)
+    local victimName, victimType = redVictim(event.target)
+    if not victimName or settledVictims[victimName] then return end
+
+    local playerName = playerOfEvent(event)
+    if playerName then
+        creditKill(playerName, victimName, victimType, "KILL")
+    elseif not creditLastHit(victimName, victimType, "KILL, finished by AI") then
+        settledVictims[victimName] = true
+        env.info(string.format("[CostTracker] KILL(AI) %s '%s' — no player credit", victimType, victimName))
+    end
+end
+
+-- Deaths: player aircraft lost, or a Red unit / static gone without a KILL event
+-- (statics, some multi-hit kills).
+local function onDeath(event)
+    local object = event.initiator
+    if categoryOf(object) == Object.Category.WEAPON then return end
+
+    if findSortie(object) then
+        chargeLoss(object, "aircraft destroyed")
+        return
+    end
+
+    local victimName, victimType = redVictim(object)
+    if not victimName or settledVictims[victimName] then return end
+    if not creditLastHit(victimName, victimType, "DEAD") then
+        settledVictims[victimName] = true
+        env.info(string.format("[CostTracker] DEAD %s '%s' — no player hit on record", victimType, victimName))
+    end
+end
+
+handlers[world.event.S_EVENT_DEAD] = onDeath
+if world.event.S_EVENT_UNIT_LOST then
+    handlers[world.event.S_EVENT_UNIT_LOST] = onDeath
+end
 
 -- ============================================================
 --  REGISTER THE EVENT HANDLER WITH DCS WORLD
 -- ============================================================
-world.addEventHandler(CostEventHandler)
+
+Log.addEventHandler("CostTracker events", function(event)
+    local handler = handlers[event.id]
+    if handler then handler(event) end
+end)
+
+-- Forget old weapons and stale hits so the tables don't grow all session.
+Log.repeating("CostTracker cleanup", function(time)
+    for objectId, fired in pairs(shooterOfWeapon) do
+        if time - fired.time > WEAPON_MEMORY_SECONDS then shooterOfWeapon[objectId] = nil end
+    end
+    for victimName, hit in pairs(lastPlayerHit) do
+        if time - hit.time > HIT_CREDIT_SECONDS then lastPlayerHit[victimName] = nil end
+    end
+end, timer.getTime() + CLEANUP_INTERVAL, CLEANUP_INTERVAL)
 
 -- ============================================================
 --  PUBLIC API  (used by cost_ui.lua)
 -- ============================================================
+
+-- True if the unit is a human-flown aircraft this tracker has a sortie for.
+function CostTracker.isPlayerUnit(unit)
+    return findSortie(unit) ~= nil
+end
 
 function CostTracker.getPlayerSummary(playerName)
     local s = CostTracker.playerScores[playerName]

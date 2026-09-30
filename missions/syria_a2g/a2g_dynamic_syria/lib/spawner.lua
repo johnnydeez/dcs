@@ -37,10 +37,17 @@ end
 --                      around pos (default 0 = all at same point)
 --
 -- Returns the Group object, or nil on failure.
+-- Counter for generated group names. A name must be unique: coalition.addGroup with
+-- an existing group's name silently replaces that group.
+local _generatedGroupCount = 0
+
 function Spawner.spawnGroundGroup(countryId, pos, unitDefs, options)
     options = options or {}
     local groupName = options.name
-        or ("Group_" .. math.floor(timer.getAbsTime()) .. "_" .. math.random(999))
+    if not groupName then
+        _generatedGroupCount = _generatedGroupCount + 1
+        groupName = "Group_" .. _generatedGroupCount
+    end
     local spread = options.spread or 0
 
     local units = {}
@@ -84,6 +91,7 @@ end
 
 -- Converts a Vec3 to a DMS coordinate string, e.g. "N34°45'12\"  E036°26'08\"".
 function Spawner.formatLL(vec3)
+    if not vec3 then return "position unknown" end
     local lat, lon = coord.LOtoLL(vec3)
     local function dms(deg)
         local d = math.floor(math.abs(deg))
@@ -133,9 +141,9 @@ function Spawner.fireGroups(groupNames, targetVec3, staggerSecs)
     local delay = 2  -- minimum offset so first schedule is always in the future
     for _, name in ipairs(groupNames) do
         local gn = name
-        timer.scheduleFunction(function(_, _t)
+        timer.scheduleFunction(Log.protect("Spawner.fireGroups", function()
             local grp = Group.getByName(gn)
-            if grp then
+            if grp and grp:isExist() and grp:getSize() > 0 then
                 grp:getController():setTask({
                     id = "FireAtPoint",
                     params = { point = firePoint, expendQty = 1, expendQtyEnabled = true }
@@ -144,7 +152,7 @@ function Spawner.fireGroups(groupNames, targetVec3, staggerSecs)
             else
                 Log.info("Spawner.fireGroups: '" .. gn .. "' not found (destroyed)")
             end
-        end, nil, now + delay)
+        end), nil, now + delay)
         delay = delay + staggerSecs
     end
 end

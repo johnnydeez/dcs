@@ -133,7 +133,7 @@ end
 local function spawnConvoyGroup(groupName, startPos, midPos, endPos, unitDefs)
     local dx = midPos.x - startPos.x
     local dy = midPos.y - startPos.y
-    local heading = math.atan2(dx, dy)
+    local heading = math.atan2(dy, dx)   -- DCS heading: atan2(east, north)
     if heading < 0 then heading = heading + 2 * math.pi end
 
     local units = {}
