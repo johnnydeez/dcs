@@ -59,8 +59,14 @@
 -- early_warning_standoff_km allows, until the window ends. The alert posture only with
 -- AIR_DEFENSE.alert_posture_planned.
 --
+-- Human flights (HUMAN_TASKING, after defensive air and before the AI attack missions):
+-- for the players' coalition, HUMAN_TASKING.missions flights of one aircraft from held
+-- bases with a player slot, any mission type a player can fly, planned with the same
+-- targets, routes and packages as the AI's but timed from mission start (takeoff after
+-- startup_s); the AI flights of their packages are timed around them. Not spawned.
+--
 -- plan.air_tasking_orders = {
---   red  = { missions = { mission }, packages = { package },
+--   red  = { missions = { mission }, packages = { package }, human_missions = { mission ids },
 --            stations = { { id, kind (front | early_warning), home, region, centre,
 --                           ends = { a, b }, defends = { catalog ids }, defended_value,
 --                           zone = { x, z, radius_m }, commit = { { x, z, radius_m } },
@@ -79,7 +85,8 @@
 -- speed_mps, until_s, engage_range_m, zone (patrols: the station's defended zone),
 -- commit (patrols: the circles of their commit area) }.
 -- package = { id, mission (the escorted mission's id), suppression_flights = { ids }, tot_s }
--- mission = { id, number, coalition, package, mission_type, group_task, target,
+-- mission = { id, number, coalition, package, mission_type, group_task,
+--   flown_by ("ai" | "human"), player_slot = { group, spot, terminal_index } (human), target,
 --   target_label, target_kind, target_pos, aircraft_type, count, skill, launch_base,
 --   landing_base, parking = { { terminal_index, x, z } } (one per aircraft, lead first),
 --   start_s, takeoff_s, tot_s, end_s, distance_km, route_km,
@@ -214,6 +221,35 @@ function PlanAirTasking.validate()
     local lead = AIR_PACKAGE and AIR_PACKAGE.suppression_lead_s
     if type(lead) ~= "table" or type(lead[1]) ~= "number" or type(lead[2]) ~= "number" or lead[1] > lead[2] then
         bad("AIR_PACKAGE needs suppression_lead_s = { min, max }")
+    end
+    local H = HUMAN_TASKING
+    if type(H) ~= "table" then
+        bad("HUMAN_TASKING is missing")
+    else
+        if type(H.missions) ~= "number" or H.missions < 0 then bad("HUMAN_TASKING needs a non-negative missions") end
+        if H.coalition ~= "red" and H.coalition ~= "blue" then bad("HUMAN_TASKING.coalition must be red or blue") end
+        local t = H.aircraft_type
+        if not AIRCRAFT_PROFILE[t] then bad(string.format("HUMAN_TASKING: aircraft_type '%s' has no profile", tostring(t))) end
+        local s = H.startup_s
+        if type(s) ~= "table" or type(s[1]) ~= "number" or type(s[2]) ~= "number" or s[1] > s[2] then
+            bad("HUMAN_TASKING needs startup_s = { min, max }")
+        end
+        for _, e in ipairs(H.mission_types or {}) do
+            local m = AIR_MISSION_TYPE[e[1]]
+            local as = m and (m.planned_as or "mission")
+            if not (m and m.built) then
+                bad(string.format("HUMAN_TASKING: '%s' is not a built mission type", tostring(e[1])))
+            elseif as ~= "mission" and e[1] ~= SUPPRESSION and e[1] ~= PATROL then
+                bad(string.format("HUMAN_TASKING: '%s' is planned as %s, which players can't fly", e[1], as))
+            end
+            if AIRCRAFT_PROFILE[t] and m and type(AIRCRAFT_PROFILE[t].attack_altitude_m[e[1]]) ~= "number" then
+                bad(string.format("HUMAN_TASKING: profile '%s' has no attack_altitude_m.%s", t, e[1]))
+            end
+            if not (AIRCRAFT_LOADOUT[t] and AIRCRAFT_LOADOUT[t][e[1]]) then
+                bad(string.format("HUMAN_TASKING: '%s' has no %s loadout (the brief lists it)", tostring(t), e[1]))
+            end
+            if type(e[2]) ~= "number" or e[2] <= 0 then bad(string.format("HUMAN_TASKING: '%s' needs a positive weight", e[1])) end
+        end
     end
 
     for t, p in pairs(AIRCRAFT_PROFILE) do
@@ -354,10 +390,11 @@ local function reserveParking(ctx, base, aircraftType, count, start_s)
     ctx.parking_busy[base] = busy
     local hold = AIR_TASKING_TIMING.parking_hold_s
     local statics = ctx.plan.fixed_ground_targets and ctx.plan.fixed_ground_targets.parking_used[base] or {}
+    local ab = ctx.plan.world.airbases[base]
     local free = {}
-    for _, s in ipairs(ctx.plan.world.airbases[base].parking) do
+    for _, s in ipairs(ab.parking) do
         local idx = s[4]
-        local taken = statics[idx] ~= nil
+        local taken = statics[idx] ~= nil or ab.player_slots[idx] ~= nil
         for _, span in ipairs(busy[idx] or {}) do
             if start_s < span[2] and start_s + hold > span[1] then taken = true end
         end
@@ -676,13 +713,14 @@ local function enemyAirspaceKm(ctx, route)
 end
 
 -- A flight before its times and parking are fixed: what flies, from where, the route
--- and how long the legs take.
+-- and how long the legs take. `human` (a human flight): { aircraft_type, bases, count }
+-- instead of the roster, the bases that can launch it and the flight size.
 -- Returns the draft, or nil and why not.
-local function draftMission(ctx, missionType)
+local function draftMission(ctx, missionType, human)
     local mt = AIR_MISSION_TYPE[missionType]
-    local aircraftType = Util.weightedPick(COALITION_AIRCRAFT[ctx.coalition][missionType])
+    local aircraftType = human and human.aircraft_type or Util.weightedPick(COALITION_AIRCRAFT[ctx.coalition][missionType])
     local p = AIRCRAFT_PROFILE[aircraftType]
-    local choices = reachableTargets(ctx, missionType, aircraftType, launchBases(ctx, aircraftType))
+    local choices = reachableTargets(ctx, missionType, aircraftType, human and human.bases or launchBases(ctx, aircraftType))
     if #choices == 0 then return nil, "no target near the front in reach" end
     local weighted = {}
     for _, c in ipairs(choices) do weighted[#weighted + 1] = { c, c.target.value or 1 } end
@@ -701,7 +739,7 @@ local function draftMission(ctx, missionType)
     end
     local toTarget, home = legSeconds(route, p.cruise_speed_mps)
     return { mission_type = missionType, mt = mt, aircraft_type = aircraftType, p = p, target = pick.target,
-             base = base.name, distance_km = base.km, count = flightSize(mt, p),
+             base = base.name, distance_km = base.km, count = human and human.count or flightSize(mt, p),
              route = route, crossed = crossed, to_target_s = toTarget, home_s = home, lead_s = 0,
              front = pick.front, enemy_airspace_km = enemyKm }
 end
@@ -712,15 +750,15 @@ end
 -- type, else the one nearest the target — whose route is within twice the reach and no
 -- deeper in enemy airspace than the escorted mission may fly (the same rule; before,
 -- escorts were exempt and Rovaniemi F-16s flew 211 km of enemy airspace to join an
--- Evenes strike, John's run 2026-09-27).
-local function draftSuppressionFlight(ctx, mission, remaining)
+-- Evenes strike, John's run 2026-09-27). `human` as for draftMission.
+local function draftSuppressionFlight(ctx, mission, remaining, human)
     local mt = AIR_MISSION_TYPE[SUPPRESSION]
     local maxEnemyKm = mission.front.depth_m / 1000 + AIR_TARGETING.enemy_airspace_slack_km
     for _ = 1, AIRCRAFT_TRIES do
-        local aircraftType = Util.weightedPick(COALITION_AIRCRAFT[ctx.coalition][SUPPRESSION])
+        local aircraftType = human and human.aircraft_type or Util.weightedPick(COALITION_AIRCRAFT[ctx.coalition][SUPPRESSION])
         local p = AIRCRAFT_PROFILE[aircraftType]
         local candidates = {}
-        for _, b in ipairs(launchBases(ctx, aircraftType)) do
+        for _, b in ipairs(human and human.bases or launchBases(ctx, aircraftType)) do
             local pos = ctx.plan.world.airbases[b].pos
             local km = Util.dist(pos, mission.target.pos) / 1000
             if ctx.base_region[b] == mission.front.region and km <= p.combat_radius_km then
@@ -729,7 +767,7 @@ local function draftSuppressionFlight(ctx, mission, remaining)
         end
         table.sort(candidates, function(a, b) return a.order < b.order end)
         if #candidates > 0 then
-            local count = flightSize(mt, p)
+            local count = human and human.count or flightSize(mt, p)
             local take = math.min(mt.max_groups_per_flight,
                 math.max(1, math.floor(count * p.anti_radiation_missiles / mt.missiles_per_threat)))
             -- whole threats (a site and its escort stay together), at least one
@@ -762,9 +800,13 @@ local function draftSuppressionFlight(ctx, mission, remaining)
 end
 
 -- Every suppression flight the mission's crossed threats need, or nil if one can't be had.
-local function draftSuppression(ctx, mission)
-    local remaining, flights = {}, {}
-    for i, id in ipairs(mission.crossed) do remaining[i] = id end
+-- `remaining`: the threats still to cover (default: all the route crosses).
+local function draftSuppression(ctx, mission, remaining)
+    local flights = {}
+    if not remaining then
+        remaining = {}
+        for i, id in ipairs(mission.crossed) do remaining[i] = id end
+    end
     while #remaining > 0 do
         local f = draftSuppressionFlight(ctx, mission, remaining)
         if not f then return nil end
@@ -798,47 +840,97 @@ end
 -- max_airborne_aircraft, fits the window and finds parking for every flight; the first
 -- package of the coalition starts at first_start_s. Sets start_s / takeoff_s / tot_s /
 -- end_s / spots on each flight and returns true, or returns false and the reason.
-local function schedulePackage(ctx, flights)
+-- Each flight's times relative to the escorted mission's (flights[1]) start: rel_start,
+-- rel_tot, rel_end. Returns the earliest start and the latest end.
+local function relativeTimes(flights)
     local T = AIR_TASKING_TIMING
     local main = flights[1]
     local earliest, latest = math.huge, -math.huge
     for _, f in ipairs(flights) do
-        -- relative to the escorted mission's start
         f.rel_tot = T.taxi_s + main.to_target_s - f.lead_s
         f.rel_start = f.rel_tot - f.to_target_s - T.taxi_s
         f.rel_end = f.rel_tot + T.attack_s + f.home_s + T.landing_s
         earliest = math.min(earliest, f.rel_start)
         latest = math.max(latest, f.rel_end)
     end
+    return earliest, latest
+end
+
+-- Sets each flight's start_s / takeoff_s / tot_s / end_s from the package's zero (the
+-- escorted mission's start) and returns their airborne spans.
+local function setTimes(flights, zero)
+    local T = AIR_TASKING_TIMING
+    local spans = {}
+    for i, f in ipairs(flights) do
+        f.start_s = zero + round(f.rel_start)
+        f.takeoff_s = f.start_s + T.taxi_s
+        f.tot_s = zero + round(f.rel_tot)
+        f.end_s = zero + round(f.rel_end)
+        spans[i] = { f.takeoff_s, f.end_s - T.landing_s, f.count }
+    end
+    return spans
+end
+
+-- Parking for every flight of a package: free spots from its start, or a human flight's
+-- player slot. Returns true, or releases what it held and returns false.
+local function parkPackage(ctx, flights)
+    local held = {}
+    for _, f in ipairs(flights) do
+        if f.player_slot then
+            f.spots = { f.player_slot.parking }
+        else
+            local spots, h = reserveParking(ctx, f.base, f.aircraft_type, f.count, f.start_s)
+            if not spots then
+                releaseParking(held)
+                return false
+            end
+            f.spots = spots
+            for _, x in ipairs(h) do held[#held + 1] = x end
+        end
+    end
+    return true
+end
+
+local function schedulePackage(ctx, flights)
+    local T = AIR_TASKING_TIMING
+    local earliest, latest = relativeTimes(flights)
     local lastStart = T.window_s - (latest - earliest)
     if lastStart < T.first_start_s then return false, "too long for the window" end
     local reason = "over the airborne cap"
     for try = 1, START_TRIES do
         local first = (ctx.attack_missions == 0 and try == 1) and T.first_start_s
                       or T.first_start_s + math.random() * (lastStart - T.first_start_s)
-        local zero = round(first - earliest)
-        local spans = {}
-        for i, f in ipairs(flights) do
-            f.start_s = zero + round(f.rel_start)
-            f.takeoff_s = f.start_s + T.taxi_s
-            f.tot_s = zero + round(f.rel_tot)
-            f.end_s = zero + round(f.rel_end)
-            spans[i] = { f.takeoff_s, f.end_s - T.landing_s, f.count }
-        end
+        local spans = setTimes(flights, round(first - earliest))
         if airborneAtMost(ctx, spans) <= ctx.per.max_airborne_aircraft then
-            local held, ok = {}, true
-            for _, f in ipairs(flights) do
-                local spots, h = reserveParking(ctx, f.base, f.aircraft_type, f.count, f.start_s)
-                if not spots then ok = false break end
-                f.spots = spots
-                for _, x in ipairs(h) do held[#held + 1] = x end
-            end
-            if ok then return true end
-            releaseParking(held)
+            if parkPackage(ctx, flights) then return true end
             reason = "no parking"
         end
     end
     return false, reason
+end
+
+-- A package with a human flight in it, timed around the player: the human takes off at
+-- `takeoff_s`, and every other flight of the package keeps its place relative to it. If
+-- that would start an AI flight before first_start_s, the whole package moves later (the
+-- player waits), but never past the end of HUMAN_TASKING.startup_s: a package whose AI
+-- flights can't be there in time isn't flown with this player (John: prep ~15 min and
+-- go, not an hour on the ramp). Then the airborne cap and parking, as for any package.
+local function scheduleHumanPackage(ctx, flights, human, takeoff_s)
+    local T = AIR_TASKING_TIMING
+    local _, latest = relativeTimes(flights)
+    local zero = takeoff_s - T.taxi_s - human.rel_start
+    for _, f in ipairs(flights) do
+        if f ~= human and zero + f.rel_start < T.first_start_s then zero = T.first_start_s - f.rel_start end
+    end
+    zero = round(zero)
+    if zero + human.rel_start + T.taxi_s > HUMAN_TASKING.startup_s[2] + 60 then
+        return false, "package's AI flights can't be there in time"
+    end
+    if zero + latest > T.window_s then return false, "too long for the window" end
+    local spans = setTimes(flights, zero)
+    if airborneAtMost(ctx, spans) > ctx.per.max_airborne_aircraft then return false, "over the airborne cap" end
+    if not parkPackage(ctx, flights) then return false, "no parking" end
+    return true
 end
 
 -- A drafted and scheduled flight → its plan entry, numbered.
@@ -854,8 +946,12 @@ local function commitFlight(ctx, f, packageId)
     local mission = {
         id = "MSN" .. number, number = number, coalition = ctx.coalition, package = packageId,
         mission_type = f.mission_type, group_task = f.mt.group_task,
+        flown_by = f.player_slot and "human" or "ai",
+        player_slot = f.player_slot and { group = f.player_slot.group, spot = f.player_slot.spot,
+                                          terminal_index = f.player_slot.terminal_index },
         target = t.id, target_label = t.label, target_kind = t.kind, target_pos = t.pos,
-        aircraft_type = f.aircraft_type, count = f.count, skill = Util.pick(AIR_TASKING_SKILL),
+        aircraft_type = f.aircraft_type, count = f.count,
+        skill = (not f.player_slot) and Util.pick(AIR_TASKING_SKILL) or nil,
         launch_base = f.base, landing_base = f.base, parking = parking,
         start_s = f.start_s, takeoff_s = f.takeoff_s, tot_s = f.tot_s, end_s = f.end_s,
         distance_km = round(f.distance_km), route = f.route,
@@ -872,14 +968,42 @@ local function commitFlight(ctx, f, packageId)
         success = t.success, critical_names = t.critical_names,
     }
     ctx.out.missions[#ctx.out.missions + 1] = mission
+    f.committed = mission
     return mission
 end
 
 local function logFlight(ctx, m, extra)
-    Log.info(string.format("  %-7s %-4s %-27s %dx %-13s %-22s → %-34s %4d km (%d flown, %d in enemy airspace, target %d km past contested)  start %s  TOT %s  back %s%s",
-        m.id, ctx.coalition:upper(), m.mission_type, m.count, m.aircraft_type, m.launch_base, m.target,
+    Log.info(string.format("  %-7s %-4s %s%-27s %dx %-13s %-22s → %-34s %4d km (%d flown, %d in enemy airspace, target %d km past contested)  start %s  TOT %s  back %s%s",
+        m.id, ctx.coalition:upper(), m.flown_by == "human" and "HUMAN " or "", m.mission_type, m.count,
+        m.aircraft_type, m.launch_base, m.target,
         m.distance_km, m.route_km, m.enemy_airspace_km or 0, m.target_depth_km or 0,
         clock(m.start_s), clock(m.tot_s), clock(m.end_s), extra))
+end
+
+-- A scheduled package (flights[1] the escorted mission, then its suppression flights)
+-- → plan entries; the target is taken. Returns the mission and the package.
+local function commitPackage(ctx, flights)
+    local main = flights[1]
+    local packageId = "PKG" .. ctx.next_number
+    ctx.taken[main.target.id] = true
+    ctx.attack_missions = ctx.attack_missions + 1
+    local mission = commitFlight(ctx, main, packageId)
+    local package = { id = packageId, mission = mission.id, suppression_flights = {}, tot_s = mission.tot_s }
+    local attack = mission.attack
+    logFlight(ctx, mission, string.format("  %s%s", attack.points and (#attack.points .. " attack point(s)")
+        or (#attack.groups .. " group(s)"),
+        mission.needs_suppression and ("  crosses: " .. table.concat(mission.suppression_threats, ", ")) or ""))
+    mission.suppressed_by = {}
+    for i = 2, #flights do
+        local s = commitFlight(ctx, flights[i], packageId)
+        s.escorts, s.suppresses = mission.id, flights[i].threats
+        mission.suppressed_by[#mission.suppressed_by + 1] = s.id
+        package.suppression_flights[#package.suppression_flights + 1] = s.id
+        logFlight(ctx, s, string.format("  escorts %s, %d s ahead, engages: %s", mission.id,
+            flights[i].lead_s, table.concat(s.attack.groups, ", ")))
+    end
+    ctx.out.packages[#ctx.out.packages + 1] = package
+    return mission, package
 end
 
 -- One mission and its package, or nil. `failures` counts why tries failed.
@@ -900,26 +1024,7 @@ local function planMission(ctx, missionType, failures)
                 if not ok then
                     fail(why)
                 else
-                    local packageId = "PKG" .. ctx.next_number
-                    ctx.taken[main.target.id] = true
-                    ctx.attack_missions = ctx.attack_missions + 1
-                    local mission = commitFlight(ctx, main, packageId)
-                    local package = { id = packageId, mission = mission.id, suppression_flights = {}, tot_s = mission.tot_s }
-                    local attack = mission.attack
-                    logFlight(ctx, mission, string.format("  %s%s", attack.points and (#attack.points .. " attack point(s)")
-                        or (#attack.groups .. " group(s)"),
-                        mission.needs_suppression and ("  crosses: " .. table.concat(mission.suppression_threats, ", ")) or ""))
-                    mission.suppressed_by = {}
-                    for i = 2, #flights do
-                        local s = commitFlight(ctx, flights[i], packageId)
-                        s.escorts, s.suppresses = mission.id, flights[i].threats
-                        mission.suppressed_by[#mission.suppressed_by + 1] = s.id
-                        package.suppression_flights[#package.suppression_flights + 1] = s.id
-                        logFlight(ctx, s, string.format("  escorts %s, %d s ahead, engages: %s", mission.id,
-                            flights[i].lead_s, table.concat(s.attack.groups, ", ")))
-                    end
-                    ctx.out.packages[#ctx.out.packages + 1] = package
-                    return mission, package
+                    return commitPackage(ctx, flights)
                 end
             end
         end
@@ -1188,15 +1293,18 @@ end
 -- airspace, parking free at its start, and under the
 -- airborne cap; or nil and why. `arrive_s` and
 -- `leave_s` are its time on station; `takeoff` "runway" needs no parking.
-local function draftStationFlight(ctx, missionType, station, arrive_s, leave_s)
+-- `human` (a human flight): { aircraft_type, bases, count, takeoff_s } as for
+-- draftMission; the flight takes off at takeoff_s and stays on station on_station_s from
+-- when it gets there (arrive_s / leave_s are ignored); its parking is its player slot.
+local function draftStationFlight(ctx, missionType, station, arrive_s, leave_s, human)
     local mt = AIR_MISSION_TYPE[missionType]
     local T = AIR_TASKING_TIMING
     local reason = "no aircraft in reach"
     for _ = 1, AIRCRAFT_TRIES do
-        local aircraftType = Util.weightedPick(COALITION_AIRCRAFT[ctx.coalition][missionType])
+        local aircraftType = human and human.aircraft_type or Util.weightedPick(COALITION_AIRCRAFT[ctx.coalition][missionType])
         local p = AIRCRAFT_PROFILE[aircraftType]
         local bases = {}
-        for _, b in ipairs(launchBases(ctx, aircraftType)) do
+        for _, b in ipairs(human and human.bases or launchBases(ctx, aircraftType)) do
             local d = Util.dist(ctx.plan.world.airbases[b].pos, station.centre)
             if d <= p.combat_radius_km * 1000 and (not station.region or ctx.base_region[b] == station.region) then
                 bases[#bases + 1] = { name = b, d = d }
@@ -1217,7 +1325,7 @@ local function draftStationFlight(ctx, missionType, station, arrive_s, leave_s)
             -- patrols and the AWACS work own and contested airspace: a base that can only
             -- reach the station through enemy airspace can't fly it
             local enemyKm = enemyAirspaceKm(ctx, route)
-            local count = flightSize(mt, p)
+            local count = human and human.count or flightSize(mt, p)
             local taxi = (mt.takeoff == "runway") and 60 or T.taxi_s
             -- the AWACS goes at mission start; patrols no earlier than the first attack flights
             local earliest = (missionType == EARLY_WARNING) and 0 or T.first_start_s
@@ -1225,6 +1333,12 @@ local function draftStationFlight(ctx, missionType, station, arrive_s, leave_s)
                         distance_km = b.d / 1000, count = count, route = route, crossed = {},
                         enemy_airspace_km = enemyKm,
                         start_s = round(math.max(earliest, arrive_s - to - taxi)) }
+            if human then
+                f.start_s = human.takeoff_s - taxi
+                arrive_s = human.takeoff_s + to
+                leave_s = math.min(arrive_s + AIR_DEFENSE.on_station_s, T.window_s)
+                f.player_slot = human.slot_at[b.name]
+            end
             f.takeoff_s = f.start_s + taxi
             f.tot_s = round(f.takeoff_s + to)
             f.end_s = round(leave_s + home + T.landing_s)
@@ -1237,7 +1351,9 @@ local function draftStationFlight(ctx, missionType, station, arrive_s, leave_s)
                 reason = "over the airborne cap"
             else
                 local ok = true
-                if mt.takeoff ~= "runway" then
+                if f.player_slot then
+                    f.spots = { f.player_slot.parking }
+                elseif mt.takeoff ~= "runway" then
                     f.spots = reserveParking(ctx, b.name, aircraftType, count, f.start_s)
                     ok = f.spots ~= nil
                     if not ok then reason = "no parking" end
@@ -1407,6 +1523,154 @@ local function planAlertPosture(ctx, earlyWarning)
              first_number = FIRST_NUMBER[ctx.coalition] + 900 }
 end
 
+-- ── human flights ───────────────────────────────────────────────
+
+-- The bases a human flight can launch from: held bases that can launch
+-- HUMAN_TASKING.aircraft_type and have a player slot whose spot exists. Returns the base
+-- names and, per base, its slot { group, spot, terminal_index, parking (the spot) }.
+local function humanSlotBases(ctx)
+    local bases, slotAt = {}, {}
+    for _, name in ipairs(launchBases(ctx, HUMAN_TASKING.aircraft_type)) do
+        for _, slot in ipairs(PLAYER_SLOTS[name] or {}) do
+            for _, s in ipairs(ctx.plan.world.airbases[name].parking) do
+                if not slotAt[name] and s[4] == slot.terminal_index then
+                    slotAt[name] = { group = slot.group, spot = slot.spot, terminal_index = slot.terminal_index, parking = s }
+                end
+            end
+        end
+        if slotAt[name] then bases[#bases + 1] = name end
+    end
+    return bases, slotAt
+end
+
+-- One human flight of `missionType` and its package, or nil. `human` = { aircraft_type,
+-- bases, count, takeoff_s, slot_at }. A strike, airfield strike or destruction of air
+-- defenses is planned like the AI's, with the player's aircraft and bases, and gets AI
+-- suppression flights if its route needs them. Suppression: an AI mission whose route
+-- needs it, the player taking the first threats on the way and AI flights the rest. A
+-- patrol: one of the front stations. Returns the human flight's plan entry.
+local function planHumanMission(ctx, missionType, human, failures)
+    local function fail(reason) failures[reason] = (failures[reason] or 0) + 1 end
+    if missionType == PATROL then
+        local stations = {}
+        for _, s in ipairs(ctx.out.stations or {}) do
+            if s.kind == "front" then stations[#stations + 1] = s end
+        end
+        if #stations == 0 then fail("no patrol station") return nil end
+        Util.shuffle(stations)
+        for _, st in ipairs(stations) do
+            local f, why = draftStationFlight(ctx, PATROL, st, 0, 0, human)
+            if f then
+                local m = commitFlight(ctx, f, st.id)
+                m.station = st.id
+                logFlight(ctx, m, string.format("  on station %s–%s", clock(m.tot_s), clock(m.attack.until_s)))
+                return m
+            end
+            fail(why)
+        end
+        return nil
+    end
+    for _ = 1, MISSION_TRIES do
+        local flights, own
+        if missionType == SUPPRESSION then
+            local main, why = draftMission(ctx, Util.weightedPick(ctx.attack_types))
+            if not main then
+                fail(why)
+            elseif #main.crossed == 0 then
+                fail("route needs no suppression")
+            else
+                local remaining = {}
+                for i, id in ipairs(main.crossed) do remaining[i] = id end
+                own = draftSuppressionFlight(ctx, main, remaining, human)
+                local rest = own and draftSuppression(ctx, main, remaining)
+                if not own then
+                    fail("no player slot in reach of its threats")
+                elseif not rest then
+                    fail("no suppression flight in reach")
+                else
+                    flights = { main, own }
+                    for _, f in ipairs(rest) do flights[#flights + 1] = f end
+                end
+            end
+        else
+            local main, why = draftMission(ctx, missionType, human)
+            local escorts = {}
+            if main and #main.crossed > 0 then escorts = draftSuppression(ctx, main) end
+            if not main then
+                fail(why)
+            elseif not escorts then
+                fail("no suppression flight in reach")
+            else
+                own, flights = main, { main }
+                for _, f in ipairs(escorts) do flights[#flights + 1] = f end
+            end
+        end
+        if flights then
+            own.player_slot = human.slot_at[own.base]
+            local ok, why = scheduleHumanPackage(ctx, flights, own, human.takeoff_s)
+            if ok then
+                commitPackage(ctx, flights)
+                return own.committed
+            end
+            fail(why)
+        end
+    end
+    return nil
+end
+
+-- HUMAN_TASKING.missions human flights, each taking off startup_s after mission start.
+-- Each tries its mission types in weighted random order (types another human flight
+-- already has go last, for variety), first from slot bases no other human flight uses,
+-- then from any slot base. Returns the plan entries.
+local function planHumanMissions(ctx)
+    local H = HUMAN_TASKING
+    local bases, slotAt = humanSlotBases(ctx)
+    local out, usedBases, usedTypes = {}, {}, {}
+    if #bases == 0 then
+        Log.warn(string.format("  %s: no held base with a player slot can launch an %s — no human flights",
+            ctx.coalition:upper(), H.aircraft_type))
+        return out
+    end
+    for n = 1, H.missions do
+        local takeoff = round(H.startup_s[1] + math.random() * (H.startup_s[2] - H.startup_s[1]))
+        local pool, fresh, again = {}, {}, {}
+        for i, e in ipairs(H.mission_types) do pool[i] = e end
+        while #pool > 0 do
+            local mt = Util.weightedPick(pool)
+            for i, e in ipairs(pool) do
+                if e[1] == mt then table.remove(pool, i) break end
+            end
+            table.insert(usedTypes[mt] and again or fresh, mt)
+        end
+        for _, mt in ipairs(again) do fresh[#fresh + 1] = mt end
+        local failures, m = {}, nil
+        for pass = 1, 2 do
+            local list = {}
+            for _, b in ipairs(bases) do
+                if pass == 2 or not usedBases[b] then list[#list + 1] = b end
+            end
+            if #list > 0 and not m then
+                local human = { aircraft_type = H.aircraft_type, bases = list, count = 1, takeoff_s = takeoff,
+                                slot_at = slotAt }
+                for _, mt in ipairs(fresh) do
+                    m = planHumanMission(ctx, mt, human, failures)
+                    if m then break end
+                end
+            end
+        end
+        if m then
+            usedBases[m.launch_base], usedTypes[m.mission_type] = true, true
+            out[#out + 1] = m
+        else
+            local parts = {}
+            for _, k in ipairs(sortedKeys(failures)) do parts[#parts + 1] = k .. " " .. failures[k] end
+            Log.warn(string.format("  %s human flight %d of %d not planned (%s)", ctx.coalition:upper(), n, H.missions,
+                table.concat(parts, ", ")))
+        end
+    end
+    return out
+end
+
 -- ── what a coalition's flights route around ─────────────────────
 
 -- The enemy threats this coalition's flights can't overfly, as circles: SAM sites of the
@@ -1522,6 +1786,16 @@ function PlanAirTasking.run(plan)
             local m = AIR_MISSION_TYPE[e[1]]
             if m.built and (m.planned_as or "mission") == "mission" then types[#types + 1] = e end
         end
+        ctx.attack_types = types
+
+        -- human flights next: they get the pick of the targets, and the AI missions fill
+        -- in around them
+        res.human_missions = {}
+        if coalition == HUMAN_TASKING.coalition then
+            for _, m in ipairs(planHumanMissions(ctx)) do res.human_missions[#res.human_missions + 1] = m.id end
+        end
+        res.summary.human = #res.human_missions
+
         local wanted = math.random(per.missions[1], per.missions[2])
         for _ = 1, wanted do
             local missionType = Util.weightedPick(types)
@@ -1546,8 +1820,9 @@ function PlanAirTasking.run(plan)
         table.sort(res.missions, function(a, b) return a.start_s < b.start_s end)
         local parts = {}
         for _, k in ipairs(sortedKeys(res.summary.by_type)) do parts[#parts + 1] = k .. " " .. res.summary.by_type[k] end
-        Log.info(string.format("  %s: %d of %d missions planned, %d suppression flights, %d patrols on %d stations, %d AWACS, %d flights  [%s]",
-            coalition:upper(), res.summary.missions, wanted, res.summary.suppression_flights, res.summary.patrols,
+        Log.info(string.format("  %s: %d human flights (%s), %d of %d missions planned, %d suppression flights, %d patrols on %d stations, %d AWACS, %d flights  [%s]",
+            coalition:upper(), res.summary.human, table.concat(res.human_missions, ", "), res.summary.missions, wanted,
+            res.summary.suppression_flights, res.summary.patrols,
             res.summary.stations, res.summary.early_warning, res.summary.flights, table.concat(parts, ", ")))
     end
     return plan

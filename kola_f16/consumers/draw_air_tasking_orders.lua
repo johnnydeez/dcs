@@ -4,7 +4,8 @@
 --   package); a suppression flight's mark sits at its attack waypoint, with the threats
 --   it engages. Defensive air: each patrol station and the AWACS orbit as a solid
 --   race-track with one label listing its flights, a patrol station's defended zone as a
---   dashed circle and its commit circles as faint dotted ones, each alert base's
+--   dashed circle and its commit circles as faint dotted ones, human flights' routes
+--   dashed yellow, each alert base's
 --   posture, and (with CONFIG.DRAW_AIR_ZONES, off: the map got too cluttered) the defended air zones as
 --   dashed circles.
 -- Reads the plan; writes nothing back to it.
@@ -22,6 +23,8 @@ local LINE_DASHED = 2
 local NO_FILL     = { 0, 0, 0, 0 }
 -- commit circles are fainter than the defended zone: there are many of them
 local COMMIT_COLOR = { red = { 1, 0.5, 0, 0.4 }, blue = { 0, 0.8, 0.8, 0.4 } }
+-- human flights stand out from the AI's: yellow, dashed
+local HUMAN_COLOR = { 1, 1, 0, 1 }
 
 local function clock(s)
     return string.format("%02d:%02d", math.floor(s / 3600), math.floor(s % 3600 / 60))
@@ -34,16 +37,17 @@ function DrawAirTaskingOrders.apply(plan)
         local byStation = {}
         for _, m in ipairs(ato[coalition] and ato[coalition].missions or {}) do
             local r = m.route
+            local human = m.flown_by == "human"
             for i = 2, #r do
                 trigger.action.lineToAll(-1, _mark, Util.toVec3(r[i - 1]), Util.toVec3(r[i]),
-                    SIDE_COLOR[coalition], LINE_DOTTED, true, "")
+                    human and HUMAN_COLOR or SIDE_COLOR[coalition], human and LINE_DASHED or LINE_DOTTED, true, "")
                 _mark = _mark + 1
             end
             if m.station then
                 -- patrols and the AWACS: one label per station, below
                 byStation[m.station] = byStation[m.station] or {}
-                table.insert(byStation[m.station], string.format("%s %s from %s, on station %s–%s", m.id,
-                    m.aircraft_type, m.launch_base, clock(m.tot_s), clock(m.attack.until_s)))
+                table.insert(byStation[m.station], string.format("%s%s %s from %s, on station %s–%s",
+                    human and "HUMAN " or "", m.id, m.aircraft_type, m.launch_base, clock(m.tot_s), clock(m.attack.until_s)))
             else
             local detail
             if m.escorts then
@@ -55,8 +59,8 @@ function DrawAirTaskingOrders.apply(plan)
                         table.concat(m.suppression_threats, ", "), table.concat(m.suppressed_by or {}, ", "))
                 end
             end
-            local text = string.format("%s %s %s (%s)\n%dx %s from %s\nstart %s  TOT %s  back %s\n%s",
-                m.id, coalition:upper(), m.mission_type, m.package or "", m.count, m.aircraft_type, m.launch_base,
+            local text = string.format("%s%s %s %s (%s)\n%dx %s from %s\nstart %s  TOT %s  back %s\n%s",
+                human and "HUMAN " or "", m.id, coalition:upper(), m.mission_type, m.package or "", m.count, m.aircraft_type, m.launch_base,
                 clock(m.start_s), clock(m.tot_s), clock(m.end_s), detail)
             -- suppression flights share their mission's target: label them at their attack waypoint
             local at = m.target_pos

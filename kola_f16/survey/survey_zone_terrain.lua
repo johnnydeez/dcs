@@ -9,8 +9,11 @@
 -- reads that file next to the .miz, turns the measurements into classes and writes them
 -- into kola_f16/data/zones.lua. Workflow after drawing or moving zones:
 --   1. save khola_ground_zones.miz
---   2. fly it once (this script runs at start, takes a few seconds, says when done)
---   3. python tools/miz_zones.py "<path to khola_ground_zones.miz>"
+--   2. fly it once. This script surveys every zone (a few seconds), then runs the rest
+--      itself (updateZoneData): tools/miz_zones.py on the saved .miz → the repo's
+--      data/zones.lua, and copies the repo's kola_f16 tree to Saved Games\DCS\Scripts.
+--      An on-screen message says whether it worked; details in kola_zone_update.log.
+-- By hand, if needed: python tools/miz_zones.py "<path to khola_ground_zones.miz>".
 --
 -- Raw measurements only; the class thresholds live in tools/miz_zones.py, so classes can
 -- be tuned without flying this again. Trees are invisible to every API (probes,
@@ -33,6 +36,11 @@ local VIEW_TARGET_AGL_M = 100
 local BUILDING_SEARCH_M = 2000
 local BUILDING_NEAR_M   = 500
 local OUT_FILE          = "kola_zone_terrain.lua"
+-- the rest of the workflow (updateZoneData → tools/update_zone_data.cmd): the repo, this
+-- mission's file under Saved Games\DCS, and where the steps log to (the .cmd's log)
+local REPO_DIR          = "C:\\Users\\johnk\\Git\\dcs"
+local ZONES_MIZ         = "Missions\\khola_ground_zones.miz"
+local UPDATE_LOG        = "kola_zone_update.log"
 local ZONE_TYPE         = { [0] = "circle", [2] = "quad" }
 
 local function log(msg) env.info("[ZONE SURVEY] " .. msg) end
@@ -215,6 +223,40 @@ local function serialize(v, indent)
     return "{\n" .. table.concat(parts, ",\n") .. ",\n" .. indent .. "}"
 end
 
+-- The rest of the zone workflow, run from here so flying this mission once is the whole
+-- job (John, 2026-09-27): tools/update_zone_data.cmd runs tools/miz_zones.py (the survey
+-- → the repo's data/zones.lua), then copies the repo's kola_f16 tree to Saved
+-- Games\DCS\Scripts. Blocks the sim for a few seconds; its output goes to UPDATE_LOG and
+-- dcs.log.
+local function updateZoneData(done, failed)
+    local miz = lfs.writedir() .. ZONES_MIZ
+    local logPath = lfs.writedir() .. UPDATE_LOG
+    if not (os and os.execute) then
+        trigger.action.outText("ZONE DATA NOT UPDATED: os.execute is sanitized.\nRun: python tools/miz_zones.py \"" .. miz .. "\"", 60)
+        return
+    end
+    -- the steps live in tools/update_zone_data.cmd: DCS's Lua runs nothing from
+    -- os.execute past ~260 characters. cmd /c needs the line quoted once more.
+    local writedir = lfs.writedir():gsub("\\$", "")
+    local cmd = string.format('""%s\\tools\\update_zone_data.cmd" "%s" "%s""', REPO_DIR, miz, writedir)
+    log("running: " .. cmd)
+    local rc = os.execute(cmd)
+    local lastWrote, lines = nil, {}
+    local f = io.open(logPath, "r")
+    if f then
+        for line in f:lines() do
+            lines[#lines + 1] = line
+            log("  | " .. line)
+            if line:find("^wrote %d+ zones") then lastWrote = line end
+        end
+        f:close()
+    end
+    local ok = (rc == 0 or rc == true) and lastWrote ~= nil and (lines[#lines] or ""):match("^done") ~= nil
+    trigger.action.outText(string.format("%s\n%s\nSurveyed %d zones (%d failed). Tool output: %s",
+        ok and "ZONE DATA UPDATED and copied to Scripts\\kola_f16." or "ZONE DATA UPDATE FAILED — see the log below / dcs.log.",
+        lastWrote or (lines[#lines] or "no output"), done, failed, logPath), 120)
+end
+
 local function run()
     local zones = env.mission.triggers and env.mission.triggers.zones or {}
     log(string.format("surveying %d zones", #zones))
@@ -251,9 +293,9 @@ local function run()
     f:write(header .. "ZONE_TERRAIN = " .. serialize(out) .. "\n")
     f:close()
     log(string.format("%d zones surveyed, %d failed → %s", done, failed, path))
-    trigger.action.outText(string.format(
-        "ZONE SURVEY DONE: %d zones surveyed, %d failed.\n%s\nNext: python tools/miz_zones.py \"<zones .miz>\"",
+    trigger.action.outText(string.format("ZONE SURVEY DONE: %d zones surveyed, %d failed.\n%s\nUpdating the zone data …",
         done, failed, path), 60)
+    updateZoneData(done, failed)
 end
 
 local ok, err = pcall(run)

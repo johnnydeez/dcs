@@ -186,6 +186,29 @@ AIR_PACKAGE = {
     suppression_lead_s = { 180, 300 },
 }
 
+-- Human flights (session 10): Blue missions planned for players, listed at mission start
+-- and in the F10 menu, flown from a player slot (data/player_slots.lua). Planned like the
+-- AI's (same targets near the front, routes, packages and suppression flights), but one
+-- aircraft of aircraft_type from a held base with a player slot, and timed from mission
+-- start: takeoff after a cockpit startup of startup_s, over the target when the route
+-- gets there; the package's AI flights are timed around it. Never spawned: the player
+-- spawns in on the slot. Planned after defensive air and before the AI attack missions.
+--   coalition      the coalition players fly for
+--   missions       planned every roll: the stage falls back to the other mission types,
+--                  then to bases another human mission already uses, before giving up
+--   mission_types  { type, weight }: every type a player can fly. A player's
+--                  suppression_of_air_defenses escorts an AI mission; a player's
+--                  combat_air_patrol flies one of the front stations
+--   startup_s      { min, max } seconds from mission start to takeoff
+HUMAN_TASKING = {
+    coalition     = "blue",
+    missions      = 2,
+    aircraft_type = "F-16C_50",
+    mission_types = { { "strike", 3 }, { "airfield_strike", 2 }, { "destruction_of_air_defenses", 2 },
+                      { "suppression_of_air_defenses", 2 }, { "combat_air_patrol", 1 } },
+    startup_s     = { 600, 1200 },
+}
+
 -- Defensive air (plan doc "Defensive air — design"). Planned before the attack missions
 -- ("support up first"), so the patrols and the AWACS always have their share of the cap.
 --

@@ -45,7 +45,10 @@ local function typesToLoad(plan)
     local ato = plan.air_tasking_orders
     for _, c in ipairs({ "red", "blue" }) do
         for _, m in ipairs(ato[c] and ato[c].missions or {}) do
-            add(c, m.aircraft_type, { x = m.route[1].x, z = m.route[1].z }, m.loadout)
+            -- human flights aren't spawned: the player brings the aircraft
+            if m.flown_by ~= "human" then
+                add(c, m.aircraft_type, { x = m.route[1].x, z = m.route[1].z }, m.loadout)
+            end
         end
         local alert = ato[c] and ato[c].alert
         for _, b in ipairs(alert and alert.bases or {}) do

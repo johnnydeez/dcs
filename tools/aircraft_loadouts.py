@@ -151,7 +151,7 @@ def write(path, chosen):
         "-- tools/aircraft_loadout_choices.json. Do not hand-edit: change the choice and re-run.",
         "-- Plain data, no logic. Every CLSID was checked against data/aircraft_pylons.lua.",
         "--   AIRCRAFT_LOADOUT[type][mission type] = { source, name, fuel, chaff, flare, gun,",
-        "--       pylons = { { num, CLSID } } }   (trailing comment = weapon name)",
+        "--       pylons = { { num, CLSID, weapon (its name, for the brief) } } }",
         "",
         "AIRCRAFT_LOADOUT = {",
     ]
@@ -165,7 +165,7 @@ def write(path, chosen):
                 fmt_number(lo["fuel"]), lo["chaff"], lo["flare"]))
             lines.append("            pylons = {")
             for py, name in zip(lo["pylons"], lo["weapons"]):
-                lines.append("                { num = %d, CLSID = %s },  -- %s" % (py["num"], lua_str(py["CLSID"]), name))
+                lines.append("                { num = %d, CLSID = %s, weapon = %s }," % (py["num"], lua_str(py["CLSID"]), lua_str(name)))
             lines.append("            },")
             lines.append("        },")
         lines.append("    },")

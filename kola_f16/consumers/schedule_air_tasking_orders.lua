@@ -43,6 +43,7 @@ local function landed(unit)
     local name = flightOf(unit)
     if not name then return end
     local unitName = unit:getName()
+    _flights[name].landed = _flights[name].landed + 1
     Log.info(string.format("%s: %s landed — removing it in %d s", name, unitName, REMOVE_AFTER_LANDING_S))
     timer.scheduleFunction(function()
         local u = Unit.getByName(unitName)
@@ -86,6 +87,7 @@ local function destroyed(object, how)
     local flight = flightOf(object)
     if flight then
         _gone[name] = true
+        _flights[flight].lost = _flights[flight].lost + 1
         Log.info(string.format("%s: %s lost (%s) at %s", flight, name, how,
             whereIs(object, _flights[flight].mission.coalition)))
     end
@@ -126,7 +128,31 @@ end
 -- A flight spawned at run time (a scramble), tracked like a planned one: its weapons,
 -- kills and losses are logged and its aircraft are removed after landing.
 function ScheduleAirTaskingOrders.track(m)
-    _flights[m.id] = { mission = m, spawned = true, destroyed = 0 }
+    _flights[m.id] = { mission = m, spawned = true, destroyed = 0, lost = 0, landed = 0 }
+end
+
+-- A planned flight's state now, in a few words: "planned", "airborne", "landed",
+-- "2 of 2 lost", …, plus its target objects destroyed so far (anyone's hits count).
+function ScheduleAirTaskingOrders.statusOf(id)
+    local f = _flights[id]
+    if not f then return "unknown" end
+    local m = f.mission
+    local state
+    if m.flown_by == "human" then
+        state = "for a player"
+    elseif not f.spawned then
+        state = "planned"
+    elseif f.lost >= m.count then
+        state = string.format("%d of %d lost", f.lost, m.count)
+    elseif f.lost + f.landed >= m.count then
+        state = f.lost > 0 and string.format("landed, %d lost", f.lost) or "landed"
+    else
+        state = f.lost > 0 and string.format("airborne, %d lost", f.lost) or "airborne"
+    end
+    if f.destroyed > 0 then
+        state = string.format("%s; target %d of %d critical destroyed", state, f.destroyed, #(m.critical_names or {}))
+    end
+    return state
 end
 
 -- Every PATROL_TRACK_INTERVAL_S: one line per airborne unit of a station flight (patrols,
@@ -161,21 +187,28 @@ function ScheduleAirTaskingOrders.start(plan)
     _plan = plan
     timer.scheduleFunction(trackPatrols, nil, timer.getTime() + PATROL_TRACK_INTERVAL_S)
     local now, count, first = timer.getTime(), 0, nil
+    local human = 0
     for _, coalition in ipairs({ "red", "blue" }) do
         for _, m in ipairs(ato[coalition] and ato[coalition].missions or {}) do
-            _flights[m.id] = { mission = m, spawned = false, destroyed = 0 }
+            _flights[m.id] = { mission = m, spawned = false, destroyed = 0, lost = 0, landed = 0 }
             if not m.escorts then
                 for _, name in ipairs(m.critical_names or {}) do _targets[name] = m.id end
             end
-            local at = math.max(m.start_s, now + 1)
-            timer.scheduleFunction(function()
-                _flights[m.id].spawned = SpawnAircraftGroups.spawn(m) ~= nil
-            end, nil, at)
-            count = count + 1
-            if not first or at < first then first = at end
+            -- human flights aren't spawned: the player spawns in on the slot (its target
+            -- is still watched, above)
+            if m.flown_by == "human" then
+                human = human + 1
+            else
+                local at = math.max(m.start_s, now + 1)
+                timer.scheduleFunction(function()
+                    _flights[m.id].spawned = SpawnAircraftGroups.spawn(m) ~= nil
+                end, nil, at)
+                count = count + 1
+                if not first or at < first then first = at end
+            end
         end
     end
     world.addEventHandler(handler)
-    Log.info(string.format("--- Air tasking orders: %d flights scheduled%s ---", count,
-        first and string.format(", first at T+%d s", math.floor(first)) or ""))
+    Log.info(string.format("--- Air tasking orders: %d flights scheduled%s, %d human flights left to players ---", count,
+        first and string.format(", first at T+%d s", math.floor(first)) or "", human))
 end

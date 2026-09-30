@@ -28,7 +28,8 @@ SAM_DEFENDED_BASE_LEVELS = { heavy = true }
 
 SAM_SITE_DENSITY = {
     asset_ring = { chance = 0.9, layers = { { "long_range", 3 }, { "medium_range", 5 }, { "short_range", 2 } } },
-    front_belt = { chance = 0.8, layers = { { "medium_range", 5 }, { "short_range", 4 }, { "early_warning", 1 } } },
+    -- 0.7 (was 0.8, John 2026-09-27): leaves more front zones for ground targets
+    front_belt = { chance = 0.7, layers = { { "medium_range", 5 }, { "short_range", 4 }, { "early_warning", 1 } } },
     rear_area  = { chance = 0.35, layers = { { "early_warning", 3 }, { "medium_range", 2 }, { "short_range", 1 } } },
 }
 

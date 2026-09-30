@@ -1,4 +1,5 @@
--- Logger: writes to dcs.log (under "SCRIPTING") and, for warnings and errors, to screen.
+-- Logger: writes to dcs.log (under "SCRIPTING") and, for errors (and warnings with
+-- CONFIG.WARNINGS_ON_SCREEN), to screen.
 -- Every line is prefixed [KOLA] for grepping.
 -- Usage: Log.info("message"), Log.warn("..."), Log.error("..."), Log.debug("...")
 
@@ -14,7 +15,7 @@ local function write(level, msg)
     local t = timer and timer.getTime() or 0
     local line = string.format("[KOLA] [%s] [T+%.1fs] %s", LEVEL_NAME[level], t, msg)
     env.info(line)
-    if level >= LEVEL.WARN then
+    if level >= LEVEL.ERROR or (level == LEVEL.WARN and CONFIG and CONFIG.WARNINGS_ON_SCREEN) then
         trigger.action.outText(line, 20)
     end
 end
