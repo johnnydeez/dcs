@@ -5,7 +5,7 @@
 -- missions: strike, airfield strike and destruction of air defenses, one flight per
 -- mission, each with the suppression flights its route needs (a package), filling what
 -- the airborne cap leaves. Each coalition is planned from the target catalog and its own
--- bases only, never from the other coalition's air plan (plan doc §1.10).
+-- bases only, never from the other coalition's air plan (plan.md, "No side reads the other side's plan").
 -- Reads plan.world, plan.territory, plan.target_catalog, the planned units and static
 -- objects (for the positions of each target's critical objects) and the enemy SAM sites
 -- and base defenses (the threats routes go around) + data/air_tasking.lua,
@@ -106,8 +106,8 @@
 --   and for patrols and the AWACS station (orbit start) and station_end;
 --   the attack tasks go on the waypoint with carries_attack_tasks
 --   times are mission time in seconds (timer.getTime())
--- Ids: MSN<number>, the DCS group name; Blue numbers from 2001, Red from 5001 (plan doc
--- §11.7); scrambles, spawned at run time, from 2901 / 5901. Units are <id>_<n>. A package
+-- Ids: MSN<number>, the DCS group name; Blue numbers from 2001, Red from 5001 (plan.md
+-- "Naming and ids"); scrambles, spawned at run time, from 2901 / 5901. Units are <id>_<n>. A package
 -- is PKG<number of the mission it escorts>; a station CAP_<CODE>_<kind>_<n> / AEW_<CODE>_1.
 
 PlanAirTasking = {}

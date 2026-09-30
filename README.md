@@ -14,6 +14,7 @@ missions/
     offline_test_harness.lua  runs the scripts outside DCS with luae.exe (usage in its header)
   kola_f16_random_tasking/    F-16 tasking generator on Kola (air denial, human strike missions)
     plan.md                   status and design: start at "Where we are"
+    roadmap.md                where the mission is headed next (features, open questions, order)
     kola_f16_random_tasking.miz
     kola_f16/                 scripts → Saved Games\DCS\Scripts\kola_f16\
     kola_data_tools/          offline Python tools that generate kola_f16/data (stdlib only, 3.7+)
