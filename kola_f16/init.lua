@@ -35,6 +35,7 @@ if not load("data\\cloud_presets.lua")     then return end
 if not load("data\\unit_pool.lua")         then return end
 if not load("data\\airbase_codes.lua")     then return end
 if not load("data\\airbase_classes.lua")   then return end
+if not load("data\\player_slots.lua")      then return end
 if not load("data\\base_defense_levels.lua")      then return end
 if not load("data\\base_defense_composition.lua") then return end
 if not load("data\\base_defense_placement.lua")   then return end
@@ -72,6 +73,7 @@ if not load("consumers\\preload_aircraft_types.lua") then return end
 if not load("consumers\\schedule_air_tasking_orders.lua") then return end
 if not load("consumers\\run_scrambles.lua")      then return end
 if not load("consumers\\draw_air_tasking_orders.lua") then return end
+if not load("consumers\\brief_air_tasking.lua")   then return end
 if CONFIG.SURVEY_FOOTPRINTS and not load("survey\\survey_airbase_footprints.lua") then return end
 if CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN and not load("survey\\probe_parked_aircraft_spawn.lua") then return end
 
@@ -136,6 +138,9 @@ local function run()
     -- planned (AIR_DEFENSE.alert_posture_planned), so there is nothing to scramble.
     -- RunScrambles.start(plan)   -- reacts to what the radars see; spawns scrambles as needed
     DrawAirTaskingOrders.apply(plan)
+    BriefAirTasking.start(plan)   -- F10: the human taskings and the air tasking order
+    -- the build summary goes to dcs.log; the screen shows only the weather and the human
+    -- taskings (John, session 10)
     local text = Territory.summaryText(plan) .. "\n" .. DrawAirspace.summaryText(plan)
         .. "\n" .. DrawBaseDefenses.summaryText(plan)
         .. "\n" .. DrawSamSites.summaryText(plan) .. "\n" .. DrawFixedGroundTargets.summaryText(plan)
@@ -143,7 +148,8 @@ local function run()
     if CONFIG.SHOW_WEATHER_DEBUG then
         text = text .. "\n\n" .. Weather.summaryText(plan.world)
     end
-    trigger.action.outText(text, 120)
+    Log.info("Build summary:\n" .. text)
+    BriefAirTasking.showStart(plan)
     Log.info("Init complete.")
 end
 

@@ -598,7 +598,9 @@ local function buildParkingSite(ctx, b, kind)
                         or (UNIT_POOL.plane[t].large_parking and TERMINALS_LARGE or TERMINALS_AIRPLANE)
         fitting = {}
         for k, s in ipairs(spots) do
-            if not used[s[4] or k] and (s[3] == nil or allowed[s[3]]) then fitting[#fitting + 1] = k end
+            if not used[s[4] or k] and not wab.player_slots[s[4]] and (s[3] == nil or allowed[s[3]]) then
+                fitting[#fitting + 1] = k
+            end
         end
         if #fitting > 0 then break end
     end

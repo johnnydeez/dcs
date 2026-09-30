@@ -1,6 +1,18 @@
 # Kola F-16 Randomized Mission Generator — Planning Doc
 
-> **Status:** v1 — stages 1–2 (territory + base defenses at all 37 airfields) + stage 3a (SAM network, 100 zones) + world inputs running in DCS (2026-09-23); zone classes in `data/zones.lua`, stage 3b (fixed ground targets) and 3c (target catalog) running in DCS for both coalitions, full start-up spawn ~7 s (2026-09-24); stage 4 first part (one Red supply convoy) and stages 5–6 first pass (strike and airfield strike air tasking for both coalitions, threat-aware routing) running in DCS (2026-09-25); SEAD/DEAD packages and defensive air (CAP, AWACS, radar-triggered scrambles) running in DCS (session 7, 2026-09-25). Session 8 (2026-09-26): direction changed to air denial; airspace map (Blue / Red / contested, regions, pockets) and front-only ground attack with airspace-priced routes running in DCS, aircraft-type preload for the first-spawn freezes built. End of session 8 (2026-09-27): CAP and AWACS back on as front stations over own sites near the contested airspace (two DCS runs, fixes after each; third run pending), scrambles still off. Planning sections §1–10 are the concept; §11, "Where we are" and the "as built" sections are the spec.
+> **Status:** v1 — stages 1–2 (territory + base defenses at all 37 airfields) + stage 3a (SAM network, 100 zones) + world inputs running in DCS (2026-09-23); zone classes in `data/zones.lua`, stage 3b (fixed ground targets) and 3c (target catalog) running in DCS for both coalitions, full start-up spawn ~7 s (2026-09-24); stage 4 first part (one Red supply convoy) and stages 5–6 first pass (strike and airfield strike air tasking for both coalitions, threat-aware routing) running in DCS (2026-09-25); SEAD/DEAD packages and defensive air (CAP, AWACS, radar-triggered scrambles) running in DCS (session 7, 2026-09-25). Session 8 (2026-09-26): direction changed to air denial; airspace map (Blue / Red / contested, regions, pockets) and front-only ground attack with airspace-priced routes running in DCS, aircraft-type preload for the first-spawn freezes built. End of session 8 (2026-09-27): CAP and AWACS back on as front stations over own sites near the contested airspace, scrambles still off. Session 9 (2026-09-27): these changes ran in DCS and follow the rules (John: "looked good … followed our rules"):
+- patrols and the AWACS kept out of enemy airspace;
+- jets fly from any field whose runway fits them, and all airbase classes are re-checked against their runways;
+- escorts obey the same enemy-airspace limit as their mission;
+- patrols carry commit circles.
+
+Then 27 new zones (127 in all, surveyed), the SAM front-belt chance went to 0.7, and the zone survey now updates and deploys the zone data by itself. Session 10 (2026-09-30): **playable by humans**, running in DCS (John: "works really well"):
+- F-16C dynamic spawn slots, which AI aircraft keep off;
+- two human taskings planned every roll with the same routes and packages as the AI;
+- the weather and the human taskings on screen at start;
+- frags and steerpoints (decimal minutes) and the whole Blue air tasking order in the comms menu.
+
+Afrikanda is now always Red; Rovaniemi and Hosio roll in the deep tier. Planning sections §1–10 are the concept; §11, "Where we are" and the "as built" sections are the spec.
 > Companion to the Syria project (`notes/notes.md`). Open questions are marked **[Q]** — answer them inline and the doc becomes the spec.
 >
 > **Layout:** *Where we are* (pick up here) → *Next session* candidates → *Base defenses / SAM sites / Fixed ground targets — as built* → *Plan* (§1–10, concept and research) → *Architecture* (§11, code structure decisions).
@@ -13,10 +25,10 @@
 
 ---
 
-## Where we are — pick up here  *(2026-09-27, end of session 8: air denial; front CAP stations in their second round of fixes)*
+## Where we are — pick up here  *(2026-09-30, end of session 10: playable by humans, player slots and two human taskings with frag and steerpoints; next: decide with John)*
 
-**Status:** the airspace map and front-only ground attack run in DCS. John: "it's actually working pretty well for a first pass". Details in "Session 8" below. CAP and AWACS are back on as front stations, run in DCS twice with fixes after each. **The third run (patrols on `open_fire`) is John's first job next session.**
-- **Run order now:** … → `PlanSamSites` → **`DivideAirspace`** → `PlanFixedGroundTargets` → `PlanConvoys` → `CatalogTargets` → `PlanAirTasking` (attack packages only) → dump. Then **`DrawAirspace`** (first, under every other mark) → `Territory.apply` → spawns → draws → **`PreloadAircraftTypes`** → `ScheduleAirTaskingOrders.start` → `DrawAirTaskingOrders`.
+**Status:** the airspace map, front-only ground attack, and front CAP and AWACS all run in DCS and follow the rules (session 9). **Session 10 made the mission playable**: player slots, human taskings, and the start text and comms menu brief all run in DCS. Session 10 is at the end of this section. The session 8 and 9 bullets below are the history that led here; the settings they describe are still current unless a later session says otherwise. **Order:** end of session 9 it was front targets, then scrambles together with the runtime flight rules; session 10 put playability first. What comes next is open: see the NEXT SESSION candidates, including the playability follow-ups.
+- **Run order now:** `Gather` (+ player slots) → `RollTerritory` → `PlanBaseDefenses` → `PlanSamSites` → **`DivideAirspace`** → `PlanFixedGroundTargets` → `PlanConvoys` → `CatalogTargets` → `PlanAirTasking` (defensive air → **human flights** → AI attack packages) → dump. Then **`DrawAirspace`** (first, under every other mark) → `Territory.apply` → spawns → draws → **`PreloadAircraftTypes`** → `ScheduleAirTaskingOrders.start` → `DrawAirTaskingOrders` → **`BriefAirTasking.start`** (comms menu) → build summary to `dcs.log` → **`BriefAirTasking.showStart`** (start text, 3 min).
 - **CAP and AWACS back on, air denial version (end of session 8; run in DCS twice, fixed after each, third run pending).** Current settings: kill zones at 0.85 of each ring; patrols `open_fire` with `EngageTargetsInZone` from takeoff; orbits and routes out of kill zones; orbit ends on own ground. The bullets below are in the order things happened. John: patrols deny own and as much contested airspace as possible and protect the coalition's installations in or near the contested airspace; behaviour within DCS defaults, no leash yet; single ships.
   - **Front stations** (`planStations`, replaces barrier / asset): the defended sites are the coalition's catalog targets (not convoys) in the contested airspace or ≤ `defended_depth_km` (60) behind it. Greedy: the uncovered site whose 60 km circle (the patrol's `engage_range_km`) holds the most uncovered value, same region only, becomes a station, up to `max_stations` (3) while it covers value ≥ `min_defended_value` (2).
   - **Defended zone** = that circle around the covered sites' value-weighted centre. Patrols get `EngageTargetsInZone` (air) on it instead of `EngageTargets` within range of the route. Drawn as a dashed circle.
@@ -62,13 +74,127 @@
     - Red: 5.0 missions + 3.4 SEAD, 21 patrols.
     - Blue: 7.0 missions + 13.1 SEAD (was 5 of 7 on the run), 21 patrols.
     - Blue launches from Banak 13.2, Kiruna 7.6, Kuusamo 7.0, Kirkenes 7.0, Rovaniemi 2.8 flights per roll.
-  - **Next run, check:**
-    - grep `carries` for the Su-24s;
-    - `lost (` and `track:` for patrols meeting over the contested airspace;
-    - that no Blue patrol crosses Red Lapland.
+- **Session 9 (2026-09-27): the fourth DCS run and what followed.**
+  - **Fourth run, ~2 h 10 min** (a different roll: Red held Kirkenes, Kuusamo and Lapland except Rovaniemi, which sat under a Blue Patriot + NASAMS). John: "It looked good to me and like it followed our rules." From the log:
+    - **Rules held:** 20 patrol / AWACS flights, 0 track samples in enemy airspace, 0 inside an enemy ring. On station they stayed within 30–38 km of the orbit, at ~26k ft (MiG-31s ~32k). Banak flew its own station. Red flew from Kittilä and Kuusamo.
+    - **Ammo lines:** every flight was armed as planned. The Su-24M bombers carried 4 FAB-500 each and dropped all 8, so the "unarmed Su-24" was most likely just how it looked.
+    - **Commit circles work (Red side):** Red patrols engaged the Blue Kittilä package over the contested airspace. A Su-30 and an F-16 shot each other down, and a MiG-31 was killed by an escorting F-16. Blue patrols never fired: the Red Rovaniemi raid came in under Red's own Sodankylä SA-10, where Blue commit circles aren't allowed. Rovaniemi's Patriot / NASAMS / Avenger killed all 6 Red jets of that raid (after one Patriot radar fell to Kh-31Ps).
+    - **Blue results:**
+      - the Kittilä F-15E strike (6 JDAMs) destroyed all 3 parked Su-30s;
+      - the Kittilä SEAD killed a Kittilä SA-11 search radar and an SA-11 launcher;
+      - the Banak DEAD destroyed the Enontekiö SA-6 site.
+    - **Losses:** Blue 5 (4 SEAD jets: 2 to the Sodankylä SA-10, 1 to a Su-30, 1 to the Kuusamo SA-11; 1 F-15E crash), Red 8.
+    - **Open:**
+      - an F-15E of the Banak DEAD crashed alone in Blue airspace at T+6514 s, 1,237 ft, ~30 min after bombing, with no hit recorded (AI approach crash or fuel?); watch for a repeat;
+      - Red's Rovaniemi bombers dropped ~8 min after their TOT, after their SEAD had died, and hit nothing.
+  - **Airbase classes re-checked against runway length** (John: runway length is what decides; `data/airbase_classes.lua` now lists each field's DCS runway):
+    - `strip` = runway too short for any jet (< `AIRBASE_CLASS_JET_RUNWAY_M`, 1,500 m); `dispersal` = any other field with no bigger role.
+    - Now `dispersal`: Andøya, Tromsø, Kirkenes, Kiruna, Arvidsjaur, Kemi-Tornio, Hosio, Vuojärvi, Afrikanda, Alakurtti, Koshka Yavr, Poduzhemye.
+    - Now `strip`: Kalixfors (1,097 m), Sodankylä (1,368 m).
+    - `PlanBaseDefenses` warns at start-up when a class disagrees with the runway.
+    - Side effects (John OK'd): heavier defenses at those fields, more parked-aircraft and fuel targets, and SAM asset rings shift around newly heavy front fields.
+    - Spawn-only DCS run: 0 errors, 0 failed, 0 type mismatches. But that roll had no front-echelon base, so the heavy-front case hasn't been seen yet.
+  - **More zones (John drew 27):** 127 zones, all surveyed. 25 large, 2 medium. 12 of the new ones have a road within 500 m:
+    - Ivalo ×3, Kittilä 233_912, Kirkenes 306_679, Kilpyavr 203_047, Severomorsk-3, Rovaniemi 044_086 / 102_675;
+    - Arvidsjaur 165_147, Jokkmokk 351_595, Kalixfors 141_578.
 
-**NEXT SESSION candidates (decide with John; he wants to go step by step, deciding details as we go):**
-1. ~~**Review the preload test.**~~ Done: it works (see above). **Run the session 9 fixes in DCS** and review them first.
+    The 15 without a road can't hold garrisons, armor or depots, only SAMs, communications sites, and artillery where not steep.
+  - **Why fronts lacked targets** (roll before the new zones): only 19 of 100 zones were in the contested airspace or ≤ 40 km behind it. SAMs took 15 of them, ground targets 1. So `SAM_SITE_DENSITY.front_belt.chance` went from 0.8 to **0.7** (John), the only SAM change.
+  - **Zone survey automated** (John: the survey is part of the sequence, every time). After surveying, `survey/survey_zone_terrain.lua` calls `tools/update_zone_data.cmd`, which runs `miz_zones.py` and copies the repo's `kola_f16` tree to Scripts. The result shows on screen and in `Saved Games\DCS\kola_zone_update.log`. It's a batch file because DCS's Lua silently runs nothing from `os.execute` past ~260 characters. John will forget to fly the survey: remind him whenever zones change.
+
+- **Session 10 (2026-09-30): direction change, make the mission playable by humans** before more battlefield and AI work (front targets and scrambles wait).
+  - **Player slots:** John placed F-16C dynamic spawn templates (group `f16_<base>`, one per base) in `kola_f16_random_tasking.miz`, and set the ME coalition of the always-Blue / always-Red bases (contested ones neutral: the script sets them). DCS always spawns the player on the template's exact spot (John). **Now 8:** Banak, Bodø, Ivalo, Kallax, Kemi-Tornio, Kiruna, Rovaniemi, Tromsø (Afrikanda's was removed at the end of the session; more later).
+  - **`tools/miz_player_slots.py`** reads the templates (and any Client / Player unit on a parking spot) from the .miz → `kola_f16/data/player_slots.lua` (`PLAYER_SLOTS[base]` = terminal index, spot name, group, type, position; base = nearest airbase). Re-run it after moving or adding slots.
+  - **Kept off limits:** `gather.lua` attaches `player_slots = { [terminal_index] = group }` to each airbase in `plan.world` and warns when a slot's spot is missing or has moved. Parked-aircraft statics (`buildParkingSite`) and AI flight parking (`reserveParking`) skip those spots. Ground units already keep clear of every parking spot.
+  - **Offline on the last plan:** all 8 slots match a real spot (0 m off). Over 20 rolls, 971 flights, 0 on a player spot (59 without the rule). The old plan had a parked-aircraft static on Banak's slot. Not yet run in DCS: expect `N kept for player slots` in the gather line, and no `player slot` warnings.
+  - **Human taskings (running in DCS; John: "works really well").** John's decisions:
+    - the mission is also a sandbox: the brief just lists the human taskings, and the player picks a base and spawns;
+    - no assignment or completion tracking yet (the design leaves room for both);
+    - 1 player for now, always 2 human taskings, every mission type allowed;
+    - no AWACS or callsign info yet;
+    - takeoff 10–20 min after mission start, TOT set by how far the target is;
+    - decimal minutes for the F-16;
+    - on screen at start: only the weather and the human taskings.
+  - **Planner** (`HUMAN_TASKING` in `data/air_tasking.lua`, `planHumanMissions` in `plan_air_tasking.lua`):
+    - human flights get `flown_by = "human"` (AI flights `"ai"`) and `player_slot`; `human_missions` lists their ids;
+    - they are planned after defensive air and before the AI attack missions, so they get first pick of targets;
+    - each is 1× F-16C from a held slot base whose runway fits, taking off `startup_s` (600–1200 s) after mission start;
+    - strike / airfield strike / DEAD are planned like the AI's, with AI SEAD if the route needs it;
+    - SEAD: the player escorts an AI mission, takes the first threats on its route, and AI flights take the rest;
+    - CAP: the player flies one of the front stations for `on_station_s`;
+    - the package's AI flights are timed around the player (`scheduleHumanPackage`); if an AI flight would start before `first_start_s`, the whole package slides later, but never past `startup_s[2]` + 1 min (see "Human takeoff capped" below);
+    - fallbacks: other mission types (types already used go last), then bases another human flight already uses.
+  - **Consumers:**
+    - human flights aren't spawned or preloaded;
+    - their routes are drawn dashed yellow with a `HUMAN` label;
+    - new `consumers/brief_air_tasking.lua` (`BriefAirTasking`) writes the start text (weather + one line per human tasking: base, slot, T/O, TOT, what) and comms menu entries for Blue (`\` > F10. Other...; John calls it the comms menu, F10 is the map):
+      - `Human taskings > <MSN> > Frag / Steerpoints`, plus `All human taskings`;
+      - `Air tasking order > Attack packages / Patrols and AWACS / All flights`, each flight with its state now (`ScheduleAirTaskingOrders.statusOf`: planned / airborne / landed / lost, target objects destroyed).
+    - The frag gives the times (local), the target (description, DDM + MGRS + elevation, aim points, success as "destroy at least n of its m critical objects"), the loadout planned for an AI jet, and threats. Threats are the enemy SAM rings the route crosses or passes within 20 km of, with who suppresses each. The frag also lists the package. SEAD frags add the escorted mission and "your" threats; CAP frags add the orbit points, the defended zone and the other patrols. Every frag and steerpoint list is also written to `dcs.log` (`HUMAN TASKING`).
+    - Loadouts now carry each pylon's weapon name (`tools/aircraft_loadouts.py` writes `weapon = …`; otherwise the file is unchanged).
+    - The build summary moved to `dcs.log` (`Build summary:`), and warnings are no longer echoed to screen (`CONFIG.WARNINGS_ON_SCREEN = false`; errors still are).
+  - **Offline, last plan's territory, 100 rolls:**
+    - 2 human flights every roll: DEAD 79, SEAD 64, CAP 57; bases Rovaniemi 64, Banak 60, Ivalo 46, Kallax 15, Tromsø 9, Kiruna 6;
+    - takeoff T+10–21 min; takeoff to TOT 2–32 min (median 11);
+    - 0 AI flights on a slot, 0 AI package flights starting too early, 0 field errors;
+    - no strike or airfield strike: Blue has no strike targets near the front on this territory (the same known gap that leaves the AI's strikes unplanned).
+  - **Territory and slot changes (John, end of session 10):**
+    - Afrikanda is always Red (own cluster `AFRIKANDA`); its player slot is removed.
+    - Rovaniemi and Hosio now roll in the deep tier. `ROVANIEMI` needs `LAPLAND_EAST` Red and goes Red at 0.5, so ~25% of rolls; `HOSIO` needs `ROVANIEMI` Red and goes Red at 0.5, so ~12%.
+    - `FINLAND_SOUTH` is Kemi-Tornio only; `KOLA_SOUTH` is Alakurtti only.
+    - Kemi-Tornio got a slot (spot B03).
+    - `zones.lua` was regenerated from the existing survey: only 11 zones' cluster fields changed.
+    - 4,000 offline rolls: Rovaniemi Red 25.3%, Hosio 12.4%, Afrikanda 100%, 0 chain violations.
+  - **Human takeoff capped:** on the 11:57 plan dump, a package whose AI SEAD came from a far base slid the player's takeoff to T+43 min. `scheduleHumanPackage` now drops a package that would push the takeoff past `startup_s[2]` + 1 min. 100 rolls: takeoff T+10–19 min, 2 taskings every roll, all five types (strike 68, airfield strike 43, DEAD 38, SEAD 30, CAP 21).
+  - **Start text on screen for 3 min** (`START_MESSAGE_S` 180; John found 5 too long); comms menu texts 60 s.
+  - **DCS run, 12:18 roll (~2 min flown; John: "looking good"):**
+    - The roll: Red took Eastern Lapland and Rovaniemi (the 25% case), Hosio stayed Blue, and Alakurtti was a Blue pocket.
+    - 8 slots kept, 0 errors.
+    - **Human taskings:**
+      - MSN2023 DEAD from Kallax on the SA-11 site 67 km east of Rovaniemi: T/O 08:16, TOT 08:34, 2 AI SEAD flights;
+      - MSN2026 strike from Kiruna on Rovaniemi's airfield fuel storage: T/O 08:18, TOT 08:38, 2 JDAM aim points, 3 AI SEAD flights, 30 km in enemy airspace.
+    - Real coordinates, 8 steerpoints each (return legs repeat only the departure point here). The frags read well.
+    - Seen, not changed yet:
+      - both taskings went to the Rovaniemi area;
+      - the unflown tasking's AI SEAD still flies (4–6 jets, and part of the airborne cap). Blue's other AI attack packages only started 2.5–4.5 h in;
+      - the DEAD frag's "Groups: SAM_…" line says nothing useful.
+    - Fixed: the success line's grammar ("50% of 1 critical objects").
+
+**NEXT SESSION candidates (decide with John; he wants to go step by step, deciding details as we go). Order at the end of session 9: front targets, then scrambles + runtime flight rules. Session 10 put playability first; what's next after it is open.**
+
+P. **Playability follow-ups** (session 10, none built):
+   - **Spread the two taskings:** require the second human tasking's target ≥ ~75 km from the first, falling back to any target. On the 12:18 roll both went to Rovaniemi.
+   - **Unflown taskings' AI flights:** the AI SEAD of a human package flies even when nobody takes that tasking. This goes with picking a tasking: once a player takes one, cancel the other's AI flights, or never spawn a package's AI flights before a player shows up.
+   - **Assignment and completion tracking** (John: later; the design leaves room): take a tasking from the comms menu, bind by slot (`player_slot.group`) or by the player's base at birth; report the target result to the player; "take another tasking" after landing (§1.9).
+   - **DEAD frag:** replace the "Groups: SAM_…" line with what the site holds (radars, launchers).
+   - **Later brief items:** AWACS and tanker frequencies and callsigns (§11.7 callsign policy); bullseye (currently 0,0); divert fields; threat-intel fidelity (§1.5: mobile SAMs as probable / possible).
+   - **More players:** more slots per base (the tool and planner already take several per base; the planner uses the first one that exists); 2-ship human flights.
+   - **Steerpoints:** a return leg that repeats many transit points could be shortened ("same as 3").
+   - **Front targets** (item 0 below) directly affects players: on territories without strike targets near the front, human taskings fall back to DEAD / SEAD / CAP.
+0. **Front targets, the next step:**
+   - **"front" echelon for fixed targets:** it's still "≤ 100 km from an enemy base". On rolls where the sides sit far apart nothing counts as front, so armor assembly areas and artillery never roll. Offered: measure it from the airspace front line instead (`DivideAirspace` already runs before `PlanFixedGroundTargets`). Not built.
+   - **Road-less border zones:** optional. John can nudge the no-road border zones onto a road (≤ 500 m) and fly the survey again.
+   - **Reserve front zones for ground targets:** offered, not wanted for now (John chose SAM 0.7 instead).
+   - Then run a full mission and count planned missions per side. Session 9's spawn-only roll planned only 2 of 6 (Red) and 2 of 7 (Blue), all "no target near the front in reach".
+0b. **Scrambles + runtime flight rules** (item 7). The constrained version discussed in session 9; John agreed to the direction, but the details are still open.
+   - **Why not bring back the session 7 scrambles unchanged:**
+     - they fly `weapons_free` with `EngageTargets` (Air, 40 km), the setup that made patrols chase into enemy SAMs (fixed for patrols in session 8);
+     - in session 7 they helped wipe out whole packages, which is the opposite of air denial's rare, meaningful losses;
+     - they share the airborne cap with patrols and packages.
+   - **Why have them at all:** QRA is real (Finland, Norway, Russia). The fourth run showed the gap: the Red raid on Rovaniemi came in where no Blue patrol's commit circles reached (it was under Red's Sodankylä SA-10), and only the SAMs answered. A scramble from Rovaniemi or Kemi-Tornio against a raid over Blue's own airspace is what would really happen.
+   - **The design:**
+     - **trigger:** an intruder detected by own radars (unchanged: SAM / early-warning radars and the AWACS, `getDetectedTargets`) over own airspace, or over contested airspace near an alert base. This replaces the old "defended air zones" circles (100 km round heavy bases, SAM ring + 20 km);
+     - **tasking:** `open_fire`, `EngageGroup` on that one intruder, plus engage circles over own and contested airspace kept out of enemy kill zones (like the patrols' commit circles). No `EngageTargets` on everything;
+     - **leash:** the 30 s scramble loop sends the scramble home when the intruder goes back into its own airspace, or when the scramble's path would enter an enemy kill zone. This is the first real runtime behaviour rule. Build it once, in the one place for AI behaviour rules, so patrols can use it too;
+     - **launch budget:** launches per alert base and cooldowns as before.
+   - **To switch on:**
+     - `AIR_DEFENSE.alert_posture_planned = true` (alert bases, radars);
+     - un-comment `RunScrambles.start` in `init.lua`;
+     - rework `planAlertPosture` (the trigger area) and `consumers/run_scrambles.lua` (tasking, leash);
+     - `interception` loses `weapons_free` in `data/air_tasking.lua`;
+     - alert bases are picked by class (hub / fighter), which is worth re-checking against the session 9 reclassification.
+   - **Order (John):** after front targets, when there's more traffic to judge scrambles by.
+1. ~~**Review the preload test.**~~ Done, it works. ~~Run the session 9 fixes in DCS~~ Done (fourth run, above).
 2. **Standoff attacks:** plan a release point short of the target, so jets attack from the contested zone instead of overflying the target. First research which standoff weapons the DCS AI actually releases at range and which loadouts carry them:
    - Blue: JSOW, SLAM-ER, AGM-86C;
    - Red: Kh-29 / KAB, bomber cruise missiles.
@@ -500,7 +626,7 @@ tools/                       miz_zones.py, cloud_presets.py, unit_pool.py (+ ove
                              aircraft_loadouts.py (+ aircraft_loadout_choices.json, aircraft_loadouts_by_hand.json)
 kola_f16_random_tasking.miz  flyable mission (ONCE + TIME MORE 1 → DO SCRIPT dofile(lfs.writedir().."Scripts\\kola_f16\\init.lua"))
 ```
-Plan dump: `Saved Games\DCS\kola_last_plan.lua` every run. Re-run `python tools/miz_zones.py "<survey .miz>"` after drawing zones; `python tools/unit_pool.py` after a DCS update once pydcs has caught up; `python tools/aircraft_loadouts.py` after changing a loadout choice, re-running unit_pool.py, or updating the Liberation clone (`C:\Users\johnk\Git\dcs_liberation`, sparse: resources/customized_payloads); the footprint survey after a map update. DCS updates re-sanitize `MissionScripting.lua` → `python desanitize_dcs.py` from an admin shell + full DCS restart.
+Plan dump: `Saved Games\DCS\kola_last_plan.lua` every run. After drawing zones, fly the survey mission once (it runs `tools/update_zone_data.cmd` itself, see §1.12); `python tools/unit_pool.py` after a DCS update once pydcs has caught up; `python tools/aircraft_loadouts.py` after changing a loadout choice, re-running unit_pool.py, or updating the Liberation clone (`C:\Users\johnk\Git\dcs_liberation`, sparse: resources/customized_payloads); `python tools/miz_player_slots.py` after moving or adding player slots in `kola_f16_random_tasking.miz`; `python tools/miz_zones.py "<zones .miz>"` after changing `data/clusters.lua`; the footprint survey after a map update. DCS updates re-sanitize `MissionScripting.lua` → `python desanitize_dcs.py` from an admin shell + full DCS restart.
 
 ---
 
@@ -947,9 +1073,13 @@ Rough ME content budget: **2–4 hand-placed target sites per Red-capable cluste
 Type weights are applied *after* filtering to feasible types, so a session never dead-ends. Recommend a **session history file** (we have `io`/`lfs` — de-sanitized) recording the last N mission types so the roller can down-weight repeats. Cheap, and it's the seed of campaign-style progression later.
 
 ### 1.4 Launch base
+> *As built (session 10):* the planner picks the base from the held bases with a player slot (`data/player_slots.lua`, one F-16C dynamic spawn template per base, not every base). The player reads the start text and spawns there. See "Where we are", session 10.
+
 The planner **picks the launch base** and builds the whole flight plan from it (steerpoints, IP, TOT, fuel). The player reads the frag and spawns there via dynamic spawn. No enforcement, no personalized re-brief needed — the frag is the plan. Every Blue F-16-capable base needs dynamic spawn enabled in the ME since any of them can be chosen.
 
 ### 1.5 Briefing
+
+> *As built (session 10), `consumers/brief_air_tasking.lua`:* the start text is the weather plus one line per human tasking (two per roll). The full brief lives in the **comms menu** (`\` > F10. Other...; John: call it the comms menu, F10 is the map): `Human taskings > <MSN> > Frag / Steerpoints` and `Air tasking order`. Coordinates are in degrees and decimal minutes for the F-16, plus MGRS. Not built yet from the design below: tanker / AWACS frequencies and callsigns, threat fidelity (every SAM ring is listed as known), fuel, ROE, in-flight updates.
 
 One `outText` at T+0 with the **essentials only** — no chained/timed messages. F10 **Briefing** submenu holds the full sections for reading in the cockpit. Map marks carry the geometry.
 
@@ -1251,7 +1381,11 @@ Committed data over a live read so the dataset is reviewable/diffable in git; re
 
 **Tooling (all under `tools/`, no external dependencies — pydcs is reference material only):** `dcslua.py` reads/writes DCS's Lua-table serialization; `kola_proj.py` is the Kola projection (WGS84 TM, CM 21°E, k₀ 0.9996, FE −62702, FN −7543625); `kola_airbases.json` holds the 37 Kola airbase positions + codes (extracted once from pydcs's airport data); `miz_zones.py` is the parser.
 
-**Zone classes (added 2026-09-24):** static facts about each zone, one question each, written into `data/zones.lua` by `miz_zones.py`: `size`, `airfield_distance`, `ground`, `terrain`, `road_access`, `railway_access`, `water`, `radar_view`, `settlement`, `prepared_sam_position` + `surveyed` + `measured`. The terrain facts come from flying the zone drawing mission once; `kola_f16/survey/survey_zone_terrain.lua` writes `Saved Games\DCS\kola_zone_terrain.lua` and the tool merges it by zone id. Workflow after drawing or moving zones: save the .miz → fly it once → `python tools/miz_zones.py "<.miz>"`. Classification never runs in the flyable mission (John). Details in "Where we are", session 5.
+**Zone classes (added 2026-09-24):** static facts about each zone, one question each, written into `data/zones.lua` by `miz_zones.py`: `size`, `airfield_distance`, `ground`, `terrain`, `road_access`, `railway_access`, `water`, `radar_view`, `settlement`, `prepared_sam_position` + `surveyed` + `measured`. The terrain facts come from flying the zone drawing mission once; `kola_f16/survey/survey_zone_terrain.lua` writes `Saved Games\DCS\kola_zone_terrain.lua` and the tool merges it by zone id. Workflow after drawing or moving zones (John, 2026-09-27: the survey is part of the sequence, every time): save the .miz → fly it once. That's all. At the end of the survey the script calls `tools/update_zone_data.cmd`, which:
+- runs `miz_zones.py` → the repo's `data/zones.lua`;
+- copies the repo's `kola_f16` tree to `Saved Games\DCS\Scripts\kola_f16`.
+
+An on-screen message says whether it worked; the output goes to `Saved Games\DCS\kola_zone_update.log` and `dcs.log`. It's a batch file because DCS's Lua silently runs nothing from `os.execute` past ~260 characters. By hand, if needed: `tools\update_zone_data.cmd "<.miz>" "<Saved Games\DCS>"`. Classification never runs in the flyable mission (John). Details in "Where we are", session 5.
 
 ### 1.13 Unit pool — every spawnable DCS unit  *(2026-09-22)*
 **What DCS needs to spawn a unit is one string.** `coalition.addGroup(country, category, { units = { { type = "BTR-80", … } } })` — the `type` string is the unit's whole identity; everything else per unit is placement (position, heading, skill). Country is always `CJTF_RED` / `CJTF_BLUE` (the scripting API doesn't restrict types by nation), category is per group. Statics add `shape_name`, aircraft add a payload of pylon CLSIDs. An unknown string doesn't error — DCS substitutes a Leopard-2 and logs `woCar: … replaced with Leopard-2`.
@@ -1303,29 +1437,32 @@ High-detail airports per Orbx: Rovaniemi, Kemi-Tornio, Kuusamo, Ivalo, Severomor
 
 8 + 8 + 9 + 12 = 37 airdromes.
 
-**[TODO]** F-16 launch-base viability. Runway lengths are no longer a research item: gather reads them live (`plan.world.airbases[name].runways[].length`). What's still missing is the rule that turns length into "can launch a loaded F-16" (Syria's `research_runway_lengths.md` uses 2,500 m+ / marginal / too short), applied when stage 6 picks a launch base. Suspect short: Jokkmokk, Kalixfors, Hemavan, Hosio, Enontekiö, Kalevala (568 m helo strip).
+~~**[TODO]** F-16 launch-base viability.~~ Done (session 9): each aircraft profile has `min_runway_m` (F-16 / F/A-18 1,500 m), checked against the longest runway gather reads; human flights use the same rule (session 10).
 
 ### Proposed clusters (Syria-style, for `coalition_setup`)
 
 Finland and Sweden are NATO members as of 2023/2024, so "all Nordic = Blue" is the realistic baseline. The interesting contested zones are the border regions.
 
-*(Revised 2026-09-22 — this is what `data/clusters.lua` holds.)*
+*(Revised 2026-09-30, session 10 — this is what `data/clusters.lua` holds.)*
 
 | Cluster | Type | Bases | Notes |
 |---|---|---|---|
 | **NORWAY_REAR** | Always Blue | Bodø, Evenes, Andøya, Bardufoss, Tromsø | |
 | **SWEDEN** | Always Blue | Kallax, Vidsel, Kiruna, Jokkmokk, Kalixfors, Arvidsjaur, Hemavan, Boden | |
-| **FINLAND_SOUTH** | Always Blue | Rovaniemi, Kemi Tornio, Hosio | |
+| **FINLAND_SOUTH** | Always Blue | Kemi Tornio | Rovaniemi and Hosio moved out in session 10 |
 | **FINNMARK_EAST** | Contested, p_red 0.7 | Kirkenes | 56 km from Luostari — first to fall |
 | **LAPLAND_EAST** | Contested, p_red 0.5 | Ivalo, Sodankylä, Vuojärvi | E75 corridor, ~170 km from Red |
 | **FINLAND_EAST** | Contested, p_red 0.5 | Kuusamo | 121 km from both Alakurtti and Kalevala |
-| **KOLA_SOUTH** | Contested, p_red 0.75 | Afrikanda, Alakurtti | Blue = NATO counter-offensive, kept rare |
+| **KOLA_SOUTH** | Contested, p_red 0.75 | Alakurtti | Blue = NATO counter-offensive, kept rare (Blue → a pocket) |
 | **FINNMARK_WEST** | Contested, requires FINNMARK_EAST Red | Banak, Alta | 250–300 km deep |
 | **LAPLAND_WEST** | Contested, requires LAPLAND_EAST Red | Kittilä, Enontekiö | 250–330 km deep |
+| **ROVANIEMI** | Contested, requires LAPLAND_EAST Red, p_red 0.5 | Rovaniemi | Red ~25% of rolls (session 10) |
+| **HOSIO** | Contested, requires ROVANIEMI Red, p_red 0.5 | Hosio | Red ~12% of rolls (session 10) |
 | **KOLA_CORE** | Always Red | Murmansk Intl, Severomorsk-1, Severomorsk-3, Olenya, Monchegorsk, Kilpyavr, Koshka Yavr, Luostari Pechenga | |
+| **AFRIKANDA** | Always Red | Afrikanda | always Red since session 10 (was in KOLA_SOUTH) |
 | **KARELIA** | Always Red | Kalevala, Poduzhemye | |
 
-Six contested clusters → 64 possible maps. Two mechanics keep it plausible: **`p_red`** weights the roll per cluster, and **`requires_red`** makes a deep cluster roll only if its border-tier neighbour already fell (evaluated in file order), so Russia can't hold Alta while Kirkenes stays NATO. Kuusamo and KOLA_SOUTH border Red directly and roll independently. The IADS in KOLA_CORE can be hand-placed with real-world fidelity since that cluster is always Red.
+Eight contested clusters → 256 combinations, fewer in practice because of the dependencies. Zones carry their cluster in `data/zones.lua` (nearest base's cluster, written by `tools/miz_zones.py`), so after changing clusters, re-run the tool; no new survey flight is needed if no zones moved. Two mechanics keep it plausible: **`p_red`** weights the roll per cluster, and **`requires_red`** makes a deep cluster roll only if its border-tier neighbour already fell (evaluated in file order), so Russia can't hold Alta while Kirkenes stays NATO. Kuusamo and KOLA_SOUTH border Red directly and roll independently. The IADS in KOLA_CORE can be hand-placed with real-world fidelity since that cluster is always Red.
 
 ---
 
@@ -1549,50 +1686,61 @@ Each unit carries its own position, since placement already checked every unit a
 Net effect: all the planning is pure logic over plain data — fast, and segmented from the sim. The spawner then reads the plan and creates units that already fit the missions the plan built.
 
 ### 11.6 Script layout and load order
-Install path `Saved Games\DCS\Scripts\kola_f16\`, loaded by one ME trigger (`MISSION START → DO SCRIPT → dofile(lfs.writedir() .. "Scripts\\kola_f16\\init.lua")`), de-sanitized `MissionScripting.lua`, and a separate `Hooks\slotblock.lua` for the F-16 dynamic slots — the same install shape as Syria (§ INSTALL.md), fully separate tree (§11.1). This is the standard DCS pattern; there isn't a meaningfully different one.
+Install path `Saved Games\DCS\Scripts\kola_f16\`, loaded by one ME trigger (`MISSION START → DO SCRIPT → dofile(lfs.writedir() .. "Scripts\\kola_f16\\init.lua")`) and a de-sanitized `MissionScripting.lua`: the same install shape as Syria (§ INSTALL.md), fully separate tree (§11.1). Players come in by dynamic spawn on F-16C templates placed in the .miz (session 10); the `Hooks\slotblock.lua` once planned for fixed slots isn't needed.
 
-Files marked *(later)* don't exist yet. The "What exists" tree at the top of this doc is the as-built list.
+As built (2026-09-30, session 10). *(later)* marks files that don't exist yet.
 
 ```
 Saved Games\DCS\Scripts\kola_f16\
-  init.lua                     -- entry: load order + run sequence
+  init.lua                       -- entry: load order + run sequence
+  config.lua                     -- tunables and debug flags (CONFIG)
+  gather.lua                     -- all DCS reads → plan.world (airbases + player slots, zones, weather, time)
   lib\
-    util.lua                   -- RNG, picks, geometry, serialize, writeFile
-    logger.lua                 -- + dumpAirbases/Groups/Weather   (ported from Syria)
-    weather.lua                -- weather + time/sun derivation (§1.11)
-    placement.lua              -- isClear, findClear, ring/disc points, buildAnchors, pickAnchorPoint
-                               --   (later: randomPointInZone for zones; LLtoMGRS goes with the brief)
-  data\                        -- static plain-data tables, no logic; hand- or parse-authored
-    clusters.lua               -- cluster table (§3), bases per cluster
-    zones.lua                  -- parsed from the .miz (§1.12)
-    statics.lua                -- (later) static templates (airfield targets, ships), parsed from the .miz
-    catalog.lua                -- (later) content catalog (§1.2): targets, success criteria, per-site templates
-    cloud_presets.lua          -- DCS cloud presets, generated (§1.11)
-    unit_pool.lua              -- every spawnable DCS unit type, generated (§1.13)
-    aircraft_pylons.lua        -- pylon → CLSID compatibility, generated; offline validation only
-    coalition_rosters.lua      -- COALITION_ROSTER[side][role] weighted type picks (hand-authored; the only file that knows red from blue)
-    airbase_classes.lua        -- AIRBASE_CLASS[name]: hub / fighter / bomber / strip / heli (hand)
-    airbase_codes.lua          -- 4-letter code per base (group names, zone names)
-    airbase_footprints.lua     -- surveyed taxiway grid + airfield buildings, generated in-sim
-    base_defense_levels.lua    -- BASE_DEFENSE_LEVEL[class][echelon] → light / standard / heavy; BASE_DEFENSE_SKILL
-    base_defense_composition.lua  -- BASE_DEFENSE_COMPOSITION[level]: components + count ranges
-    base_defense_placement.lua -- BASE_DEFENSE_PLACEMENT[component]: role, anchors { kind = { weight, min_m, max_m } },
-                               --   ring fallback, units per group, spread, mixed_types; group spacing
-    sam_site_recipes.lua       -- SAM / early-warning site recipes per system
-    sam_site_density.lua       -- zone roles, layer weights, caps
-    callsigns.lua              -- (later) curated DCS enum pools per role (§11.7)
-  gather.lua                   -- all DCS reads → plan.world
-  stages\                      -- named by verb; run order lives in init.lua
-    roll_territory.lua  plan_base_defenses.lua  plan_sam_sites.lua  …  (later) write_brief.lua
+    util.lua                     -- RNG, picks, geometry, serialize, writeFile
+    logger.lua                   -- dcs.log; errors (and warnings with CONFIG.WARNINGS_ON_SCREEN) on screen
+    weather.lua                  -- weather + time/sun derivation (§1.11)
+    placement.lua                -- isClear, findClear, ring/disc points, buildAnchors, pickAnchorPoint
+    threat_routing.lua           -- threat map, routes around rings, priced by airspace
+  data\                          -- plain data, no logic; hand-authored or generated
+    clusters.lua                 -- cluster table (§3), bases per cluster (hand)
+    zones.lua                    -- ground zones + classes (tools/miz_zones.py, §1.12)
+    player_slots.lua             -- PLAYER_SLOTS[base]: dynamic spawn slots (tools/miz_player_slots.py)
+    airbase_classes.lua          -- AIRBASE_CLASS[name] + runway lengths (hand)
+    airbase_codes.lua            -- 4-letter code per base
+    airbase_footprints.lua       -- surveyed aprons / buildings (in-sim survey)
+    forested_airfields.lua       -- fields with a narrow cleared overrun (hand)
+    base_defense_levels.lua  base_defense_composition.lua  base_defense_placement.lua
+    sam_site_recipes.lua  sam_site_density.lua
+    fixed_ground_target_recipes.lua  fixed_ground_target_density.lua
+    convoy_recipes.lua
+    coalition_rosters.lua        -- the only file that knows red from blue (ground, SAM, targets, aircraft)
+    air_tasking.lua              -- mission types, per-coalition tasking, timing, packages, AIR_DEFENSE,
+                                 --   routing, HUMAN_TASKING
+    airspace.lua                 -- airspace grid settings
+    aircraft_profiles.lua        -- per aircraft type: runway, parking, reach, speeds, altitudes (hand)
+    aircraft_loadouts.lua        -- one loadout per type × mission, weapon names (tools/aircraft_loadouts.py)
+    aircraft_pylons.lua          -- pylon → CLSID, generated; offline validation only
+    unit_pool.lua                -- every spawnable DCS unit type (tools/unit_pool.py, §1.13)
+    cloud_presets.lua            -- DCS cloud presets (tools/cloud_presets.py)
+    callsigns.lua                -- (later) curated DCS enum pools per role (§11.7)
+  stages\                        -- named by verb; run order lives in init.lua
+    roll_territory.lua  plan_base_defenses.lua  plan_sam_sites.lua  divide_airspace.lua
+    plan_fixed_ground_targets.lua  plan_convoys.lua  catalog_targets.lua  plan_air_tasking.lua
   consumers\
-    territory.lua              -- to be renamed apply_territory.lua (housekeeping)
-    spawn_ground_groups.lua    -- generic: plan entries → coalition.addGroup + per-unit type check
-    draw_base_defenses.lua     -- debug F10 marks
-    draw_sam_sites.lua         -- debug F10 marks + rings
-    (later) schedule_ato.lua  deliver_brief.lua  track_objectives.lua  run_scramble.lua  write_history.lua
-  survey\
-    survey_airbase_footprints.lua  -- one-off, behind CONFIG.SURVEY_FOOTPRINTS
+    territory.lua                -- apply the roll (to be renamed apply_territory.lua)
+    spawn_static_objects.lua  spawn_ground_groups.lua  spawn_aircraft_groups.lua
+    preload_aircraft_types.lua   -- first-spawn freeze fix
+    schedule_air_tasking_orders.lua  -- spawns flights on the clock; logs shots, kills, losses; statusOf
+    run_scrambles.lua            -- off until the AI behaviour rules are designed
+    brief_air_tasking.lua        -- start text + comms menu: human taskings (frag, steerpoints), air tasking order
+    draw_airspace.lua  draw_base_defenses.lua  draw_sam_sites.lua  draw_fixed_ground_targets.lua
+    draw_convoys.lua  draw_air_tasking_orders.lua    -- F10 map marks
+    (later) track_objectives.lua  write_history.lua
+  survey\                        -- one-off in-sim measurements, behind CONFIG flags or in the zone mission
+    survey_airbase_footprints.lua  survey_zone_terrain.lua  probe_parked_aircraft_spawn.lua
 ```
+
+Offline tools (repo `tools\`, stdlib Python 3.7+): `miz_zones.py`, `miz_player_slots.py`, `aircraft_loadouts.py`, `unit_pool.py`, `cloud_presets.py`, `update_zone_data.cmd`, plus `dcslua.py` (Lua table reader) and `kola_proj.py` (map projection).
 
 Load order in `init.lua`: `lib\*` → `data\*` → `stages\*` → `consumers\*`, then the run sequence (§11.3): gather inputs → stages 1–7 → optional plan dump → hand the finished plan to each consumer. Data files load before stages so a stage can reference a data global directly (Syria's global-module convention). **Statics and any hand-placed unit templates live in `data\` alongside zones** — all coordinate-driven and all parseable from the `.miz`, per the same offline-parse workflow (§1.12).
 
@@ -1604,7 +1752,7 @@ Load order in `init.lua`: `lib\*` → `data\*` → `stages\*` → `consumers\*`,
 | Thing | Convention | Example |
 |---|---|---|
 | Late-activation target groups | `TGT_<Base>_<Type>_<Part>` | `TGT_Olenya_SA10_TR` |
-| Dynamic-spawn player slot groups | `<Base>_F16` | `Rovaniemi_F16` |
+| Dynamic-spawn player slot groups | `f16_<base>` (as placed by John; read by `tools/miz_player_slots.py`) | `f16_rovaniemi` |
 | Debug harvest groups | single letters | `A`–`E` |
 
 **2. Planner-assigned logical ids** (live in the plan table):

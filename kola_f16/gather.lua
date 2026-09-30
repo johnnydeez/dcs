@@ -64,6 +64,31 @@ local function gatherParking(ab)
     return out
 end
 
+-- The base's player slots (data/player_slots.lua) as { [terminal_index] = group name },
+-- each checked against the base's real parking: a slot whose spot doesn't exist or has
+-- moved is still kept off limits, but the .miz and the data file disagree, so warn.
+local function gatherPlayerSlots(name, parking)
+    local out = {}
+    for _, slot in ipairs(PLAYER_SLOTS[name] or {}) do
+        out[slot.terminal_index] = slot.group
+        local spot
+        for _, s in ipairs(parking) do
+            if s[4] == slot.terminal_index then spot = s break end
+        end
+        if not spot then
+            Log.warn(string.format("player slot %s: %s has no parking spot %d (%s) — re-run tools/miz_player_slots.py",
+                slot.group, name, slot.terminal_index, slot.spot))
+        else
+            local d = math.sqrt((spot[1] - slot.x) ^ 2 + (spot[2] - slot.z) ^ 2)
+            if d > 30 then
+                Log.warn(string.format("player slot %s: %s spot %d (%s) is %d m from where the data file has it — re-run tools/miz_player_slots.py",
+                    slot.group, name, slot.terminal_index, slot.spot, round(d)))
+            end
+        end
+    end
+    return out
+end
+
 local function gatherAirbases(world_)
     local byName, list = {}, {}
     for _, ab in ipairs(world.getAirbases() or {}) do
@@ -81,13 +106,15 @@ local function gatherAirbases(world_)
             else
                 anchor = Util.withLatLon({ x = p.x, z = p.z })
             end
+            local parking = gatherParking(ab)
             local entry = {
-                name     = ab:getName(),
-                pos      = Util.withLatLon({ x = p.x, z = p.z }),
-                anchor   = anchor,
-                runways  = runways,
-                parking  = gatherParking(ab),
-                me_side  = SIDE_NAME[ab:getCoalition()] or "neutral",  -- as set in the ME, before we touch it
+                name         = ab:getName(),
+                pos          = Util.withLatLon({ x = p.x, z = p.z }),
+                anchor       = anchor,
+                runways      = runways,
+                parking      = parking,
+                player_slots = gatherPlayerSlots(ab:getName(), parking),  -- spots no AI aircraft may use
+                me_side      = SIDE_NAME[ab:getCoalition()] or "neutral",  -- as set in the ME, before we touch it
             }
             byName[entry.name] = entry
             list[#list + 1] = entry.name
@@ -202,7 +229,14 @@ function Gather.run()
             if rw.axis == "unverified" then unverified[#unverified + 1] = name .. " (axis)" end
         end
     end
-    Log.info(string.format("  %d runways, %d parking spots", nRw, nPark))
+    local nSlots = 0
+    for _, name in ipairs(w.airbase_list) do
+        for _ in pairs(w.airbases[name].player_slots) do nSlots = nSlots + 1 end
+    end
+    for name in pairs(PLAYER_SLOTS) do
+        if not w.airbases[name] then Log.warn("player slots at unknown airbase " .. name) end
+    end
+    Log.info(string.format("  %d runways, %d parking spots, %d kept for player slots", nRw, nPark, nSlots))
     if #unverified > 0 then
         Log.warn("runway geometry unverified: " .. table.concat(unverified, ", "))
     end

@@ -14,9 +14,13 @@ CONFIG = {
     -- to place the sun; DCS start_time is local time.
     UTC_OFFSET_H     = 3,
 
-    -- TEMP: print the derived weather/time block on screen at init so the reads can be
-    -- checked against the ME. Remove once the brief owns this.
+    -- Add the derived weather/time block (as read from the ME) to the build summary in
+    -- dcs.log. The screen shows the brief's short weather (consumers/brief_air_tasking.lua).
     SHOW_WEATHER_DEBUG = true,
+
+    -- Warnings also on screen (errors always are). Off since session 10: the screen is
+    -- for the player's brief; warnings are in dcs.log.
+    WARNINGS_ON_SCREEN = false,
 
     -- Stage 1: a base is "frontline" if an enemy base is within this range; two
     -- opposing clusters are "adjacent" if any base pair is within it.

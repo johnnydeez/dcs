@@ -28,9 +28,9 @@ CLUSTERS = {
     },
     {
         id    = "FINLAND_SOUTH",
-        name  = "Southern Finnish Lapland",
+        name  = "Southern Finnish Lapland (Kemi-Tornio)",
         fixed = "blue",
-        bases = { "Rovaniemi", "Kemi Tornio", "Hosio" },
+        bases = { "Kemi Tornio" },         -- Rovaniemi and Hosio roll since session 10 (deep tier)
     },
 
     -- ── Contested: border tier (independent rolls) ───────────
@@ -57,10 +57,10 @@ CLUSTERS = {
     },
     {
         id    = "KOLA_SOUTH",
-        name  = "Southern Kola",
+        name  = "Southern Kola (Alakurtti)",
         fixed = nil,
         p_red = 0.75,                       -- Blue here = NATO counter-offensive; keep it rare
-        bases = { "Afrikanda", "Alakurtti" },
+        bases = { "Alakurtti" },            -- Afrikanda is always Red since session 10
     },
 
     -- ── Contested: deep tier (only if the border tier fell) ──
@@ -80,6 +80,22 @@ CLUSTERS = {
         requires_red = "LAPLAND_EAST",
         bases        = { "Kittila", "Enontekio" },
     },
+    {
+        id           = "ROVANIEMI",
+        name         = "Rovaniemi",
+        fixed        = nil,
+        p_red        = 0.5,
+        requires_red = "LAPLAND_EAST",      -- Red ~25% of rolls
+        bases        = { "Rovaniemi" },
+    },
+    {
+        id           = "HOSIO",
+        name         = "Hosio (Oulu)",
+        fixed        = nil,
+        p_red        = 0.5,
+        requires_red = "ROVANIEMI",         -- Red ~12% of rolls
+        bases        = { "Hosio" },
+    },
 
     -- ── Always Red ───────────────────────────────────────────
     {
@@ -88,6 +104,12 @@ CLUSTERS = {
         fixed = "red",
         bases = { "Murmansk International", "Severomorsk-1", "Severomorsk-3", "Olenya",
                   "Monchegorsk", "Kilpyavr", "Koshka Yavr", "Luostari Pechenga" },
+    },
+    {
+        id    = "AFRIKANDA",
+        name  = "Afrikanda (Kandalaksha)",
+        fixed = "red",
+        bases = { "Afrikanda" },
     },
     {
         id    = "KARELIA",
