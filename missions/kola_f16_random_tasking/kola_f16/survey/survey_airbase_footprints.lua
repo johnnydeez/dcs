@@ -10,7 +10,7 @@
 --     stored as { i, j } grid indices (point = grid.x0 + i*step, grid.z0 + j*step).
 --   * buildings: world.searchObjects(SCENERY) within BUILDING_M of the taxiway/parking/
 --     runway footprint — the airfield's own (towns sit farther out).
--- Probe findings behind this (2026-09-23): plan.md in the mission folder.
+-- Probe findings behind this (2026-09-23): plan.md, "DCS facts learned the hard way".
 -- Also installs the result in AIRBASE_FOOTPRINT so the same run uses it.
 
 SurveyAirbaseFootprints = {}

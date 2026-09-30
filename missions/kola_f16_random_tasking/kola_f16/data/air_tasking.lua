@@ -149,7 +149,7 @@ AIR_TASKING_PER_COALITION = {
     },
 }
 
--- Which targets ground attack missions go after (plan doc, session 8: air denial — jets
+-- Which targets ground attack missions go after (plan.md "Attack missions", air denial — jets
 -- work the front, not the enemy's rear):
 --   max_km_past_contested  a target lies in the contested airspace or at most this far
 --                          from it (so at most this deep in enemy airspace)
@@ -209,7 +209,7 @@ HUMAN_TASKING = {
     startup_s     = { 600, 1200 },
 }
 
--- Defensive air (plan doc "Defensive air — design"). Planned before the attack missions
+-- Defensive air (plan.md "Defensive air"). Planned before the attack missions
 -- ("support up first"), so the patrols and the AWACS always have their share of the cap.
 --
 -- Kill zones (John, 2026-09-27: SAMs don't fire out to their full drawn range, so jets

@@ -2,7 +2,7 @@
 -- re-run the tool after a DCS update. Plain data, no logic.
 --
 -- A mission with preset weather stores only clouds.preset + clouds.base; this table
--- turns the preset id into coverage / precipitation for the planner (§1.11).
+-- turns the preset id into coverage / precipitation for the planner (plan.md, Weather and time).
 --   coverage   lowest-layer coverage word from ED's METAR text (FEW/SCT/BKN/OVC, or a pair)
 --   precip     precipitationPower: -1 = none, 0..1 = rain intensity
 --   base_min/max  allowed cloud base in metres

@@ -1,5 +1,5 @@
 -- Consumer: scrambles — each coalition's response to enemy aircraft in its defended air
--- space (plan doc §1.10, "Defensive air — design"). The plan holds only the posture
+-- space (roadmap.md item 2: scrambles are off until redesigned). The plan holds only the posture
 -- (plan.air_tasking_orders[coalition].alert: alert bases and their aircraft, defended air
 -- zones, the radars that watch); this loop reacts to what actually flies.
 --
