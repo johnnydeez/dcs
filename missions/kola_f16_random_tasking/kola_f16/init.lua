@@ -53,6 +53,7 @@ if not load("data\\air_tasking.lua")              then return end
 if not load("data\\airspace.lua")                 then return end
 if not load("data\\radar_picture.lua")            then return end
 if not load("data\\air_behaviour_rules.lua")      then return end
+if not load("data\\event_log.lua")                then return end
 if not load("gather.lua")                  then return end
 if not load("stages\\roll_territory.lua")  then return end
 if not load("stages\\plan_base_defenses.lua")     then return end
@@ -62,6 +63,7 @@ if not load("stages\\plan_fixed_ground_targets.lua") then return end
 if not load("stages\\plan_convoys.lua")           then return end
 if not load("stages\\catalog_targets.lua")        then return end
 if not load("stages\\plan_air_tasking.lua")       then return end
+if not load("consumers\\write_event_log.lua") then return end
 if not load("consumers\\territory.lua")    then return end
 if not load("consumers\\draw_airspace.lua")       then return end
 if not load("consumers\\spawn_ground_groups.lua") then return end
@@ -116,6 +118,9 @@ local function run()
     -- stage 7 (brief) goes here
 
     dumpPlan(plan)
+    -- this run's event log (Saved Games\DCS\kola_event_logs\): the plan at its top, then
+    -- every event of the air war as it happens
+    WriteEventLog.open(plan)
 
     DrawAirspace.apply(plan)   -- first, so the filled areas lie under every other mark
     Territory.apply(plan)
@@ -136,14 +141,17 @@ local function run()
     -- spawn freezes the sim for seconds (F-15E ~25 s), so it happens here, during start-up,
     -- not mid-mission.
     PreloadAircraftTypes.run(plan)
+    -- DCS events to the event log from here on: after the preload (its spawns aren't part
+    -- of the story), before the first flight spawns
+    WriteEventLog.start()
     -- aircraft spawn later, each at its planned start time
     ScheduleAirTaskingOrders.start(plan)
     -- each coalition's radar picture: what its radars report, kept as the mission runs
-    -- (grep "picture"). Before the behaviour rules and scrambles, which run on it.
+    -- (event log: CONTACT, PICTURE). Before the behaviour rules and scrambles, which run on it.
     TrackRadarPicture.start(plan)
-    -- the rules enforced on AI flights after launch: the scramble leash (grep "leash")
+    -- the rules enforced on AI flights after launch: the scramble leash (event log: LEASH)
     EnforceAirBehaviourRules.start(plan)
-    -- scrambles at raids the radar picture shows (grep "scramble"); nothing launches
+    -- scrambles at raids the radar picture shows (event log: SCRAMBLE); nothing launches
     -- unless AIR_DEFENSE.alert_posture_planned planned alert bases
     RunScrambles.start(plan)
     DrawAirTaskingOrders.apply(plan)

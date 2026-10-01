@@ -2,7 +2,7 @@
 
 > **What this is:** the spec and build state of the Kola F-16C mission generator. When the mission loads, a script rolls the battlefield (who holds which airfield), fills it with ground defenses, SAM networks and targets, plans both coalitions' air war for a ~6-hour window, and briefs human players on their taskings.
 >
-> **Where to look:** *Where we are* (pick up here) → *Backlog* → *As built* (the spec, by stage) → *Design, not built yet* → *Architecture* → *Reference*. Features coming next, in John's order, are in **`roadmap.md`**. Session-by-session history (run logs, before/after numbers) was cut on 2026-09-30; it's in git (`notes/kola_f16_generator_plan.md` in commits up to `4c49af9`).
+> **Where to look:** *Where we are* (pick up here) → *Backlog* → *As built* (the spec, by stage) → *Design, not built yet* → *Architecture* → *Reference*. Features coming next, in John's order, are in **`roadmap.md`**; bugs found in runs, to come back to, are in **`bugs_and_fixes.md`**. Session-by-session history (run logs, before/after numbers) was cut on 2026-09-30; it's in git (`notes/kola_f16_generator_plan.md` in commits up to `4c49af9`).
 >
 > **Paths** are relative to this mission folder (`missions/kola_f16_random_tasking/`) unless they say otherwise. Companion: the Syria mission (`missions/syria_a2g/notes.md`); no shared code.
 >
@@ -36,40 +36,53 @@
 - **Radar picture** (roadmap item 1, done 2026-09-30): each coalition's picture of the enemy aircraft its radars report (see *Radar picture* under *As built*).
 - **Scrambles and the leash** (roadmap item 2, done 2026-09-30): one-ship scrambles at raids the radar picture shows, burning straight at them from a hot ramp spot; the first AI behaviour rule (the leash) brings them home; alert jets go back on alert 30 min after landing (see *Scrambles and the leash*).
 - **Flight ids carry the mission type:** `MSN2025_DEAD`, `MSN2901_SCRAM` (see *Naming and ids*).
+- **Event log** (roadmap item 3, built 2026-09-30, run twice in DCS the same day; the second run flown by John): a plain-language file per run in `event_logs\` (git-ignored), every event of the air war unit by unit, to watch live or comb through afterwards (see *Event log*). The flight, radar-picture, scramble and leash lines moved there from `dcs.log`.
 
 **Last DCS runs:**
 - **Session 9, fourth run, ~2 h:** the air-denial rules held (John: "It looked good to me and like it followed our rules"). 0 patrol or AWACS track samples in enemy airspace or inside an enemy ring.
 - **Session 10, 12:18 roll:** the human taskings, frags and steerpoints read well (John: "looking good").
 - **Session 11, first radar picture + scramble run, ~48 min, watched (not flown):** everything designed showed up and nothing errored (details under *Radar picture* and *Scrambles and the leash*). John: MSN2901 and MSN5902 "did exactly what we wanted as a scramble". **Losses were high: 12 aircraft (Blue 4, Red 8)**, both Blue packages caught by Red fighters and both Red packages destroyed, mostly by aircraft that kept flying their route while engaged → roadmap item 4 (AI behaviour logic). Since then: alert jets return after landing, and flight ids carry the mission type; neither run in DCS yet.
 
-**Next:** `roadmap.md`, in John's order: radar picture → scrambles → event log → AI behaviour logic → CAP visibility → AWACS calls (text) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war (last: the full map is needed while debugging); radar jamming, helicopters, fun callsigns and a player map of the threat picture are optional, at the end. Radar picture and scrambles are done for now; **next: the event log (item 3), then AI behaviour logic (item 4, a later session).** The backlog below holds everything else.
+**Next:** `roadmap.md`, in John's order: radar picture → scrambles → event log → AI behaviour logic → AWACS calls (text) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war (last: the full map is needed while debugging); radar jamming, helicopters, fun callsigns and a player map of the threat picture are optional, at the end. Radar picture, scrambles and the event log are built and run. Two event-log runs on 2026-09-30 (`event_logs6-09-30_201105.log`, and `2026-09-30_213757.log` with John flying MSN2023_OCA: 2 of 3 parked MiG-29s at Vuojärvi, losses Blue 5 / Red 11) fed `bugs_and_fixes.md` and roadmap 4c. **Next: performance in VR (top priority, `roadmap.md`: John's first VR run couldn't hold 45 fps, down to ~12 fps on takeoff), then the bugs, then AI behaviour logic (item 4).** The backlog below holds everything else.
 
 **Still to watch in runs:**
 - **Lone F-15E crash:** an F-15E of a Banak DEAD crashed alone in Blue airspace ~30 min after bombing (1,237 ft, no hit recorded). An AI approach crash or fuel? Watch for a repeat.
 - **Late bombers:** Red's Rovaniemi bombers dropped ~8 min after their TOT, after their SEAD had died, and hit nothing.
 - **Airborne cap:** Blue hits it on some territories because long-haul patrols overlap (Kallax / Rovaniemi → Banak, 450–570 km each way). Options: count only on-station time, or use nearer bases or fewer stations.
 - **Endurance:** does the AWACS stay on station the whole 6 hours (A-50 fuel)?
-- **Frame rate** with up to 32 AI aircraft airborne: not measured yet.
+- **Frame rate:** measured by feel in John's first VR run (2026-09-30): choppy, ~12 fps on takeoff, smooth once the Rovaniemi battle ended. Now the top roadmap item (*Top priority: performance in VR*).
 - **MiG-29S:** left out of the Red rosters, because its loadouts carry CLSIDs `aircraft_pylons.lua` doesn't know.
 - **Su-34 takeoff crash** (session 11): MSN5024_2 ejected at 161 ft 32 s after spawning at Poduzhemye. Watch for a repeat at that field.
-- **Alert jets back on alert:** built after the session 11 run; check the `landed — its jet is back on alert` lines and a second launch by the same jet.
+- **Alert jets back on alert:** built after the session 11 run; check the event log's `ALERT` lines and a second launch by the same jet.
+- **Event log:** answered by the two runs: `WAYPOINT` lines fire, folding works, DCS's weapon names are `AGM_88`, `X_31P`, `SA5B55`, `P_73` and so on, `ABORTED` only repeats hits and deaths, and the end summary is written. Still open: no `GUNS` line yet (nobody flew low over a defended base); frame rate not measured. Wording fixes are in `bugs_and_fixes.md` 5.
 - **Scramble trigger misses dog-legs** (session 11, not changed): "inbound" follows the current heading, so a raid on a leg around SAM rings reads as heading elsewhere. Red's Su-34s attacking `SAM_KUUS_SA11_1` read as 19 / 25 min from other assets and were never scrambled against (a Blue patrol got them). Possible addition: a contact in contested airspace within a few minutes' flight of any own asset counts, whatever its heading.
 
-**Reading a run (grep `dcs.log`):**
+**Reading a run:** the story is in the event log (`event_logs\<date>_<time>.log` in this folder, git-ignored, one per run; see *Event log*). Grep a unit or flight name for its whole life, or an event word:
 
-| Grep | Shows |
+| Grep the event log | Shows |
 |---|---|
-| `MSN`, `PKG` | every flight and package, with its `fired` / `killed` / `target object … destroyed` / `lost (…)` lines |
-| `track:` | each airborne patrol and AWACS every 2 min: altitude, airspace, nearest enemy ring, km from station |
-| `lost (` | who killed it, at what altitude, in which airspace, how far inside or outside the nearest enemy ring |
-| `carries` | each aircraft's actual weapons 5 s after spawn; a warning when it's empty but the loadout lists pylons |
+| a name (`MSN2025_DEAD`, `MSN2025_DEAD_2`, `SAM_OLEN_SA11_1`) | everything it did and everything done to it |
+| `SPAWNED`, `LOADOUT`, `TAKEOFF`, `WAYPOINT`, `LAND` | each flight's life: spawn, what each jet carries, each waypoint reached (ingress = pushing; target with TOT late / early), landing |
+| `POSITION` | every airborne aircraft each minute: type, speed, heading, fuel, altitude, airspace, nearest enemy ring, km from station |
+| `SHOT`, `GUNS`, `HIT` | weapons fired (with target and range when DCS knows it), guns opening up, hits; repeats folded into one line |
+| `DESTROYED`, `CRASHED`, `EJECTED`, `PILOT_DEAD` | every unit and object destroyed, by whom and with what; aircraft with altitude, airspace and ring |
+| `TARGET` | a mission's target objects destroyed ("3 of 6 critical") |
+| `CONTACT`, `TRACKING`, `PICTURE` | each coalition's radar picture: new / regained / stale / dropped contacts and airspace changes, a SAM radar's first track of a group, the 5-min summary |
+| `SCRAMBLE`, `NO_SCRAMBLE`, `STOOD_DOWN`, `ALERT`, `LEASH` | scramble decisions and refusals, stood down before launch, jets back on alert, leash decisions |
+| `PLAYER_IN`, `PLAYER_OUT` | players |
+| `== Mission end` | the summary: flights launched, losses by cause, ground losses, each flight's outcome |
+
+`dcs.log` keeps planning and debugging (grep `[KOLA]`):
+
+| Grep `dcs.log` | Shows |
+|---|---|
 | `PRELOAD`, `the sim froze` | the start-up preload cost per type, and any spawn over 1 s |
 | `HUMAN TASKING` | every frag and steerpoint list |
-| `Build summary:` | the roll's totals (moved off screen in session 10) |
+| `Build summary:` | the roll's totals |
 | `asked for` | a unit type DCS swapped (Leopard-2 substitution) |
-| `picture` | each coalition's radar picture: sensors at start, new / regained / stale / dropped contacts (with what they're inbound on), airspace changes, a summary every 5 min, the first time a ground radar tracks each enemy group |
-| `scramble` | alert bases (at planning), each scramble decision (base, type, raid, why, intercept distance, delay, alert jets ready), refusals (once per reason), stood down before launch, landed and back on alert |
-| `leash` | a scramble sent home or stood down on the ramp, and why |
+| `carries nothing` | a jet spawned without the weapons its loadout lists |
+| `picture:`, `Scrambles:` | the radar sensors found and the alert bases, at start |
+| `WARN`, `ERROR` | anything that went wrong, including a failed event-log line |
 
 ---
 
@@ -84,7 +97,7 @@ Decide with John, step by step. Roadmap items are in `roadmap.md`.
 - **DEAD frag:** replace the "Groups: SAM_…" line with what the site holds (radars, launchers).
 - **Brief items:** AWACS and tanker frequencies and callsigns (callsign policy below), bullseye (currently 0,0), divert fields.
 - **More players:** more slots per base (the tool and planner already take several per base; the planner uses the first one that exists); 2-ship human flights.
-- **Steerpoints:** a return leg that repeats many transit points could be shortened ("same as 3").
+- **Steerpoints:** moved to `bugs_and_fixes.md` 10 (target elevation) and 11 (no egress or return points).
 
 **Front targets.** The fixed-target "front" echelon is still "≤ 100 km from an enemy base":
 - **The gap:** on rolls where the sides sit far apart, nothing counts as front, so armor assembly areas and artillery never roll. Blue leaves ~3.5 missions per roll unplanned ("no target near the front in reach"), and human taskings fall back to DEAD / SEAD / CAP.
@@ -97,7 +110,7 @@ Decide with John, step by step. Roadmap items are in `roadmap.md`.
 - Blue: JSOW, SLAM-ER, AGM-86C;
 - Red: Kh-29 / KAB, bomber cruise missiles.
 
-Overlaps roadmap item 7 (cruise missiles).
+Overlaps roadmap item 6 (cruise missiles).
 
 **AI behaviour rules, one place** (John, session 8): collect the list first, then build it as one module instead of per-flight hacks:
 - leash to own and contested airspace;
@@ -161,11 +174,12 @@ First step suggested: a loss summary per run, so later changes have a before and
 `Gather` (+ player slots) → `RollTerritory` → `PlanBaseDefenses` → `PlanSamSites` → `DivideAirspace` → `PlanFixedGroundTargets` → `PlanConvoys` → `CatalogTargets` → `PlanAirTasking` (defensive air → human flights → AI attack packages) → plan dump (`Saved Games\DCS\kola_last_plan.lua`).
 
 Then:
+0. `WriteEventLog.open` (this run's event log, with the plan at its top).
 1. `DrawAirspace` (first, under every other mark).
 2. `Territory.apply`.
 3. Spawns: **static objects first**, then base defenses, SAM sites, fixed-target units, convoys.
 4. Draws.
-5. `PreloadAircraftTypes`.
+5. `PreloadAircraftTypes`, then `WriteEventLog.start` (DCS events from here on, so the preload isn't in the story).
 6. `ScheduleAirTaskingOrders.start`.
 7. `TrackRadarPicture.start` (after the scheduler, before anything that reads the picture).
 8. `EnforceAirBehaviourRules.start`, then `RunScrambles.start`.
@@ -544,7 +558,7 @@ How it's built:
 
 **Scheduling and results** (`consumers/schedule_air_tasking_orders.lua`):
 - **Spawning:** each flight spawns on the mission clock and is removed 3 min after landing.
-- **Logging:** `fired <weapon>`, `killed <name> (<type>)`, `target object … destroyed (n of m critical)`, `<unit> lost (…)` with killer and position, `track:` every 2 min for patrols and the AWACS, and the ammo check 5 s after spawn.
+- **Logging:** the event log (see *Event log*) catches shots, hits, kills, losses, takeoffs and landings for every unit, and `POSITION` lines every minute; the scheduler adds `TARGET` (a mission's target objects destroyed, n of m critical) and the spawner adds `SPAWNED`, `LOADOUT` (the ammo check 5 s after spawn) and `WAYPOINT` (a script command on every waypoint between takeoff and landing).
 - **Status:** `ScheduleAirTaskingOrders.statusOf` gives planned / airborne / landed / lost for the brief.
 
 **Preload** (`consumers/preload_aircraft_types.lua`): DCS loads a type's model, liveries and damage model on its first spawn, on the main thread, which froze the sim 2–25 s mid-mission (F-15E 25 s, Su-24M 7 s).
@@ -572,7 +586,7 @@ Built 2026-09-30 (roadmap item 1). Each coalition keeps a picture of the enemy a
 - **Calls:** `contacts(coalition, filter)`, `contactsNear(coalition, pos, radius_m)`, `contact(coalition, group)`, `sensors(coalition)`. Contacts come back as kept: read them, never change them.
 - **Test aids for the first DCS run** (`log_radar_tracking`, `count_missiles`): the first time a ground sensor's radar tracks each enemy group (`Unit:getRadar`), and the number of missiles the radars listed since the last summary.
 - **What the first DCS run showed** (session 11, ~48 min): 32 Red / 34 Blue ground sensors, every sensor answering every round.
-  - **Missiles are listed, but rarely:** 2 in one 5-min window while many were fired. Not reliable for air-to-air missiles; cruise missiles still to test (item 7).
+  - **Missiles are listed, but rarely:** 2 in one 5-min window while many were fired. Not reliable for air-to-air missiles; cruise missiles still to test (item 6).
   - **`getRadar()` works:** `SAM_ENON_SA11_1` tracking the Su-33, `SAM_ALTA_SA11_1` tracking the F-15C.
   - **Type known** for 6 of 16 new contacts.
   - **Bearing only** once: the F-15C, which carries an internal jammer in DCS. A good sign that DCS reports jammed contacts as range-unknown (optional jamming item).
@@ -620,6 +634,66 @@ Rebuilt 2026-09-30 (roadmap item 2; design agreed with John, recorded there). A 
 - **`setTask` home lands them:** MSN2902 was sent home just after takeoff (its target was already gone), circled in the landing pattern and landed 5 min later (John agreed: going home is right when the target is gone). MSN2901 landed ~17 min after its leash.
 - **Refusals:** "under enemy SAM cover" 7 times (mostly Blue patrols orbiting under Blue SAMs), "covered by patrol" twice. A scramble at an enemy patrol that looks like a raid is fine (John: Blue can't know a jet's intentions).
 - **Budget:** the first version's 3 launches per base would have run Red dry ~1.5 h in → alert jets now return after landing (above).
+
+### Event log (`consumers/write_event_log.lua`, `data/event_log.lua`)
+
+Built 2026-09-30 (roadmap item 3). A catalogue of everything that happened in the air war, in plain language, unit by unit (John: comb through it and see exactly how the mission unfolded per unit, step by step, without affecting game performance). First run in DCS on 2026-09-30.
+- **File:** `event_logs\<wall-clock date>_<time>.log` in this mission folder, a new one per run (John: timestamped files; in the repository, not the DCS game folder, and git-ignored). Old files stay, for comparing runs.
+  - The folder is an absolute path in `EVENT_LOG.folder`, since the script runs from its copy under `Saved Games\DCS\Scripts`.
+  - If that folder can't be written (another machine, the repository moved), the log goes to `Saved Games\DCS\kola_event_logs\` (`EVENT_LOG.fallback_folder`); if neither, to `dcs.log`.
+- **Top:** the plan, to read the timeline against: territory, weather, SAM sites (id, system, layer, ring), alert bases, the air tasking order (spawn / takeoff / TOT or on station / end per flight; human flights marked), convoys.
+- **Timeline:** one line per event, in fixed columns: local clock, time since start, coalition, event word, subject, details.
+  - **Subject:** a unit name for unit events, a group name for flight events (spawn, waypoint, scramble), and the contact's group for radar-picture lines (whose coalition is the picture's owner).
+  - **Details** always name the other party in full, so grepping a name finds both what it did and what was done to it.
+  ```
+  08:11:50  T+00:11:50  RED   SHOT         MSN5901_SCRAM_1             Su-30 fired P_77 at MSN2025_2 (F-16C_50), 103 km, from 29,528 ft
+  08:12:00  T+00:12:00  BLUE  HIT          MSN2025_2                   F-16C_50 hit by ZU_23_shell (5 hits) from DEF_OLEN_towed_anti_aircraft_guns_1_2 (ZU-23 Emplacement), 22,966 ft, …
+  08:12:31  T+00:12:31  BLUE  DESTROYED    MSN2025_2                   F-16C_50 by MSN5901_SCRAM_1 (Su-30) with R-77, 22,966 ft, own airspace, 135 km outside SAM_ALTA_SA11_1
+  ```
+- **End:** on `S_EVENT_MISSION_END`, a summary:
+  - flights launched;
+  - aircraft lost by cause (aircraft / SAM sites / base defenses / other ground units / no killer recorded);
+  - ground units and objects destroyed;
+  - each flight's outcome (`ScheduleAirTaskingOrders.statusOf`).
+
+  If DCS crashes, the file ends at the last write.
+- **Events caught here for every unit** (one DCS event handler):
+  - `SHOT`: the weapon, the target and range when `Weapon:getTarget` knows it, and the shooter's altitude;
+  - `GUNS` (`S_EVENT_SHOOTING_START`) and `HIT`;
+  - `DESTROYED` (units and static objects, never scenery), `CRASHED`, `EJECTED`, `PILOT_DEAD`, `PARACHUTE`;
+  - `TAKEOFF`, `LAND`, `PLAYER_IN` / `PLAYER_OUT`;
+  - `ABORTED` (`S_EVENT_AI_ABORT_MISSION`, if this DCS version has it).
+- **Events handed over by other modules** (`WriteEventLog.add`):
+  - the spawner: `SPAWNED`, `LOADOUT`, `WAYPOINT`;
+  - the scheduler: `TARGET`;
+  - the radar picture: `CONTACT`, `TRACKING`, `PICTURE`;
+  - scrambles: `SCRAMBLE`, `NO_SCRAMBLE`, `STOOD_DOWN`, `ALERT`;
+  - the behaviour rules: `LEASH` (the event word is the rule's name).
+- **`POSITION`:** every airborne aircraft, AI and players, each `position_every_s` (60): type, speed, heading, fuel, altitude, airspace, nearest enemy ring, and km from station centre for patrols. It replaces the old `track:` lines (patrols and the AWACS every 2 min).
+- **`WAYPOINT`:** a `WrappedAction` `Script` command, first on every waypoint between takeoff and landing, calls `WriteEventLog.waypoint(id, index)` when the flight gets there, so there's no polling. The line names:
+  - the waypoint's kind: ingress (pushing, attack tasks active), target (with the planned TOT and minutes late or early), on / off station;
+  - the lead's altitude, airspace and ring;
+  - the aircraft left.
+- **Folding** (John: gun hits collapsed so they don't spam the log): each line is held `hold_s` (10 s) before it's written. A repeat within the fold window of the last one adds to that line's count instead of making a new line:
+  - hits by the same shooter on the same target with the same weapon, within 5 s: "(5 hits)";
+  - shots of the same weapon at the same target, within 5 s: "fired 4x FAB-500";
+  - a gun opening up again, within 10 s: "(3 bursts)".
+
+  A death is reported once, from whichever DCS event comes first (kill, dead, unit lost). A kill that arrives while the line is still held fills in who did it.
+- **Performance:**
+  - a DCS event only builds a line in memory;
+  - lines are written every `write_every_s` (5 s), in one `write` + `flush`;
+  - the only polling is `POSITION`: ~32 `getPoint` calls a minute at the airborne cap;
+  - if the file can't be opened, the lines go to `dcs.log` (`event:`).
+- **Watching it live:** these follow the newest file, so start them after the mission has loaded (each run makes a new file).
+  - PowerShell: `Get-Content (Get-ChildItem "$env:USERPROFILE\Git\dcs\missions\kola_f16_random_tasking\event_logs\*.log" | Sort-Object LastWriteTime | Select-Object -Last 1) -Wait -Tail 40`. Without the positions, add `| Where-Object { $_ -notmatch 'POSITION' }`.
+  - Git Bash: `tail -n 40 -f "$(ls -t ~/Git/dcs/missions/kola_f16_random_tasking/event_logs/*.log | head -1)"`. Without the positions, add `| grep --line-buffered -v POSITION`.
+- **Offline harness** (`event_log_harness.lua`, session scratchpad; not kept): the real spawner, scheduler and event log on the last plan, with stubbed DCS. It checked:
+  - the spawner's waypoint commands and task numbering;
+  - folding of bombs, gun bursts and hits;
+  - a kill arriving after the dead event, and a scenery kill ignored;
+  - lines in time order, and nothing after the mission end;
+  - the plan header and the summary.
 
 ### Player slots (`data/player_slots.lua`)
 
@@ -740,7 +814,7 @@ The runtime can read the mission's weather, time and date, but can't change them
 
 ## Design, not built yet
 
-**Threat-intel fidelity rule** (for the brief and fog of war, roadmap item 10). Fidelity follows the threat's real-world nature, not a difficulty setting:
+**Threat-intel fidelity rule** (for the brief and fog of war, roadmap item 9). Fidelity follows the threat's real-world nature, not a difficulty setting:
 
 | Threat class | In the brief as | Map |
 |---|---|---|
@@ -764,7 +838,7 @@ Roll it per mobile SAM each session. Surprise threats then have a realistic just
 - **Two identities:** the DCS group name is the machine id (`MSN2041`) and is never spoken. The radio callsign is a separate field drawn from DCS's built-in callsign enum, which drives the AI voiceovers *and* is what the brief prints, so what's written matches what's heard.
 - **Blue pools per role:** fighters `{Springfield, Colt, Dodge, Ford, Chevy, Uzi, Enfield, Pontiac}`, tankers `{Texaco, Arco, Shell}`, AWACS `{Magic, Overlord, Wizard, Darkstar}`. The player gets a reserved fighter callsign by role (SEAD → Springfield, strike → Colt, CAP → Dodge…).
 - **Audible but not overwhelming:** enum callsigns go to player-relevant Blue air (own flight, package-mates, covering CAP, tanker, AWACS); the airborne cap limits simultaneous transmitters.
-- Roadmap item 8 (AI radio calls) builds on this.
+- Roadmap item 7 (AI radio calls) builds on this.
 
 **Weather as a planner input** (reading works; the planner doesn't use it yet):
 
@@ -841,6 +915,7 @@ kola_f16\
     airspace.lua                 -- airspace grid settings
     radar_picture.lua            -- radar picture settings: polling, stale / drop times, sensor kinds, inbound
     air_behaviour_rules.lua      -- the rules enforced on AI flights after launch (the leash)
+    event_log.lua                -- event log settings: folder, write interval, hold and fold windows, positions
     aircraft_profiles.lua        -- per aircraft type: runway, parking, reach, speeds, altitudes (hand)
     aircraft_loadouts.lua        -- one loadout per type × mission (aircraft_loadouts.py)
     aircraft_pylons.lua          -- pylon → CLSID, generated; offline validation only, not loaded
@@ -850,10 +925,11 @@ kola_f16\
     roll_territory.lua  plan_base_defenses.lua  plan_sam_sites.lua  divide_airspace.lua
     plan_fixed_ground_targets.lua  plan_convoys.lua  catalog_targets.lua  plan_air_tasking.lua
   consumers\
+    write_event_log.lua          -- the event log: every event of the air war, unit by unit, one file per run
     territory.lua                -- apply the roll (to be renamed apply_territory.lua)
     spawn_static_objects.lua  spawn_ground_groups.lua  spawn_aircraft_groups.lua
     preload_aircraft_types.lua   -- first-spawn freeze fix
-    schedule_air_tasking_orders.lua  -- spawns flights on the clock; logs shots, kills, losses; statusOf
+    schedule_air_tasking_orders.lua  -- spawns flights on the clock; target progress; statusOf
     track_radar_picture.lua      -- each coalition's radar picture: contacts, events, queries
     enforce_air_behaviour_rules.lua  -- rules on AI flights after launch: the scramble leash
     run_scrambles.lua            -- one-ship scrambles at raids the radar picture shows

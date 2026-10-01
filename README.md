@@ -15,12 +15,32 @@ missions/
   kola_f16_random_tasking/    F-16 tasking generator on Kola (air denial, human strike missions)
     plan.md                   status and design: start at "Where we are"
     roadmap.md                where the mission is headed next (features, open questions, order)
+    bugs_and_fixes.md         bugs found in runs, to come back to
+    event_logs/               one event log per mission run (git-ignored; see below)
     kola_f16_random_tasking.miz
     kola_f16/                 scripts → Saved Games\DCS\Scripts\kola_f16\
     kola_data_tools/          offline Python tools that generate kola_f16/data (stdlib only, 3.7+)
 ```
 
 Each mission's script folder has the same name in the repo as in `Saved Games\DCS\Scripts\`, so deploying is a plain copy of that folder.
+
+## Watching the Kola event log live
+
+Each Kola mission run writes a new file to `missions/kola_f16_random_tasking/event_logs/`: every event of the air war in plain language, unit by unit. Start one of these once the mission has loaded; each follows the newest file.
+
+PowerShell:
+
+```powershell
+Get-Content (Get-ChildItem "$env:USERPROFILE\Git\dcs\missions\kola_f16_random_tasking\event_logs\*.log" | Sort-Object LastWriteTime | Select-Object -Last 1) -Wait -Tail 40
+```
+
+Git Bash:
+
+```bash
+tail -n 40 -f "$(ls -t ~/Git/dcs/missions/kola_f16_random_tasking/event_logs/*.log | head -1)"
+```
+
+Without the once-a-minute position lines, add `| Where-Object { $_ -notmatch 'POSITION' }` (PowerShell) or `| grep --line-buffered -v POSITION` (Git Bash) to the end. What each line means, and what to grep for: `plan.md`, *Event log* and *Reading a run*.
 
 ## De-sanitize MissionScripting.lua
 

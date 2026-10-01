@@ -14,9 +14,10 @@
 --           when the raid is gone before it takes off.
 -- New rules are one more entry in RULES: a check that returns what to do and why.
 --
--- Log lines (grep "leash"):
---   "MSN5901 leash: going home — MSN2014 back over its own airspace, heading away (MiG-31 at 31000 ft, contested airspace)"
---   "MSN5901 leash: stood down on the ramp — MSN2014 destroyed"
+-- Event log lines (consumers/write_event_log.lua):
+--   LEASH  RED  MSN5901_SCRAM  "going home: MSN2014_DEAD back over its own airspace, heading away (MiG-31 at 31,000 ft,
+--                              contested airspace)"
+--   LEASH  RED  MSN5901_SCRAM  "stood down on the ramp: MSN2014_DEAD destroyed"
 -- Reads the plan; writes nothing back to it. Which flights are watched is runtime state.
 
 EnforceAirBehaviourRules = {}
@@ -120,7 +121,7 @@ end
 -- ── actions ─────────────────────────────────────────────────────
 
 local function where(w, pos)
-    return string.format("%s at %.0f ft, %s airspace", w.mission.aircraft_type, pos.y * FEET_PER_METRE,
+    return string.format("%s at %s ft, %s airspace", w.mission.aircraft_type, Util.thousands(pos.y * FEET_PER_METRE),
         DivideAirspace.kindFor(_plan.airspace, { x = pos.x, z = pos.z }, w.mission.coalition))
 end
 
@@ -170,11 +171,11 @@ local function check(coalition)
                 else
                     local action, why = RULES[w.rule](w, pos, airborne)
                     if action == "home" then
-                        Log.info(string.format("%s %s: going home — %s (%s)", id, w.rule, why, where(w, pos)))
+                        WriteEventLog.add(coalition, w.rule:upper(), id, string.format("going home: %s (%s)", why, where(w, pos)))
                         goHome(w, g, pos)
                         _watched[id] = nil
                     elseif action == "stand_down" then
-                        Log.info(string.format("%s %s: stood down on the ramp — %s", id, w.rule, why))
+                        WriteEventLog.add(coalition, w.rule:upper(), id, "stood down on the ramp: " .. why)
                         pcall(function() g:destroy() end)
                         _watched[id] = nil
                     end

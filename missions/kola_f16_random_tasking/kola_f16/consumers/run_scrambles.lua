@@ -27,12 +27,13 @@
 --      shots, kills and losses; its radar joins the picture; the leash
 --      (consumers/enforce_air_behaviour_rules.lua) brings it home
 --
--- Log lines (grep "scramble"):
---   "RED scramble MSN5901_SCRAM: MiG-31 from Monchegorsk → MSN2014_STRIKE (F-16C_50), own airspace,
---    9 min from Olenya; intercept 85 km out; launching in 95 s; Monchegorsk has 2 alert jet(s) ready"
---   "RED scramble MSN5901_SCRAM landed — its jet is back on alert at Monchegorsk in 30 min; …"
---   "RED: no scramble for MSN2014 (F-16C_50) — covered by patrol MSN5003"   once per reason
---   "RED scramble MSN5901 stood down before launch — MSN2014 destroyed"
+-- Event log lines (consumers/write_event_log.lua):
+--   SCRAMBLE     RED  MSN5901_SCRAM   "MiG-31 from Monchegorsk after MSN2014_STRIKE (F-16C_50), own airspace,
+--                     9 min from Olenya; intercept 85 km out; launching in 95 s; Monchegorsk has 2 alert jet(s) ready"
+--   ALERT        RED  MSN5901_SCRAM   "landed; its jet is back on alert at Monchegorsk in 30 min; …"
+--   NO_SCRAMBLE  RED  MSN2014_STRIKE  "F-16C_50: covered by patrol MSN5003_CAP"   once per reason
+--   STOOD_DOWN   RED  MSN5901_SCRAM   "before launch: MSN2014_STRIKE destroyed"
+-- The alert bases at start go to dcs.log (grep "Scrambles").
 -- Scramble ids are MSN<first_number + n>_SCRAM (Blue 2901+, Red 5901+), the DCS group name.
 -- Reads the plan; writes nothing back to it. Launches, cooldowns and who was answered are
 -- runtime state kept here.
@@ -279,7 +280,7 @@ local function launch(st, pick, raid, groups, id, number, reserved)
     local function refund(why)
         st.pending[id] = nil
         s.ready, s.ready_s = s.ready + 1, reserved.ready_s
-        Log.info(string.format("%s scramble %s stood down before launch — %s", st.coalition:upper(), id, why))
+        WriteEventLog.add(st.coalition, "STOOD_DOWN", id, "before launch: " .. why)
     end
     local gone = raidGone(st, groups)
     if gone then return refund(gone) end
@@ -322,7 +323,7 @@ end
 local function refuse(st, c, why)
     if st.refused[c.group] == why then return end
     st.refused[c.group] = why
-    Log.info(string.format("%s: no scramble for %s — %s", st.coalition:upper(), describe(c), why))
+    WriteEventLog.add(st.coalition, "NO_SCRAMBLE", c.group, string.format("%s: %s", c.type or "type unknown", why))
 end
 
 local function scramble(st, trigger, contacts, reason, now)
@@ -351,8 +352,8 @@ local function scramble(st, trigger, contacts, reason, now)
     end
     local R = AIR_DEFENSE.scramble_reaction_s
     local delay = math.random(R[1], R[2])
-    Log.info(string.format("%s scramble %s: %s from %s → %s, %s; intercept %.0f km out; launching in %d s; %s has %s",
-        st.coalition:upper(), id, pick.aircraft_type, pick.base.base, table.concat(names, " + "), reason,
+    WriteEventLog.add(st.coalition, "SCRAMBLE", id, string.format("%s from %s after %s, %s; intercept %.0f km out; launching in %d s; %s has %s",
+        pick.aircraft_type, pick.base.base, table.concat(names, " + "), reason,
         pick.leg_m / 1000, delay, pick.base.base, jetsText(s, now)))
     timer.scheduleFunction(function()
         local ok, err = pcall(launch, st, pick, raid, groups, id, number, reserved)
@@ -417,9 +418,8 @@ function landingHandler:onEvent(e)
             local s = st.bases[base]
             local now = timer.getTime()
             table.insert(s.returning, now + AIR_DEFENSE.scramble_turnaround_s)
-            Log.info(string.format("%s scramble %s landed — its jet is back on alert at %s in %d min; %s has %s",
-                st.coalition:upper(), name, base, math.floor(AIR_DEFENSE.scramble_turnaround_s / 60), base,
-                jetsText(s, now)))
+            WriteEventLog.add(st.coalition, "ALERT", name, string.format("landed; its jet is back on alert at %s in %d min; %s has %s",
+                base, math.floor(AIR_DEFENSE.scramble_turnaround_s / 60), base, jetsText(s, now)))
         end
     end
 end

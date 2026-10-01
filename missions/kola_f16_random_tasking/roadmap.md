@@ -6,7 +6,7 @@ What's coming after session 10 (2026-09-30), when the mission became playable by
 
 Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means Red unless it says otherwise.
 
-**Order (John, 2026-09-30):** radar functions → scrambles → event log → AI behaviour logic → CAP visibility → AWACS calls (text) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Four optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, and the threat picture on the map for players (after fog of war).
+**Order (John, 2026-09-30):** radar functions → scrambles → event log (built) → **performance in VR (top priority, added after John's first VR run; unnumbered so the item numbers cited elsewhere stay valid)** → AI behaviour logic → AWACS calls (text) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war. CAP visibility (making patrol routes and times easy to see) was cut on 2026-09-30: John can see the dotted station lines on the map fine for now. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Four optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, and the threat picture on the map for players (after fog of war).
 
 ---
 
@@ -14,7 +14,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 **Status: done for now (2026-09-30).** Built, run once in DCS (session 11) and used by scrambles and the leash. As built, and what the run showed: `plan.md`, *Radar picture*.
 
-**Goal:** each coalition builds its own threat picture from what its radars actually report, and keeps it as the mission runs. Scrambles (2), AWACS calls (6), live intel for fog of war (10) and any later AI behaviour rule all read it. So it's built once, and those features act only on what the defenders could really know.
+**Goal:** each coalition builds its own threat picture from what its radars actually report, and keeps it as the mission runs. Scrambles (2), AWACS calls (5), live intel for fog of war (9) and any later AI behaviour rule all read it. So it's built once, and those features act only on what the defenders could really know.
 
 **What it's for:** the picture is for our script, not for the AI's own awareness. DCS already shares radar contacts between same-coalition AI over its built-in datalink, and a script can't add to that. The script uses the picture to decide things and passes the result to the AI as tasks: who scrambles, against which group (`EngageGroup`), when they go home (the leash), what the AWACS tells the player. It's runtime state kept in memory (like the scheduler's), not part of the plan. Planning stages never read it: frags are built before anything flies.
 
@@ -29,7 +29,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
   - line of sight and terrain masking, and the radar horizon;
   - the target's size, roughly;
   - fighter radars' forward search cone.
-- **A radar that's switched off sees nothing:** alarm state green, or a site that Skynet (item 9) keeps dark.
+- **A radar that's switched off sees nothing:** alarm state green, or a site that Skynet (item 8) keeps dark.
 
 **Where it stands:**
 - `consumers/run_scrambles.lua` (session 7, switched off) already polls a planned list of radar groups with `Controller:getDetectedTargets(RADAR)` every 30 s. The polling works in DCS: `31 of 31 answered` (Red), `21 of 21` (Blue).
@@ -191,6 +191,22 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 ## 3. Event log: a readable file to watch during the mission
 
+**Status: built (2026-09-30), not run in DCS yet.** As built, and how to watch it: `plan.md`, *Event log*.
+
+What John decided (2026-09-30):
+- **Scope:** a catalogue of every event from the run, so one can comb through it and see how the mission unfolded unit by unit, step by step, without affecting game performance.
+- **Gun hits:** collapsed, so they don't spam the log.
+- **Files:** a new timestamped file per run.
+- **Moving lines:** the flight, radar-picture, scramble and leash lines move out of `dcs.log` into the event log (my call, as John asked).
+
+Filled in without asking:
+- both coalitions go in one file, with a coalition column;
+- a `POSITION` line per airborne aircraft every minute, replacing the `track:` lines;
+- AAA and MANPADS fire shows as one `GUNS` line per burst series, plus folded hits and kills;
+- the plan goes at the top of the file and a summary at the end.
+
+The proposal below is kept as it was discussed.
+
 **Goal:** a plain-language log of what's happening in the air war, in a file of its own that John can tail and watch while the mission runs, without grepping `dcs.log` (John, 2026-09-30).
 
 **Where it stands:** nothing built. Everything is in `dcs.log` today, mixed with DCS's own lines and written for grepping (`MSN…`, `track:`, `picture`, `scramble`).
@@ -202,12 +218,83 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
   - `12:47 BLUE MSN2014 (F-16C) shot down by MSN5901 (MiG-31), 20 km inside Red airspace`
   - `12:51 RED MSN5901 (MiG-31) heading home: target back in Blue airspace`
 - **Events worth a line:** takeoffs and landings, packages pushing, weapons released on targets, target objects destroyed, aircraft lost (by what), scrambles and leash decisions, new radar contacts over own airspace. Not the every-2-minute `track:` lines.
-- **One small module** (`consumers/write_event_log.lua`, `WriteEventLog`) that the scheduler, scrambles, the leash and the radar picture hand events to. The same structured events can later feed the AI radio calls (item 8).
+- **One small module** (`consumers/write_event_log.lua`, `WriteEventLog`) that the scheduler, scrambles, the leash and the radar picture hand events to. The same structured events can later feed the AI radio calls (item 7).
 
 **Open:**
 - Which events: the list above, or fewer?
 - Both coalitions in one file, or one file each?
 - Keep old files (a file per mission start) or overwrite each time?
+
+---
+
+## Top priority: performance in VR
+
+**Goal:** the mission holds John's standard VR frame rate of 45 fps, with no big frame-time spikes, including on takeoff and low around airfields. The Syria mission already does (John: it "ran fine"). John, 2026-09-30: "It is now the top priority."
+
+**What John saw** (first VR run of this mission, 2026-09-30, `event_logs\2026-09-30_213757.log`):
+- Smooth at times and very choppy at times, with huge frame-time spikes.
+- **Takeoff was the worst:** Kallax at 11:16:46, down to about 12 fps for a while after leaving the runway.
+- Worse close to the ground and around airfields.
+- **At about 11:25 game time it suddenly got much smoother.**
+- No fair comparison yet: it was the first VR run of this mission. The 2026-09-25 performance baseline in `plan.md` had no AI aircraft flying and may not have been in VR.
+
+**What the event log shows at those moments** (airborne AI from the `POSITION` lines, per minute):
+
+| Time | Airborne AI | Shots / hits | What was happening |
+|---|---|---|---|
+| 11:05–11:15 | 19–22 | 13 / 4 | Blue SEAD over Sodankylä, first losses |
+| 11:16–11:23 (John's takeoff) | 18–21 | 33 / 39 | Red's Rovaniemi raid (PKG5023) meets the SA-10, IRIS-T, NASAMS and the F-15C patrol: SAM salvos at Kh-31Ps, AIM-120s, 22 hits in the minute 11:18 |
+| 11:25 | 17 | 1 / 1, 5 destroyed | the package's last three jets die |
+| 11:26–11:32 (smooth) | 14–15 | 0 / 0 | quiet |
+| 11:33–11:40 | 10–15 | 8 / 18 | PKG5027 dies to the F-16 patrol; John bombs Vuojärvi |
+
+- The smooth patch starts exactly when the Rovaniemi battle ends and four fewer AI aircraft are flying. John was also climbing through ~26,000 ft by then, so altitude is mixed in.
+- **The takeoff drop wasn't local ground units:** Kallax is a standard-level rear field, with 16 base-defense units and 11 SAM units within 30 km, and 4 static objects within 10 km. The battle was ~200 km away. That points at work that grows with the whole air war (AI jets, missiles in flight, every radar and shooter checking what it sees), not at what was near the player.
+- No spawn took over 1 s during the run (no "the sim froze" line in `dcs.log`), and the first-spawn preload held.
+
+**The load this mission puts in the world** (the 21:37 plan):
+
+| | Count |
+|---|---|
+| AI ground units | **~960**: base defenses 543 (195 security infantry, 167 towed ZU-23s, 111 MANPADS teams, 34 mobile guns, 28 IR launchers, 8 radar launchers), SAM sites 346 (59 sites), fixed targets 64, convoy 10 |
+| Static objects | 319 |
+| AI aircraft airborne | peak 22 in this run; the cap allows 16 per coalition + 2 scrambles each over it |
+| Map marks | several hundred debug drawings (all `…ToAll(-1)`) |
+
+Syria caps its AI aircraft at 12 alive and has far fewer ground units (count them for the comparison).
+
+**Suspects, most likely first:**
+1. **AI aircraft × everything that looks at them (CPU, main thread).** Every AI unit that can shoot or has a sensor keeps checking what it can see. With ~900 ground shooters and 20+ aircraft, the work multiplies, and each AI jet adds its own flight model, sensors and combat logic. VR at 45 fps leaves ~22 ms per frame, and DCS's AI shares the main thread.
+2. **Missiles in flight and explosions.** Each missile is a full physics object: SA-10 salvos at Kh-31Ps, AIM-120s, and blasts hitting 7 units at once. This fits the 11:16–11:25 spikes.
+3. **The Kola terrain itself, low in VR** (GPU): dense forest near the ground, which the Syria desert doesn't have. It isn't the mission's doing, but it adds to "worse close to the ground" and needs a baseline to separate it out.
+4. **Our scripts:** radar-picture polling (~10 controller calls every 3 s), `POSITION` (~22 reads a minute), string building on every DCS event, the scheduler, scrambles, the rules. Probably small, but never measured. Scripts would show as regular hitches, not a steady low frame rate.
+5. **Map marks:** probably only matter while the F10 map is open.
+
+**John's tests first (2026-09-30), before any edits to the mission:**
+- **The same flight with no AI units:** the Kallax takeoff and the route to Vuojärvi, in VR. No `CONFIG` switch turns the generator off yet. The simplest way is to disable the mission's one ME trigger (`DO SCRIPT dofile(... "Scripts\\kola_f16\\init.lua")`) in a copy of the `.miz`. Kallax is an always-Blue field, so its slot still works without the script. That gives the terrain's own cost on the same flight.
+- **DCS system and graphics settings** that don't change how the mission looks or plays for John but may help a lot.
+- **John's reading so far:** the AI flights and the fighting between aircraft and SAMs are most likely the biggest hit (not a surprise). His results decide what gets built below.
+
+**Step 1: measure** (small, behind `CONFIG` switches, before cutting anything):
+- **Empty-map baseline:** the same `.miz` with the generator switched off (a `CONFIG` flag), John taking off at Kallax in VR. That gives the terrain's own cost at the same spot.
+- **Frame-time overlay:** John runs one with CPU vs GPU frame time (OpenXR Toolkit or fpsVR).
+- **A comms-menu entry "Mark bad frame rate"** that writes a `PERF` line to the event log with the time, the player's position and altitude, and the current load. John doesn't have to remember the time of a stutter.
+- **A per-minute `LOAD` line in the event log:** alive ground units (active / idle), airborne aircraft, missiles in flight if countable, so frame-rate notes can be matched to the load.
+- **Script timing:** `os.clock` around each consumer's tick; any tick over ~2 ms goes to `dcs.log`, plus a per-minute total per consumer.
+- **A/B switches for runs:** no base-defense infantry; airborne cap 8 per coalition; base-defense AI off away from aircraft.
+
+**Step 2: the likely levers,** best payoff for least realism lost:
+1. **Base-defense security infantry:** remove it, or make it static objects. That's 195 units that are almost pure scenery (and 37 more at fixed targets).
+2. **Base defenses wake only when an enemy aircraft is near:** guns, MANPADS teams and short-range launchers reach under 10 km. Their AI stays off (`Controller:setOnOff(false)`) until an enemy aircraft is within ~25–30 km, checked every ~10 s. On most frames ~500 units would be idle instead of scanning the sky. SAM sites stay on: they are the air denial. (Related: *Proximity spawning* in the `plan.md` backlog.)
+3. **Fewer MANPADS teams per base,** or the same wake-up rule for them.
+4. **SAM radars:** alarm state or emission control for sites far from any aircraft. This overlaps Skynet (item 8), which keeps sites dark until a target is close.
+5. **A lower airborne cap,** from 16 per coalition to ~10–12. John said not to cut flight volume (session 8), so this comes last and only if the rest isn't enough.
+6. **Scripts:** whatever step 1 shows is over budget.
+
+**Open:**
+- Is the wake-up rule acceptable for base defenses, and at what distance?
+- Is removing the security infantry fine, or should it stay as static objects for looks?
+- What frame rate counts as done: 45 fps steady everywhere, or 45 fps with short dips in the worst moments?
 
 ---
 
@@ -245,39 +332,74 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 - **Order:** push an `EngageGroup` on that fighter (or open fire on air targets within a range) on top of the mission. When the fighter is dead, gone or turned away, pop it, so the flight resumes its route and attack.
 - **Limits:** only flights whose loadout carries air-to-air missiles; don't chase past the leash; decide whether a flight that fought and lost its attack time still presses on or goes home.
 
-**Open (4a and 4b):**
+### 4c. Found in the first event-log run (2026-09-30)
+
+John asked for these to go into this item. The run's log is `event_logs\2026-09-30_201105.log`; grep `MSN2025_SEAD` and `MSN2026_SEAD` for issues 1–3. Bugs from the same run that aren't AI-logic work are in `bugs_and_fixes.md`.
+
+**What happened:** PKG2023 was a human strike on `TGT_KOSH_communications_site_1`, escorted by three AI SEAD flights of 2× F-16C from Rovaniemi:
+- MSN2024 → `SAM_KOSH_SA11_2`;
+- MSN2025 → `SAM_MURM_SA10_1` + escort;
+- MSN2026 → `SAM_KOSH_SA11_1`.
+
+MSN2025 lost both jets:
+- **`_1`:** a MiG-31 patrol (MSN5009_CAP_1) fired R-33s at it from 48 km, then from 22 km, while it flew its route. It dived to 1,400 ft and was killed (08:35:46). It never used its AIM-120C ×2 and AIM-9X ×2.
+- **`_2`:**
+  - at waypoint 7 (descent, 08:34:16) its `EngageGroup` on the SA-10 came on, 136 km from the site;
+  - the AI left the route (which never comes closer than 105 km to the SA-10), went to afterburner at 580–690 kt and flew ~30 km into the SA-10's ring;
+  - it fired both HARMs at the SA-10's search radars from 92–95 km;
+  - on the way it crossed `SAM_KOSH_SA11_1`'s ring, and that SA-11 shot it down (08:37:05, 27,800 ft, pilot ejected).
+- **MSN2026:** the flight assigned to that SA-11 was still ~2 min behind (TOT 08:41 against 08:39) and hadn't reached its own attack point.
+
+**Three issues, for the rules in this item:**
+1. **A SEAD / DEAD flight leaves its route once its attack task is live.** `EngageGroup` / `AttackGroup` let the DCS AI fly its own attack geometry, so the planned route's ring clearances don't hold. Needs a leash like the scrambles': don't go past a fraction of the target's ring, or into another enemy kill zone, to get a shot. Or an order that fires the HARMs from where the flight is, at longer range (research: can the AI be made to launch at max range, e.g. with an attack-range option, or a `FireAtPoint`-style task?).
+2. **Suppression flights aren't sequenced by where their threat sits along the route.** Each is timed only by `suppression_lead_s` before the strike's TOT, so a flight going for a deeper site (the SA-10) can arrive before the flight suppressing a site on the way in (the SA-11). Fix in planning (earlier TOT for threats the route meets first), or with a rule (hold short until the nearer threat is suppressed or dead).
+3. **Attack flights don't defend themselves** (4b): another case, with the air-to-air missiles aboard. Consider also going home or turning defensive when the picture shows an enemy fighter closing.
+
+**More from the full review of the same run** (grep the flight names):
+4. **The worst case of issue 1: MSN2028_SEAD,** 2× F/A-18C from Kemi Tornio escorting MSN2027_DEAD (a human DEAD on `SAM_KUUS_SA11_1`).
+   - Its first ring comes soon after takeoff, so its `EngageGroup` tasks sat on waypoint 2 (departure), 145 km from the site.
+   - From there the AI flew its own attack for the whole mission: 1,600–3,700 ft, never climbing to the planned 7,500 m, and pressed ~20 km inside the SA-11's ring.
+   - It fired its 4 HARMs from 46–61 km, killing one launcher and damaging the radar.
+   - Both jets were shot down by the SA-11 (08:22).
+   - Whatever holds a flight to its route and altitude has to work from the moment the attack task is live, even when that's right after takeoff.
+5. **Self-defence happens, but late** (data for 4b):
+   - MSN2024_SEAD_2 fired an AIM-120C at the MiG-31 attacking it only at 7 km, a moment before being killed. The missile killed the MiG-31 anyway.
+   - MSN2024_SEAD_1 killed the Su-27 patrol MSN5016 with an AIM-120C from 25 km, after being fired at, and died to that Su-27's R-27 in the exchange.
+   - So the AI does shoot back once attacked; the rule should make it engage first, at the range the radar picture gives.
+6. **Flights still go after targets that are already destroyed.**
+   - `SAM_KOSH_SA11_2`'s radar (its one critical object) was destroyed at 08:38 (the event log's `TARGET` line, `MSN2035_DEAD … 1 of 1 critical`).
+   - MSN2035_DEAD (TOT 12:52) and its two SEAD flights, MSN2036 and MSN2037, were still planned against it.
+   - A rule for this layer: before a flight spawns (and while it flies), if its target already meets its success fraction, cancel it or send it home (or re-target it; decide with John).
+   - The same goes for a SEAD flight whose threat is already dead.
+7. **Related, already in the `plan.md` backlog** ("Unflown taskings' AI flights"): MSN2028 flew and died escorting a human tasking nobody took. Once the logic layer can cancel flights, cancel a human package's AI flights when no player takes the tasking.
+
+**From the second event-log run, John flying** (`event_logs\2026-09-30_213757.log`, 65 min; losses Blue 5, Red 11). Bugs from it that aren't AI-logic work are in `bugs_and_fixes.md` (6–8, and the additions to 1–3 and 5).
+
+8. **Issue 1 again, then a SEAD flight flying on with nothing left** (grep `MSN2026_SEAD`):
+   - MSN2026 (2× F-16C from Rovaniemi) escorted MSN2025_STRIKE, the human tasking John didn't take (issue 7 again: 2 jets lost for a tasking nobody flew).
+   - Its first threat, `SAM_SODA_SA11_1`, was near Rovaniemi, so its attack tasks went live at departure. It fired **all 4 HARMs** at that one SA-11 (11:01–11:03, 31–51 km), though the plan gave it 2 per threat and a second threat, `SAM_IVAL_SA11_1`.
+   - It then flew its route into the Ivalo SA-11's ring with no HARMs left. Both jets were shot down there (11:10, 11:11, 16–23 km inside the ring).
+   - **A new rule for this layer:** a suppression flight with no anti-radiation missiles left goes home (and an attack flight with no air-to-ground weapons left, after its attack). Research: can the AI be held to a number of missiles per group (`EngageGroup` with `weaponType` and an expend quantity per task)?
+9. **The leash is too slow to save a jet already inside a kill zone** (grep `MSN2903_SCRAM`): its AIM-120s killed a Su-34 at 11:18:51, but the chase took it into the Sodankylä SA-11's kill zone. The leash fired at 11:19:34, the SA-11 launched at 11:19:42, and the jet died at 11:20:21. With a check every 30 s (one picture round), a jet moving at ~500 kt covers ~8 km between checks. Options: check watched flights more often than the picture (every 5–10 s, from their own position, which needs no radar); send home at a line short of the kill zone (e.g. the full ring instead of 85 %); or both.
+10. **Suppression isn't timed to a late human flight** (grep `MSN2024_SEAD`, `Aerial-1-2`): John took off 10 min late and bombed at 11:40, 13 min after his TOT of 11:27. His SEAD, MSN2024, reached the target at 11:18, 5 min early against its own TOT of 11:23. It HARMed the Vuojärvi Tunguska and the Sodankylä SA-11 and lost one jet to the Vuojärvi SA-8. The SA-8 isn't on its suppression list, because short-range SAMs aren't planned threats. It worked out, because the SA-11 was dead by the time John arrived. Options: hold a human package's AI flights until the player takes off (goes with assignment tracking), or re-time them at the player's takeoff.
+11. **Patrols kill packages, then die in the merge** (grep `MSN2016_CAP`, `MSN2002_CAP`):
+    - The F-16 patrol MSN2016 killed four Su-34s of PKG5027 with AIM-120s. It then followed the last one down to 8,500 ft and died to its R-73 at 2 km.
+    - The F-15C patrol MSN2002 killed four of PKG5023's jets, including a Su-24M from 5 km at 1,571 ft.
+    - Blue's patrols are doing what they should. The merge at the end is where they die. A patrol leash rule could cover it: break off below an altitude, or when out of long-range missiles.
+12. **Red's attacks on Rovaniemi fly into a full SAM umbrella:** PKG5023 (8 jets) was planned 44–90 km inside the Rovaniemi SA-10's ring, which is also covered by IRIS-T, NASAMS and a Tunguska. All 8 jets were lost; their Kh-31Ps killed the NASAMS radar and the IRIS-T search radar. With the suppression flight unarmed (`bugs_and_fixes.md` 6), the package had no chance. This is also a planning question: should a target deep under a long-range SAM be picked at all, and should a package go when one of its suppression flights is missing?
+
+**Open (4a, 4b and 4c):**
 - Which rules first, and in what order: attack-flight self-defence, strikes going home when their SEAD fails, the patrol leash?
 - How far a self-defending flight may turn off its route, and for how long?
 - Should a package's SEAD flight protect the strike flight, or only itself?
 
 ---
 
-## 5. AI CAP routes easy to see: where and when
-
-**Goal:** a player can see at a glance where own patrols will fly and when they'll be on station: to plan around them, join up, or know who covers what.
-
-**Where it stands:**
-- `consumers/draw_air_tasking_orders.lua` draws each station's race-track with one label listing its flights, plus commit circles.
-- The comms menu `Air tasking order > Patrols and AWACS` lists each flight and its state (planned / airborne / landed / lost).
-- Missing: times on the map (takeoff, on station, off station), the transit route to and from each station, and anything showing the current state on the map.
-
-**Approach (proposed):**
-- **Station labels:** each rotation's on-station window (`08:40–09:40 F-15C ×1 from Rovaniemi`), in mission time like the frag.
-- **Routes:** a thin line from base to station for each rotation, in the same style as attack routes.
-- **Live state:** update the label as flights launch, arrive and leave. DCS map marks can be removed and redrawn, so labels can change.
-- **Comms menu:** `Patrols and AWACS` lists stations with coverage windows and gaps ("no cover 09:40–09:55").
-
-**Open:**
-- Live-updating labels, or planned times only?
-- Once fog of war exists: own patrols only.
-
----
-
-## 6. AWACS calls to the player (text)
+## 5. AWACS calls to the player (text)
 
 **Goal:** the AWACS tells the player what it sees: enemy aircraft with bearing, distance, altitude and type, like a real controller's picture calls.
 
-**Decided:** text messages to the player's group (`outTextForGroup`) for now. Long-term goal (John): AWACS calls become LLM / cloud audio like the AI pilots' calls (item 8), and the text version is the step before that. Build the calls so the delivery can be swapped: the facts (who, BRAA, type) are worked out in one place, and text is only one way of sending them.
+**Decided:** text messages to the player's group (`outTextForGroup`) for now. Long-term goal (John): AWACS calls become LLM / cloud audio like the AI pilots' calls (item 7), and the text version is the step before that. Build the calls so the delivery can be swapped: the facts (who, BRAA, type) are worked out in one place, and text is only one way of sending them.
 
 **Where it stands:**
 - One AWACS per coalition flies (session 8).
@@ -297,7 +419,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 ---
 
-## 7. Cruise missile attacks (ideally from the ground, else from the air)
+## 6. Cruise missile attacks (ideally from the ground, else from the air)
 
 **Goal:** long-range missile strikes on high-value targets, part of the Ukraine-war feel: missiles for deep strikes instead of risking airframes (a session 8 doctrine idea).
 
@@ -325,7 +447,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 ---
 
-## 8. AI radio calls: flights announce their intentions (LLM / cloud)
+## 7. AI radio calls: flights announce their intentions (LLM / cloud)
 
 **Goal:** AI flights say what they're doing, so the air war can be followed by ear: "Viper 2-1, airborne Rovaniemi, heading for the station", "Hornet 1-1, SEAD, pushing", "Eagle 3-1, bingo, RTB". The words come from an LLM, so calls sound natural and varied instead of canned.
 
@@ -372,11 +494,11 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 - Voice goes through SRS, so every player needs SRS running (decided: audio only).
 - Which events are worth a call: all state changes, or only the ones that matter to a player (package pushing, station gaps, losses)?
 - Everything to every Blue player, or only flights near the player or in their package?
-- The AWACS calls (item 6) move to this voice channel once it works (John's goal); decide then whether the text version stays as a backup.
+- The AWACS calls (item 5) move to this voice channel once it works (John's goal); decide then whether the text version stays as a backup.
 
 ---
 
-## 9. Skynet IADS: SAM networks that behave like real air defences
+## 8. Skynet IADS: SAM networks that behave like real air defences
 
 **Goal:** SAM sites that fight as a network instead of each radar on its own: early-warning radars share one picture, SAM sites stay dark until a target is close, and radars shut down when a HARM comes at them. That means ambushes, little RWR warning, and SEAD that actually has to work (John: "sounds really cool").
 
@@ -393,7 +515,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 **What it changes elsewhere:**
 - **Radar picture (item 1):** dark SAM radars see nothing, so the picture then rests on early-warning radars, the AWACS and fighters. That's realistic, but check that scrambles still trigger. Also decide whether Skynet's own contact list and ours stay separate, or whether one feeds the other.
 - **SEAD packages:** "whether suppression works doesn't need tracking" (John) may change once HARMs really make sites go dark.
-- **Frag threats:** a site that stays dark is still listed as a threat. That fits the fidelity rule of fog of war (item 10).
+- **Frag threats:** a site that stays dark is still listed as a threat. That fits the fidelity rule of fog of war (item 9).
 
 **Approach (proposed):** test it first on script-spawned groups (the README covers groups placed in the ME). Prototype on one SA-11 and one early-warning radar, and fly a HARM at it. Then register the full networks.
 
@@ -405,7 +527,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 ---
 
-## 10. Fog of war: showing Red installations without revealing the whole map (last)
+## 9. Fog of war: showing Red installations without revealing the whole map (last)
 
 **Goal:** players see what Blue intelligence would plausibly know, not the planner's full picture. Enough to plan a mission, with real uncertainty left.
 
@@ -478,25 +600,25 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 **Where it stands:** nothing built. Flights have no callsign set, so DCS gives defaults, and several flights may share one. The callsign policy in `plan.md` (*Design, not built yet*) keeps the group name (`MSN2025_DEAD`) as the machine id, never spoken, with a separate radio callsign per flight.
 
 **The catch to settle first:** DCS's own AI voices can only say callsigns from its fixed lists (Western aircraft: Enfield, Springfield, Uzi, Colt, Dodge, Ford, Chevy, Pontiac; AWACS: Overlord, Magic, Wizard, Focus, Darkstar; tankers: Texaco, Arco, Shell; Russian aircraft: numbers). A custom callsign can be printed in the brief, the comms menu and the log, but a DCS voice would still say the list name, so what's written and what's heard wouldn't match.
-- **Once AI radio calls are built (item 8, LLM / text-to-speech),** our own voice can say any callsign, so fun callsigns work everywhere.
+- **Once AI radio calls are built (item 7, LLM / text-to-speech),** our own voice can say any callsign, so fun callsigns work everywhere.
 - **Until then:** fun callsigns in text only, or pick from DCS's list so voice and text agree.
 
 **Approach (proposed):**
 - **A data file** (`data/flight_callsigns.lua`, `FLIGHT_CALLSIGNS`), generated or hand-curated once, per coalition and role: fighters, attack, SEAD / DEAD, AWACS, tankers, human flights. Red could get Russian-flavoured names, or numbers as the real Russian air force uses.
 - **Assigned at planning time,** one per flight, never two live flights with the same one, stored on the mission (`m.callsign`, e.g. "Reaper 2", units "Reaper 2-1", "Reaper 2-2").
-- **Used by** the brief and frags, the comms menu, the event log (item 3), AWACS calls (item 6) and AI radio calls (item 8).
+- **Used by** the brief and frags, the comms menu, the event log (item 3), AWACS calls (item 5) and AI radio calls (item 7).
 - **Human flights** get a reserved set, so a player's callsign stands out.
 
 **Open:**
 - Generate the list (e.g. from real squadron nicknames and brevity-friendly words) or hand-pick it?
-- Text-only until item 8, or DCS list names for now?
+- Text-only until item 7, or DCS list names for now?
 - Themed per base or squadron (every Bodø flight is a "Viking"), or random from the role's list?
 
 ---
 
 ## Optional, later: the threat picture on the map for players
 
-**Goal:** once fog of war (item 10) hides the full map, draw Blue's own radar picture (item 1) for Blue players, so they see the air threat the way their side's radars see it (John: "might be a really cool way to see the threat picture for the human players").
+**Goal:** once fog of war (item 9) hides the full map, draw Blue's own radar picture (item 1) for Blue players, so they see the air threat the way their side's radars see it (John: "might be a really cool way to see the threat picture for the human players").
 
 **Where it stands:** nothing built, on purpose. John doesn't want contacts drawn while debugging: the full map already shows every aircraft, and more marks would clutter it. It only makes sense after fog of war.
 

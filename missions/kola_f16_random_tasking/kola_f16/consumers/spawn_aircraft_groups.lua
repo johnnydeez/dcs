@@ -23,9 +23,11 @@
 --              Group tasks need DCS group ids, looked up by name now; a group that no
 --              longer exists is skipped
 --   landing    at the landing base
+--   every waypoint between takeoff and landing starts with a script command that writes
+--              the event log's WAYPOINT line when the flight gets there
 -- After the spawn, every unit's type is compared with the plan (DCS swaps unknown types),
--- each unit's ammo is logged a few seconds later (logAmmo), and the time spent in
--- addGroup is logged (a type's first spawn froze the sim; see
+-- the flight goes to the event log (SPAWNED), each unit's ammo is logged there a few
+-- seconds later (LOADOUT, logAmmo), and a slow addGroup is a warning in dcs.log (a type's first spawn froze the sim; see
 -- consumers/preload_aircraft_types.lua).
 -- Reads the plan; writes nothing back to it.
 
@@ -144,6 +146,14 @@ local function zoneEngageTasks(m, first)
     return tasks
 end
 
+-- The script command that writes the event log's WAYPOINT line when the flight reaches
+-- waypoint `index`; runs first on that waypoint.
+local function reachedCommand(m, index)
+    return { number = 1, auto = false, id = "WrappedAction", enabled = true,
+             params = { action = { id = "Script", params = {
+                 command = string.format("WriteEventLog.waypoint(%q, %d)", m.id, index) } } } }
+end
+
 local function waypoint(r, extra)
     local wp = {
         x = r.x, y = r.z, alt = r.alt_m, alt_type = "BARO", speed = r.speed_mps, speed_locked = true,
@@ -173,7 +183,7 @@ local function buildGroup(m, launchId, landingId)
     local rules = m.rules_of_engagement or "open_fire"
 
     local points = {}
-    for _, r in ipairs(m.route) do
+    for index, r in ipairs(m.route) do
         if r.kind == "takeoff" then
             local tasks = {
                 option(1, OPTION_ROE, ROE[rules]),
@@ -199,12 +209,14 @@ local function buildGroup(m, launchId, landingId)
                 alt = land.getHeight({ x = r.x, y = r.z }), speed = 0, task = combo(tasks),
             })
         elseif r.carries_attack_tasks then
-            points[#points + 1] = waypoint(r, { task = combo(attackTasks(m, 1)) })
+            local tasks = { reachedCommand(m, index) }
+            for _, t in ipairs(attackTasks(m, 2)) do tasks[#tasks + 1] = t end
+            points[#points + 1] = waypoint(r, { task = combo(tasks) })
         elseif r.kind == "landing" then
             points[#points + 1] = waypoint(r, { type = "Land", action = "Landing", airdromeId = landingId,
                 alt = land.getHeight({ x = r.x, y = r.z }) })
         else
-            points[#points + 1] = waypoint(r)
+            points[#points + 1] = waypoint(r, { task = combo({ reachedCommand(m, index) }) })
         end
     end
 
@@ -230,17 +242,12 @@ function SpawnAircraftGroups.spawn(m)
         Log.warn(string.format("%s: coalition.addGroup failed (%s)", m.id, tostring(grp)))
         return nil
     end
-    local mismatches = 0
     for i, u in ipairs(grp:getUnits() or {}) do
         if u:getTypeName() ~= m.aircraft_type then
-            mismatches = mismatches + 1
             Log.warn(string.format("%s unit %d: asked for '%s', DCS spawned '%s'", m.id, i, m.aircraft_type, u:getTypeName()))
         end
     end
-    Log.info(string.format("%s spawned: %s %s %dx %s at %s → %s (%s)%s, TOT %d s; %d type mismatches; %.2f s",
-        m.id, m.coalition:upper(), m.mission_type, m.count, m.aircraft_type, m.launch_base, m.target,
-        m.target_label, m.escorts and (", escorting " .. m.escorts .. ", engaging " .. table.concat(m.suppresses, ", ")) or "",
-        m.tot_s, mismatches, spent))
+    WriteEventLog.spawned(m, m.takeoff == "runway")
     if spent > SLOW_SPAWN_S then
         Log.warn(string.format("%s: addGroup took %.1f s — the sim froze (was %s preloaded?)", m.id, spent, m.aircraft_type))
     end
@@ -249,8 +256,9 @@ function SpawnAircraftGroups.spawn(m)
 end
 
 -- What each unit of a spawned flight actually carries, as DCS reports it (John's run,
--- 2026-09-27: a Su-24M flight looked unarmed although the plan gave it a loadout). A
--- flight with nothing aboard while its loadout lists pylons is a warning.
+-- 2026-09-27: a Su-24M flight looked unarmed although the plan gave it a loadout), to
+-- the event log. A flight with nothing aboard while its loadout lists pylons is also a
+-- warning in dcs.log.
 function SpawnAircraftGroups.logAmmo(m)
     local grp = Group.getByName(m.id)
     if not (grp and grp:isExist()) then return end
@@ -260,12 +268,11 @@ function SpawnAircraftGroups.logAmmo(m)
             local d = a.desc or {}
             parts[#parts + 1] = string.format("%s x%d", d.displayName or d.typeName or "?", a.count or 0)
         end
-        local line = string.format("%s: %s carries %s", m.id, u:getName(),
-            #parts > 0 and table.concat(parts, ", ") or "nothing")
+        local carries = #parts > 0 and table.concat(parts, ", ") or "nothing"
+        WriteEventLog.add(m.coalition, "LOADOUT", u:getName(), string.format("%s carries %s", m.aircraft_type, carries))
         if #parts == 0 and #m.loadout.pylons > 0 then
-            Log.warn(line .. string.format(" — its loadout '%s' lists %d pylons", m.loadout.name, #m.loadout.pylons))
-        else
-            Log.info(line)
+            Log.warn(string.format("%s: %s carries nothing — its loadout '%s' lists %d pylons", m.id, u:getName(),
+                m.loadout.name, #m.loadout.pylons))
         end
     end
 end
