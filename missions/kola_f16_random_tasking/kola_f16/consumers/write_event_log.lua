@@ -15,12 +15,15 @@
 --
 -- Event words (grep them): SPAWNED LOADOUT TAKEOFF WAYPOINT LAND POSITION SHOT GUNS HIT
 -- DESTROYED CRASHED EJECTED PILOT_DEAD PARACHUTE ABORTED TARGET CONTACT TRACKING PICTURE
--- SCRAMBLE NO_SCRAMBLE STOOD_DOWN ALERT LEASH PLAYER_IN PLAYER_OUT
+-- SCRAMBLE NO_SCRAMBLE STOOD_DOWN ALERT LEASH UNIT_AWAKE UNIT_ASLEEP LATE_WAKE AWAKE_COUNT
+-- PLAYER_IN PLAYER_OUT
 --
 -- The DCS events (shots, hits, kills, takeoffs, landings, …) are caught here for every
 -- unit. The other modules hand their own events over with WriteEventLog.add: the flight
 -- spawner (SPAWNED, LOADOUT, and WAYPOINT through a script command on each waypoint),
--- the scheduler (TARGET), the radar picture, scrambles and the leash.
+-- the scheduler (TARGET), the radar picture, scrambles, the leash and sleeping ground
+-- units (consumers/sleep_ground_units.lua; HIT and DESTROYED lines of a sleeping unit
+-- end in "(asleep)").
 --
 -- Cheap on purpose: a DCS event only builds a line into memory. Lines are held
 -- EVENT_LOG.hold_s so repeats fold into one (a burst of gun hits, a stick of bombs, a
@@ -129,6 +132,14 @@ local function whereIs(u, side)
         text = text .. string.format(", %.0f km %s %s", math.abs(edge) / 1000, edge < 0 and "inside" or "outside", nearest)
     end
     return text
+end
+
+-- " (asleep)" for a ground unit whose group is asleep (consumers/sleep_ground_units.lua),
+-- else "". A dead unit may have no group any more: its name is <group>_<n>.
+local function asleepTag(o)
+    if not SleepGroundUnits then return "" end
+    local g = groupOf(o) or (nameOf(o) or ""):match("^(.+)_%d+$")
+    return SleepGroundUnits.isAsleep(g) and " (asleep)" or ""
 end
 
 -- ── lines ───────────────────────────────────────────────────────
@@ -292,7 +303,7 @@ local function destroyed(o, killer, weapon)
     local t = typeOf(o) or "?"
     local player = playerOf(o)
     e = push(side, "DESTROYED", name, nil, {
-        what = t .. (player and (", player " .. player) or ""),
+        what = t .. (player and (", player " .. player) or "") .. (aircraft and "" or asleepTag(o)),
         killer = killer and who(killer), killer_kind = killerKind(killer), weapon = weapon,
         where = aircraft and whereIs(o, side) or nil,
         aircraft = aircraft, static = not isUnit(o), coalition = coalitionName(side),
@@ -354,13 +365,14 @@ local function hit(e)
     local weapon = weaponName(e)
     fold(table.concat({ "hit", name, shooterName, weapon }, "|"), EVENT_LOG.fold_hits_s, function()
         local by = e.initiator and who(e.initiator) or "unknown"
+        local asleep = isAircraft(target) and "" or asleepTag(target)
         return push(sideOf(target), "HIT", name, nil, { weapon = weapon, by = by, target_type = typeOf(target),
             where = isAircraft(target) and whereIs(target) or nil,
             render = function(l)
                 local text = string.format("%s hit by %s%s from %s", l.target_type or "?", l.weapon,
                     l.count > 1 and string.format(" (%d hits)", l.count) or "", l.by)
                 if l.where then text = text .. ", " .. l.where end
-                return text
+                return text .. asleep
             end })
     end)
 end
@@ -561,6 +573,11 @@ local function summaryText()
         local m = _flights[id]
         add(string.format("%-4s  %-16s %s — %s", m.coalition:upper(), id, missionText(m),
             safe(function() return ScheduleAirTaskingOrders.statusOf(id) end) or "?"))
+    end
+    local sleeping = SleepGroundUnits and safe(SleepGroundUnits.summaryLines) or {}
+    if #sleeping > 0 then
+        add("")
+        for _, line in ipairs(sleeping) do add(line) end
     end
     return table.concat(L, "\n") .. "\n"
 end

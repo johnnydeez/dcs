@@ -55,6 +55,11 @@ CONFIG = {
     -- perimeter and access roads). Roads are open by construction; trees aren't.
     ROAD_FALLBACK_RUNWAY_M = 800,
 
+    -- Base defenses that reach under ~10 km sleep (AI off) until an enemy aircraft comes
+    -- near their base (consumers/sleep_ground_units.lua, data/ground_unit_sleep.lua).
+    -- false: every ground unit stays awake all mission, to compare a run without it.
+    SLEEP_GROUND_UNITS = true,
+
     -- Map drawing (debug view of the plan).
     DRAW_BASE_RADIUS = 10000,   -- m, territory circle at each base
     DRAW_ZONE_RADIUS = 3000,    -- m, zones are 30-150 m wide and invisible at map scale

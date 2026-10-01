@@ -37,13 +37,16 @@
 - **Scrambles and the leash** (roadmap item 2, done 2026-09-30): one-ship scrambles at raids the radar picture shows, burning straight at them from a hot ramp spot; the first AI behaviour rule (the leash) brings them home; alert jets go back on alert 30 min after landing (see *Scrambles and the leash*).
 - **Flight ids carry the mission type:** `MSN2025_DEAD`, `MSN2901_SCRAM` (see *Naming and ids*).
 - **Event log** (roadmap item 3, built 2026-09-30, run twice in DCS the same day; the second run flown by John): a plain-language file per run in `event_logs\` (git-ignored), every event of the air war unit by unit, to watch live or comb through afterwards (see *Event log*). The flight, radar-picture, scramble and leash lines moved there from `dcs.log`.
+- **Performance in VR, first pass** (2026-10-01, not run in DCS yet): John's terrain settings (forest, scenery, LOD) got Kola itself back to 45 fps; the mission's own load is next. Built: no security infantry and one towed-gun group and one MANPADS team per base (*Stage 2*); short-reach base defenses sleep until an enemy aircraft is within 30 km of their base (*Sleeping ground units*); the airborne cap is 12 per coalition, with 2 of it kept for scrambles (planned flights peak at 10; scrambles never go over 12).
 
 **Last DCS runs:**
 - **Session 9, fourth run, ~2 h:** the air-denial rules held (John: "It looked good to me and like it followed our rules"). 0 patrol or AWACS track samples in enemy airspace or inside an enemy ring.
 - **Session 10, 12:18 roll:** the human taskings, frags and steerpoints read well (John: "looking good").
 - **Session 11, first radar picture + scramble run, ~48 min, watched (not flown):** everything designed showed up and nothing errored (details under *Radar picture* and *Scrambles and the leash*). John: MSN2901 and MSN5902 "did exactly what we wanted as a scramble". **Losses were high: 12 aircraft (Blue 4, Red 8)**, both Blue packages caught by Red fighters and both Red packages destroyed, mostly by aircraft that kept flying their route while engaged → roadmap item 4 (AI behaviour logic). Since then: alert jets return after landing, and flight ids carry the mission type; neither run in DCS yet.
 
-**Next:** `roadmap.md`, in John's order: radar picture → scrambles → event log → AI behaviour logic → AWACS calls (text) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war (last: the full map is needed while debugging); radar jamming, helicopters, fun callsigns and a player map of the threat picture are optional, at the end. Radar picture, scrambles and the event log are built and run. Two event-log runs on 2026-09-30 (`event_logs6-09-30_201105.log`, and `2026-09-30_213757.log` with John flying MSN2023_OCA: 2 of 3 parked MiG-29s at Vuojärvi, losses Blue 5 / Red 11) fed `bugs_and_fixes.md` and roadmap 4c. **Next: performance in VR (top priority, `roadmap.md`: John's first VR run couldn't hold 45 fps, down to ~12 fps on takeoff), then the bugs, then AI behaviour logic (item 4).** The backlog below holds everything else.
+**Next (2026-10-01):** the performance pass ran once in 2D (`event_logs\2026-10-01_112448.log`, 35 min, no player): sleeping, waking and the cap worked as designed (Luostari woke at 29 km and slept 3 min after its intruders died; peaks Blue 8 / Red 6; no `LATE_WAKE`), but no enemy came within 10 km of a base, so a woken base fighting is still unseen. VR frame rate not measured yet. Next: the bug list (`bugs_and_fixes.md`, now 1–14), then item 4.
+
+**Before (2026-09-30):** `roadmap.md`, in John's order: radar picture → scrambles → event log → AI behaviour logic → AWACS calls (text) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war (last: the full map is needed while debugging); radar jamming, helicopters, fun callsigns and a player map of the threat picture are optional, at the end. Radar picture, scrambles and the event log are built and run. Two event-log runs on 2026-09-30 (`event_logs6-09-30_201105.log`, and `2026-09-30_213757.log` with John flying MSN2023_OCA: 2 of 3 parked MiG-29s at Vuojärvi, losses Blue 5 / Red 11) fed `bugs_and_fixes.md` and roadmap 4c. **Next: performance in VR (top priority, `roadmap.md`: John's first VR run couldn't hold 45 fps, down to ~12 fps on takeoff), then the bugs, then AI behaviour logic (item 4).** The backlog below holds everything else.
 
 **Still to watch in runs:**
 - **Lone F-15E crash:** an F-15E of a Banak DEAD crashed alone in Blue airspace ~30 min after bombing (1,237 ft, no hit recorded). An AI approach crash or fuel? Watch for a repeat.
@@ -69,6 +72,7 @@
 | `TARGET` | a mission's target objects destroyed ("3 of 6 critical") |
 | `CONTACT`, `TRACKING`, `PICTURE` | each coalition's radar picture: new / regained / stale / dropped contacts and airspace changes, a SAM radar's first track of a group, the 5-min summary |
 | `SCRAMBLE`, `NO_SCRAMBLE`, `STOOD_DOWN`, `ALERT`, `LEASH` | scramble decisions and refusals, stood down before launch, jets back on alert, leash decisions |
+| `UNIT_AWAKE`, `UNIT_ASLEEP`, `LATE_WAKE`, `AWAKE_COUNT`, `(asleep)` | sleeping ground units: a base's short-reach defenses waking and sleeping, an enemy within 10 km of a sleeping base (never expected), the 5-min count; hits and deaths of a sleeping unit end in `(asleep)` |
 | `PLAYER_IN`, `PLAYER_OUT` | players |
 | `== Mission end` | the summary: flights launched, losses by cause, ground losses, each flight's outcome |
 
@@ -182,7 +186,7 @@ Then:
 5. `PreloadAircraftTypes`, then `WriteEventLog.start` (DCS events from here on, so the preload isn't in the story).
 6. `ScheduleAirTaskingOrders.start`.
 7. `TrackRadarPicture.start` (after the scheduler, before anything that reads the picture).
-8. `EnforceAirBehaviourRules.start`, then `RunScrambles.start`.
+8. `EnforceAirBehaviourRules.start`, then `RunScrambles.start`, then `SleepGroundUnits.start`.
 9. `DrawAirTaskingOrders`.
 10. `BriefAirTasking.start` (comms menu).
 11. Build summary to `dcs.log`.
@@ -248,17 +252,16 @@ Every airbase gets a coalition-appropriate ground defense sized to how hard its 
    strip         standard   light      light
    heli          standard   light      light
 ```
-Rough size: heavy 6–9 groups / ~20 units, standard 3–6 / ~13, light 2–3 / ~9. Skill: heavy `Good`, else `Average`. FPS is not a concern: standing ground units barely register (John).
+Rough size: heavy 5 groups / ~10 units, standard 2–4 / ~7, light 2 / ~5 (before 2026-10-01: ~20 / ~13 / ~9). Skill: heavy `Good`, else `Average`. Standing ground units barely register on their own (John); what they cost is scanning the sky while aircraft fly, so the short-reach ones sleep (*Sleeping ground units*).
 
-**Groups per level**, most important layer first:
+**Groups per level**, most important layer first (trimmed 2026-10-01 for performance in VR: security infantry is no longer fielded, its placement kept so it can come back; towed guns and MANPADS teams were 1–2):
 ```
                                    heavy   standard   light
    radar_missile_launchers          1        —         —
    infrared_missile_launchers       1        0–1       —
    mobile_anti_aircraft_guns        1        0–1       —
-   towed_anti_aircraft_guns         1–2      1–2       1
-   shoulder_launched_missile_teams  1–2      1         1
-   security_infantry                1–2      1         0–1
+   towed_anti_aircraft_guns         1        1         1
+   shoulder_launched_missile_teams  1        1         1
 ```
 
 **Rosters.** Coverage and realism beat exact type (John): Blue uses Russian or Chinese stand-ins where they match the real Nordic system better. Only single-vehicle systems here; multi-vehicle SAMs belong to the SAM site recipes.
@@ -461,7 +464,7 @@ One Red supply convoy per mission (`CONVOYS_PER_COALITION`: Red 1, Blue 0).
 
 **Order inside `PlanAirTasking`, per coalition:** defensive air (AWACS → CAP stations and rotations) → human flights → AI attack packages. Human flights come before the AI's so they get first pick of targets.
 
-**Airborne cap:** `max_airborne_aircraft` 16 per coalition, counting every package member, patrol and AWACS (John: don't reduce flight volume). Up to 32 AI aircraft airborne in total.
+**Airborne cap:** `max_airborne_aircraft` 12 per coalition (16 until 2026-10-01; cut 25 % for performance in VR, John: strike volume is all relative), counting every package member, patrol, AWACS and scramble. Planned flights fill it only up to `AIR_DEFENSE.scramble_reserve_aircraft` (2) below it (`plannedCap`), so strikes can't leave no room for a scramble; scrambles never go over it. Up to 24 aircraft airborne in total. In the harness on the 21:37 plan, planned peaks went from 13–16 to 7–10, and Red planned ~22–28 flights instead of ~30–36.
 
 **Launch fields:** fighters and attack jets fly from any held field whose runway and parking fit them (John: in wartime every usable runway is used).
 - F-16 / F/A-18 `min_runway_m` is 1,500 m (4,900 ft), so Alta (1,490 m) is just short and Kirkenes (1,795 m) qualifies.
@@ -611,7 +614,7 @@ Rebuilt 2026-09-30 (roadmap item 2; design agreed with John, recorded there). A 
 
 **The raid:** the trigger plus the other contacts within `raid_radius_km` (20) on a heading within `raid_heading_deg` (45); one scramble takes them all, `EngageGroup` on each, in order.
 
-**The base:** the nearest ready alert base in the region facing the raid (`DivideAirspace.facingRegion`) whose intercept point is in reach and at least `scramble_min_leg_km` (10) out, with a free ramp spot; the coalition may go up to `scramble_over_cap` (2) over `max_airborne_aircraft`. The intercept point is the raid pushed ahead along its heading by the scramble's flight time, pulled back in 5 km steps until it lies in own or contested airspace outside enemy kill zones.
+**The base:** the nearest ready alert base in the region facing the raid (`DivideAirspace.facingRegion`) whose intercept point is in reach and at least `scramble_min_leg_km` (10) out, with a free ramp spot; never over `max_airborne_aircraft`: the planner keeps `scramble_reserve_aircraft` (2) of it free (2026-10-01; it used to allow `scramble_over_cap`, 2 over). The intercept point is the raid pushed ahead along its heading by the scramble's flight time, pulled back in 5 km steps until it lies in own or contested airspace outside enemy kill zones.
 
 **The launch:**
 - after `scramble_reaction_s` (60–120 s, cockpit alert), **hot on a free ramp spot, never the runway** (John: no spawning on top of jets lined up there). The spot is chosen at spawn time from `Airbase:getParking(true)`, nearest the runway, not a player slot or a parked-aircraft static. If the raid is gone by then, or no spot is free, the scramble is **stood down before launch** and its jet stays on alert;
@@ -694,6 +697,20 @@ Built 2026-09-30 (roadmap item 3). A catalogue of everything that happened in th
   - a kill arriving after the dead event, and a scenery kill ignored;
   - lines in time order, and nothing after the mission end;
   - the plan header and the summary.
+
+### Sleeping ground units (`consumers/sleep_ground_units.lua`, `data/ground_unit_sleep.lua`)
+
+Built 2026-10-01 (roadmap, *Top priority: performance in VR*); not run in DCS yet. A sleeping group has its AI off (`Controller:setOnOff(false)`), so it doesn't scan the sky. Standing units cost little by themselves; ~500 of them checking every aircraft and missile is what multiplies.
+- **What sleeps:** base-defense groups of `GROUND_UNIT_SLEEP.components`: towed and mobile guns, infrared missile launchers, MANPADS teams (and security infantry if it comes back). **Never:** SAM sites (the air denial) and `radar_missile_launchers` (they reach ~20 km and feed the radar picture).
+- **Per base, every 10 s:** all its sleeping groups wake together when an enemy aircraft (plane or helicopter, AI or player) is within `wake_km` (30) of the base, with alarm state red. They sleep again once no enemy has been within 30 km, and the base hasn't fired, for `sleep_after_s` (180), so a base never sleeps mid-fight or flaps. Everything starts asleep.
+- **Watching for problems** (John: see problems without spamming the log):
+  - `UNIT_AWAKE` / `UNIT_ASLEEP`, one line per base per switch, subject `DEF_<CODE>`; the asleep line sums that wake: close passes, shots, hits, kills.
+  - `LATE_WAKE`: an enemy within `reach_km` (10) of a base that was asleep. Never expected; it means the wake-up missed an aircraft.
+  - `(asleep)` at the end of a `HIT` or `DESTROYED` line of a sleeping unit.
+  - `AWAKE_COUNT` every 5 min per coalition: bases and units awake.
+  - **End summary:** per base that woke: wakes, minutes awake, close passes (enemies within 10 km while awake), shots, hits, kills, late wakes; `CHECK` on a base with 2+ close passes and no shot (DCS may not have woken it properly).
+- **Off switch:** `CONFIG.SLEEP_GROUND_UNITS = false` keeps everything awake, to compare a run.
+- **Harness** (`sleep_harness.lua`, session scratchpad, not kept): the 21:37 plan's 174 sleeping groups off at start; a Blue jet woke Vuojärvi at 30 km, a gun burst kept it awake, and it slept 3 min after the jet died; a jet appearing 8 km from Alakurtti gave `LATE_WAKE`; a hit on a sleeping MANPADS team read `(asleep)`.
 
 ### Player slots (`data/player_slots.lua`)
 
@@ -916,6 +933,7 @@ kola_f16\
     radar_picture.lua            -- radar picture settings: polling, stale / drop times, sensor kinds, inbound
     air_behaviour_rules.lua      -- the rules enforced on AI flights after launch (the leash)
     event_log.lua                -- event log settings: folder, write interval, hold and fold windows, positions
+    ground_unit_sleep.lua        -- which base defenses sleep; wake and reach distances, check interval
     aircraft_profiles.lua        -- per aircraft type: runway, parking, reach, speeds, altitudes (hand)
     aircraft_loadouts.lua        -- one loadout per type × mission (aircraft_loadouts.py)
     aircraft_pylons.lua          -- pylon → CLSID, generated; offline validation only, not loaded
@@ -933,6 +951,7 @@ kola_f16\
     track_radar_picture.lua      -- each coalition's radar picture: contacts, events, queries
     enforce_air_behaviour_rules.lua  -- rules on AI flights after launch: the scramble leash
     run_scrambles.lua            -- one-ship scrambles at raids the radar picture shows
+    sleep_ground_units.lua       -- short-reach base defenses asleep (AI off) until an enemy aircraft is near
     brief_air_tasking.lua        -- start text + comms menu
     draw_airspace.lua  draw_base_defenses.lua  draw_sam_sites.lua  draw_fixed_ground_targets.lua
     draw_convoys.lua  draw_air_tasking_orders.lua    -- F10 map marks (all ToAll(-1) until fog of war)
