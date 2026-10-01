@@ -19,8 +19,8 @@
 --   4. the base: the nearest alert base, in the own region facing the raid, with a
 --      jet ready and off cooldown, whose intercept point (the raid pushed ahead along
 --      its heading, pulled back to own or contested airspace and out of enemy kill zones)
---      is in reach and at least scramble_min_leg_km out; under the airborne cap plus
---      scramble_over_cap
+--      is in reach and at least scramble_min_leg_km out; never over the airborne cap
+--      (the planner keeps AIR_DEFENSE.scramble_reserve_aircraft of it free for scrambles)
 --   5. after scramble_reaction_s (cockpit alert) a one-ship spawns hot on a free ramp
 --      spot (never on the runway: John), with EngageGroup on each raid group from
 --      takeoff, open fire, dash speed with afterburner allowed. The scheduler logs its
@@ -330,7 +330,7 @@ local function scramble(st, trigger, contacts, reason, now)
     local pick, why = pickBase(st, trigger, now)
     if not pick then return refuse(st, trigger, why) end
     if airborneAircraft(st.coalition) + st.pending_count() + 1
-       > st.posture.max_airborne_aircraft + AIR_DEFENSE.scramble_over_cap then
+       > st.posture.max_airborne_aircraft then
         return refuse(st, trigger, "over the airborne cap")
     end
     local raid = raidOf(st, trigger, contacts)

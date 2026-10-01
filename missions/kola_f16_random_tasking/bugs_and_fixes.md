@@ -239,3 +239,46 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 - The steerpoint list stays **5 minutes** (a `STEERPOINT_MESSAGE_S` 300) and the frag **3 minutes** (`FRAG_MESSAGE_S` 180) (John, 2026-10-01). Other menu texts keep 60 s.
 - Add a `Hide text` entry to the comms menu. It clears the screen (a short empty message with `clearview`), so a long-lasting list isn't in the way once it's entered.
 - Picking `Steerpoints` again shows it again from the start, as now.
+
+---
+
+## 13. Su-34s blow up on the ramp seconds after spawning
+
+**Status:** open (found 2026-10-01).
+
+**Seen:** `event_logs\2026-10-01_112448.log`, grep `MSN5024_SEAD`, `MSN5023_STRIKE`.
+- MSN5024_SEAD (08:02:00) and MSN5023_STRIKE (08:06:07), each 2× Su-34 on the ramp at Afrikanda. 12–15 s after spawning, each flight read `ABORTED` twice, then both jets were `DESTROYED`, "no killer recorded", at 499 ft (field height), pilots ejected. All of PKG5023 was gone before takeoff.
+- They spawned armed (`LOADOUT` lines), on terminal-72 spots 27 / 28 and 34 / 35 (plan dump). No parked-aircraft static or ground unit was near those spots (the nearest statics were the MiG-31s at spots 9–12 and 37, the base defenses at the runway end over 1 km away).
+- Afrikanda is the forested field (`data/forested_airfields.lua`).
+- Probably the same as session 11's "Su-34 takeoff crash" (`plan.md`, *Still to watch*): MSN5024_2 ejected at 161 ft 32 s after spawning at Poduzhemye.
+- In the same run, a Su-27 (MSN5016_CAP, spot 4, terminal 104) took off from Afrikanda normally.
+
+**Cause (suspected, not proven):** `reserveParking` (`stages/plan_air_tasking.lua`) gives a flight any free spot whose terminal type its profile allows (Su-34: `{ 104, 72 }`), with no check on the spot's size. The Su-34 is a large jet (14.7 m span, 23 m long); on a small or tree-lined spot it may collide as it spawns or starts to taxi.
+
+**Proposed fix:**
+- First confirm in DCS: spawn a Su-34 on Afrikanda spots 27 and 34, and on a terminal-104 spot, and watch.
+- If it's the spot size: limit the Su-34 (and other large types: Su-24M, Tu-22M3, A-50, E-3A, B-1B, F-15E?) to spots that fit. Options: terminal 104 only for them, or a per-airfield list of spots too small for large jets, surveyed once like the airbase footprints. DCS's `getParking` gives no spot size, so it has to come from the type or a survey.
+- Also: a flight whose jets die on the ramp within a minute of spawning could be logged as a spawn failure (`dcs.log` `WARN`), so it isn't read as combat.
+
+---
+
+## 14. The airborne cap counts human flights, and flights nobody flies
+
+**Status:** open (found 2026-10-01). John: the cap is for AI aircraft; human taskings don't count against it, and flights that aren't flown don't count against any limit.
+
+**Seen:** `dcs.log` of the 2026-10-01 run: "BLUE: 2 human flights (MSN2023_OCA, MSN2026_CAP), 2 of 6 missions planned", with four Blue attack missions not planned "over the airborne cap". MSN2023_OCA (a human tasking) was never flown, but its slot was held all along. Its two AI SEAD flights (MSN2024, MSN2025) still flew without it, and all four jets died to the Koshka Yavr SA-10.
+
+**Cause:**
+- **Planning** (`stages/plan_air_tasking.lua`, `airborneAtMost`): every mission in `ctx.out.missions` counts against `planned_cap`, human flights (`flown_by = "human"`) included.
+- **Run time** (`consumers/run_scrambles.lua`, `airborneAircraft`): counts every airborne aircraft of the coalition, players included.
+- **AI escorts of an unflown human tasking** still spawn and fly (the *Unflown taskings' AI flights* item in the `plan.md` backlog), so they count, and die, for a tasking nobody took.
+
+**Proposed fix:**
+- `airborneAtMost` skips human flights; `airborneAircraft` skips units with a player in them (`Unit:getPlayerName()`).
+- The AI flights of a human package spawn only once a player takes that tasking, or are cancelled when nobody has by the player's takeoff time (goes with the backlog's *Unflown taskings' AI flights* and *Assignment and completion tracking*; decide with John how a player "takes" a tasking). Until a flight spawns it isn't airborne, so it doesn't count at run time.
+- Planning still has to fit those AI escorts under the cap in case the tasking is flown.
+
+**Decided (John, 2026-10-01):** players don't take or decline taskings yet, so the AI flights that make a human tasking possible come first. Example (John): a human strike on an airfield whose route needs an AI SEAD flight; that SEAD flight is planned before any other AI tasking.
+- **Order stays** defensive air → human packages → AI attack packages, so human taskings keep first pick of targets (session 10) and their AI escorts take their cap room before the AI's own packages.
+- **The human flight itself never counts** against the cap (`airborneAtMost` skips `flown_by = "human"`; at run time `airborneAircraft` skips player units). Its AI escorts do count: they fly whether or not a player takes the tasking.
+- Cancelling the escorts of a tasking nobody flies waits for *Assignment and completion tracking* (`plan.md` backlog).

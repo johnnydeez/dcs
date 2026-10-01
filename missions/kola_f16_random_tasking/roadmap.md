@@ -229,6 +229,8 @@ The proposal below is kept as it was discussed.
 
 ## Top priority: performance in VR
 
+**Status: first pass built (2026-10-01), not run in DCS yet.** John's test: the same `.miz` with no units still stuttered; lowering forest detail, scenery detail and LOD a little got Kola back to 45 fps, even low. So the mission's own load is what's left, and the first pass is lean (John): step 2 levers 1–3 (no security infantry; one towed-gun group and one MANPADS team per base; short-reach base defenses asleep until an enemy aircraft is within 30 km) and a lower cap (12 per coalition, 2 of it kept for scrambles, which no longer go over it). The "Mark bad frame rate" entry is out (John: stutters are too short to mark while flying). As built: `plan.md`, *Sleeping ground units*, *Stage 2* and *Airborne cap*. Next: John flies it in VR.
+
 **Goal:** the mission holds John's standard VR frame rate of 45 fps, with no big frame-time spikes, including on takeoff and low around airfields. The Syria mission already does (John: it "ran fine"). John, 2026-09-30: "It is now the top priority."
 
 **What John saw** (first VR run of this mission, 2026-09-30, `event_logs\2026-09-30_213757.log`):

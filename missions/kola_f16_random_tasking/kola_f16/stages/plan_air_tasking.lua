@@ -20,7 +20,7 @@
 -- flight crosses enemy ground to another front (weighted by value; no target is hit
 -- twice) → the launch base (one of the three nearest that fit)
 -- → the route → its suppression flights, if the route crosses threat rings → start times
--- that keep the coalition under max_airborne_aircraft → parking spots free at those times
+-- that keep the coalition under its planned cap (plannedCap) → parking spots free at those times
 -- → the attack tasks. A mission whose suppression can't be planned isn't flown; another
 -- target is tried.
 --
@@ -193,7 +193,7 @@ function PlanAirTasking.validate()
                          "commit_min_radius_km",
                          "early_warning_standoff_km", "early_warning_clearance_km", "early_warning_leg_km",
                          "alert_bases", "alert_aircraft_per_base", "scramble_turnaround_s", "scramble_cooldown_s", "scramble_warning_min",
-                         "scramble_inbound_rounds", "scramble_over_cap",
+                         "scramble_inbound_rounds", "scramble_reserve_aircraft",
                          "scramble_min_leg_km", "raid_radius_km", "raid_heading_deg" }) do
         if type(AIR_DEFENSE[f]) ~= "number" or AIR_DEFENSE[f] < 0 then bad("AIR_DEFENSE needs a non-negative " .. f) end
     end
@@ -317,6 +317,10 @@ function PlanAirTasking.validate()
         else
             if type(per.max_airborne_aircraft) ~= "number" or per.max_airborne_aircraft <= 0 then
                 bad(string.format("AIR_TASKING_PER_COALITION.%s needs a positive max_airborne_aircraft", c))
+            elseif type(AIR_DEFENSE.scramble_reserve_aircraft) == "number"
+                   and AIR_DEFENSE.scramble_reserve_aircraft >= per.max_airborne_aircraft then
+                bad(string.format("AIR_TASKING_PER_COALITION.%s: max_airborne_aircraft must be more than "
+                    .. "AIR_DEFENSE.scramble_reserve_aircraft", c))
             end
             for _, e in ipairs(per.mission_types or {}) do
                 local m = AIR_MISSION_TYPE[e[1]]
@@ -827,6 +831,16 @@ local function draftSuppression(ctx, mission, remaining)
     return flights
 end
 
+-- What the planned flights (packages, patrols, AWACS) may fill of the coalition's
+-- max_airborne_aircraft: the rest is kept free for scrambles, when they're planned
+-- (AIR_DEFENSE.scramble_reserve_aircraft; John, 2026-10-01).
+local function plannedCap(per)
+    if AIR_DEFENSE.planned and AIR_DEFENSE.alert_posture_planned then
+        return per.max_airborne_aircraft - AIR_DEFENSE.scramble_reserve_aircraft
+    end
+    return per.max_airborne_aircraft
+end
+
 -- Aircraft of this coalition in the air, most at any moment, with `extra` flights added:
 -- { { up_s, down_s, count } }; airborne from takeoff until landing_s before the end.
 local function airborneAtMost(ctx, extra)
@@ -849,7 +863,7 @@ end
 -- Start times and parking for a package (flights[1] the escorted mission, then its
 -- suppression flights): every flight's time over the target is the mission's TOT minus
 -- its lead. Tries package starts until one keeps the coalition under
--- max_airborne_aircraft, fits the window and finds parking for every flight; the first
+-- its planned cap (plannedCap), fits the window and finds parking for every flight; the first
 -- package of the coalition starts at first_start_s. Sets start_s / takeoff_s / tot_s /
 -- end_s / spots on each flight and returns true, or returns false and the reason.
 -- Each flight's times relative to the escorted mission's (flights[1]) start: rel_start,
@@ -913,7 +927,7 @@ local function schedulePackage(ctx, flights)
         local first = (ctx.attack_missions == 0 and try == 1) and T.first_start_s
                       or T.first_start_s + math.random() * (lastStart - T.first_start_s)
         local spans = setTimes(flights, round(first - earliest))
-        if airborneAtMost(ctx, spans) <= ctx.per.max_airborne_aircraft then
+        if airborneAtMost(ctx, spans) <= ctx.planned_cap then
             if parkPackage(ctx, flights) then return true end
             reason = "no parking"
         end
@@ -940,7 +954,7 @@ local function scheduleHumanPackage(ctx, flights, human, takeoff_s)
     end
     if zero + latest > T.window_s then return false, "too long for the window" end
     local spans = setTimes(flights, zero)
-    if airborneAtMost(ctx, spans) > ctx.per.max_airborne_aircraft then return false, "over the airborne cap" end
+    if airborneAtMost(ctx, spans) > ctx.planned_cap then return false, "over the airborne cap" end
     if not parkPackage(ctx, flights) then return false, "no parking" end
     return true
 end
@@ -1360,7 +1374,7 @@ local function draftStationFlight(ctx, missionType, station, arrive_s, leave_s, 
                 reason = "route enters " .. crossed[1]
             elseif enemyKm > AIR_DEFENSE.station_enemy_airspace_km then
                 reason = "route through enemy airspace"
-            elseif up > ctx.per.max_airborne_aircraft then
+            elseif up > ctx.planned_cap then
                 reason = "over the airborne cap"
             else
                 local ok = true
@@ -1765,6 +1779,7 @@ function PlanAirTasking.run(plan)
         for _, name in ipairs(held) do baseRegion[name] = DivideAirspace.regionAt(plan.airspace, plan.world.airbases[name].pos) end
         local bounds = mapBounds(plan.world)
         local ctx = { plan = plan, coalition = coalition, per = per, out = res, held = held,
+                      planned_cap = plannedCap(per),
                       threats = ThreatRouting.buildMap(circles, bounds, airspaceCost),
                       station_threats = AIR_DEFENSE.planned
                           and ThreatRouting.buildMap((threatCircles(plan, coalition, true)), bounds, airspaceCost),

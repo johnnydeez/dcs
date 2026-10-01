@@ -54,6 +54,7 @@ if not load("data\\airspace.lua")                 then return end
 if not load("data\\radar_picture.lua")            then return end
 if not load("data\\air_behaviour_rules.lua")      then return end
 if not load("data\\event_log.lua")                then return end
+if not load("data\\ground_unit_sleep.lua")        then return end
 if not load("gather.lua")                  then return end
 if not load("stages\\roll_territory.lua")  then return end
 if not load("stages\\plan_base_defenses.lua")     then return end
@@ -78,6 +79,7 @@ if not load("consumers\\schedule_air_tasking_orders.lua") then return end
 if not load("consumers\\track_radar_picture.lua") then return end
 if not load("consumers\\enforce_air_behaviour_rules.lua") then return end
 if not load("consumers\\run_scrambles.lua")      then return end
+if not load("consumers\\sleep_ground_units.lua")  then return end
 if not load("consumers\\draw_air_tasking_orders.lua") then return end
 if not load("consumers\\brief_air_tasking.lua")   then return end
 if CONFIG.SURVEY_FOOTPRINTS and not load("survey\\survey_airbase_footprints.lua") then return end
@@ -154,6 +156,10 @@ local function run()
     -- scrambles at raids the radar picture shows (event log: SCRAMBLE); nothing launches
     -- unless AIR_DEFENSE.alert_posture_planned planned alert bases
     RunScrambles.start(plan)
+    -- base defenses that reach under ~10 km sleep (AI off) until an enemy aircraft is near
+    -- their base (event log: UNIT_AWAKE, UNIT_ASLEEP); CONFIG.SLEEP_GROUND_UNITS = false
+    -- keeps every unit awake
+    SleepGroundUnits.start(plan)
     DrawAirTaskingOrders.apply(plan)
     BriefAirTasking.start(plan)   -- F10: the human taskings and the air tasking order
     -- the build summary goes to dcs.log; the screen shows only the weather and the human

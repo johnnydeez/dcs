@@ -142,18 +142,21 @@ AIR_WEAPON_TYPE = {
 --   mission_types       { { mission type, weight } } — only built types are used
 --   max_airborne_aircraft  aircraft of this coalition in the air at once, counting every
 --                       flight of every package, the patrols, the AWACS and the scrambles
---                       (one shared cap for now, John 2026-09-25)
+--                       (one shared cap for now, John 2026-09-25). 12 since 2026-10-01 (was
+--                       16; John: performance in VR). Planned flights fill it only up to
+--                       AIR_DEFENSE.scramble_reserve_aircraft below it; the rest is kept
+--                       for scrambles, which never go over it
 --   window_s            missions start between first_start_s and the end of this window
 --   first_start_s       earliest start (mission time), so the first flights are soon
 --   taxi_s / attack_s / landing_s   time on the ground before takeoff, over the target,
 --                       and from the landing base's overhead to shutdown (for timing only)
 AIR_TASKING_PER_COALITION = {
     red = {
-        missions = { 4, 6 }, max_airborne_aircraft = 16,
+        missions = { 4, 6 }, max_airborne_aircraft = 12,
         mission_types = { { "strike", 3 }, { "airfield_strike", 2 }, { "destruction_of_air_defenses", 1 } },
     },
     blue = {
-        missions = { 6, 8 }, max_airborne_aircraft = 16,
+        missions = { 6, 8 }, max_airborne_aircraft = 12,
         mission_types = { { "strike", 3 }, { "airfield_strike", 2 }, { "destruction_of_air_defenses", 2 } },
     },
 }
@@ -300,8 +303,12 @@ HUMAN_TASKING = {
 --                         inbound, so one turn of a patrol's race-track doesn't trigger
 --   scramble_reaction_s   { min, max }: cockpit alert — from the decision to the spawn,
 --                         hot on a free ramp spot
---   scramble_over_cap     scrambles may put the coalition this many aircraft over
---                         max_airborne_aircraft (John: up to 2)
+--   scramble_reserve_aircraft  of the coalition's max_airborne_aircraft, this many are kept
+--                         free for scrambles: planned flights (packages, patrols, AWACS) fill
+--                         the cap only up to this many below it, and scrambles never go over
+--                         it (John, 2026-10-01: so strikes can't fill the sky and leave no
+--                         room to answer a raid; replaces scramble_over_cap, which let
+--                         scrambles go 2 over)
 --   scramble_min_leg_km   the intercept point (the raid pushed ahead along its heading,
 --                         pulled back to own or contested airspace and out of enemy kill
 --                         zones) must be at least this far from the base, or there's no
@@ -341,7 +348,7 @@ AIR_DEFENSE = {
     scramble_warning_min  = 15,
     scramble_inbound_rounds = 2,
     scramble_reaction_s   = { 60, 120 },
-    scramble_over_cap     = 2,
+    scramble_reserve_aircraft = 2,
     scramble_min_leg_km   = 10,
     raid_radius_km        = 20,
     raid_heading_deg      = 45,
