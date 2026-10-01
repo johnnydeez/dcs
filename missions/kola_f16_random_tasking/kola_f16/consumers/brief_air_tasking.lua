@@ -6,18 +6,25 @@
 --     Human taskings > <flight> > Frag         the tasking: times, target (degrees and
 --                                              decimal minutes for the F-16, MGRS,
 --                                              elevation), loadout, threats, package
---                                 > Steerpoints the route to enter by hand
+--                                 > Steerpoints the points to enter by hand: out to the
+--                                              target (its ground elevation, then each aim
+--                                              point) or the station, then the landing base
+--     Hide text                                 clears the screen
 --     Air tasking order > …                     every flight of the coalition, with its
 --                                              state now (planned / airborne / landed / lost)
--- A human flight is only listed: nobody is assigned to it and its outcome isn't reported
--- to the player (the target's objects are still logged to dcs.log as destroyed). Coordinates
--- are converted when the texts are built, once, at start.
+-- A human flight is only listed: nobody is assigned to it. A player who destroys a static
+-- object the mission spawned gets a popup (DCS's kill list doesn't show static objects),
+-- with the tasking's progress when the object is part of a human tasking's target.
+-- Coordinates are converted when the texts are built, once, at start.
 -- Reads the plan; writes nothing back to it.
 
 BriefAirTasking = {}
 
 local MESSAGE_S       = 60    -- how long a comms menu text stays on screen
+local FRAG_MESSAGE_S  = 180   -- the frag, and the steerpoints, stay long enough to read and
+local STEERPOINT_MESSAGE_S = 300   -- type in (John, 2026-10-01)
 local START_MESSAGE_S = 180
+local KILL_MESSAGE_S  = 15    -- the popup for a static object a player destroyed
 local MENU_PAGE       = 9     -- entries per comms submenu (the menu shows 10 at most)
 local NEAR_ROUTE_KM   = 20    -- enemy SAM rings the route passes this close to are listed
 local FEET_PER_METRE  = 3.28084
@@ -291,19 +298,45 @@ local function fragText(m)
     return table.concat(lines, "\n")
 end
 
+local function elevation(pos)
+    return string.format("elev %d ft", round(land.getHeight({ x = pos.x, y = pos.z }) * FEET_PER_METRE))
+end
+
+-- The points a player types in: the route out to the target or the station's far end,
+-- then the landing base; no egress or way home (a player follows the way out back;
+-- closed_issues.md, bug 11). The target is its exact spot on the ground with its elevation,
+-- not the attack altitude, then each aim point the same way, so fire-and-forget weapons
+-- (JDAM, JSOW) can be given them (closed_issues.md, bug 10).
 local function steerpointText(m)
     local lines = { string.format("%s STEERPOINTS (from %s; times at %d kt)", m.id, m.launch_base,
         round(m.route[2] and m.route[2].speed_mps * 1.94384 or 0)) }
-    local t, outbound = m.takeoff_s, true
+    local n = 0
+    local function add(name, pos, what, time)
+        n = n + 1
+        lines[#lines + 1] = string.format("%2d %-6s %s  %s  %s", n, name, ddm(coord.LOtoLL({ x = pos.x, y = 0, z = pos.z })),
+            what, time or "")
+    end
+    local last = #m.route
     for i, r in ipairs(m.route) do
+        if r.kind == "target" or r.kind == "station_end" then last = i break end
+    end
+    local t = m.takeoff_s
+    for i = 1, last do
+        local r = m.route[i]
         if i > 1 then t = t + Util.dist(m.route[i - 1], r) / math.max(r.speed_mps or 1, 1) end
-        local name = STEERPOINT_NAME[r.kind] or r.kind
-        local alt = (r.kind == "takeoff" or r.kind == "landing") and "" or feet(r.alt_m)
-        local time = outbound and at(t) or ""
-        if r.kind == "target" then time = at(m.tot_s) end
-        lines[#lines + 1] = string.format("%2d %-6s %s  %s  %s", i, name,
-            ddm(coord.LOtoLL({ x = r.x, y = 0, z = r.z })), alt, time)
-        if r.kind == "target" or r.kind == "station" then outbound = false end
+        if r.kind == "target" then
+            local p = (not m.escorts and m.target_pos) or r
+            add("TGT", p, elevation(p), at(m.tot_s))
+            if not m.escorts then
+                for k, a in ipairs(m.attack and m.attack.points or {}) do add("AIM " .. k, a, elevation(a)) end
+            end
+        else
+            add(STEERPOINT_NAME[r.kind] or r.kind, r, r.kind == "takeoff" and "" or feet(r.alt_m), at(t))
+        end
+    end
+    local home = m.route[#m.route]
+    if last < #m.route and home.kind == "landing" then
+        add("LAND", home, elevation(home), "~" .. at(m.end_s - AIR_TASKING_TIMING.landing_s))
     end
     return table.concat(lines, "\n")
 end
@@ -352,10 +385,75 @@ local function stationText(st, byId)
     return table.concat(lines, "\n")
 end
 
+-- ── static objects destroyed by players ─────────────────────────
+
+-- DCS's kill list doesn't show static objects (parked aircraft, buildings), so a player
+-- who destroys one the mission spawned gets a popup naming it, plus the tasking's
+-- progress when it is part of a human tasking's target (closed_issues.md, bug 9). Map
+-- scenery and units get none (DCS shows units). A kill whose shooter is gone (shot down
+-- or ejected before the bomb landed) is credited through the weapon, remembered at launch.
+local function watchStaticKills(plan)
+    local cat = plan.target_catalog and plan.target_catalog.targets or {}
+    local objects = {}   -- static object id → { type, target }
+    for _, o in ipairs(plan.fixed_ground_targets and plan.fixed_ground_targets.static_objects or {}) do
+        objects[o.id] = { type = o.type, target = cat[o.site] }
+    end
+    local tasking = {}   -- catalog target id → the human tasking against it
+    for _, c in ipairs({ "red", "blue" }) do
+        for _, m in ipairs(plan.air_tasking_orders[c] and plan.air_tasking_orders[c].missions or {}) do
+            if m.flown_by == "human" and not m.escorts and m.target then tasking[m.target] = m end
+        end
+    end
+    local launchedBy = {}   -- weapon → the player group that fired it
+    local done = {}         -- human taskings already reported a success
+    local function playerGroup(u)
+        local ok, id = pcall(function() return u:getPlayerName() and u:getGroup():getID() end)
+        return ok and id or nil
+    end
+    local function message(groupId, name, o)
+        local t = o.target
+        local text = string.format("Destroyed: %s (%s)", o.type, t and t.description or "target")
+        local m = t and tasking[t.id]
+        if m then
+            local destroyed, critical = ScheduleAirTaskingOrders.targetProgress(m.id)
+            local frac = m.success and m.success.critical_fraction or 1
+            local need = math.max(1, math.ceil(frac * critical - 1e-9))
+            local isCritical = false
+            for _, c in ipairs(m.critical_names or {}) do if c == name then isCritical = true end end
+            text = text .. (isCritical and string.format(": %d of %d critical for %s", destroyed, critical, m.id)
+                                       or string.format(": not one of %s's critical objects", m.id))
+            if destroyed >= need and not done[m.id] then
+                done[m.id] = true
+                text = text .. string.format("\n%s target destroyed: success", m.id)
+            end
+        end
+        trigger.action.outTextForGroup(groupId, text, KILL_MESSAGE_S)
+    end
+    local handler = {}
+    function handler:onEvent(e)
+        local ok, err = pcall(function()
+            if e.id == world.event.S_EVENT_SHOT then
+                local g = e.initiator and playerGroup(e.initiator)
+                if g and e.weapon then launchedBy[e.weapon.id_ or e.weapon] = g end
+            elseif e.id == world.event.S_EVENT_KILL and e.target then
+                local name = e.target:getName()
+                local o = name and objects[name]
+                if not o then return end
+                local g = (e.initiator and playerGroup(e.initiator)) or (e.weapon and launchedBy[e.weapon.id_ or e.weapon])
+                if not g then return end
+                -- a moment later, so the scheduler has counted the kill
+                timer.scheduleFunction(function() pcall(message, g, name, o) end, nil, timer.getTime() + 1)
+            end
+        end)
+        if not ok then Log.warn("brief: static kill popup failed: " .. tostring(err)) end
+    end
+    world.addEventHandler(handler)
+end
+
 -- ── menus and the start text ────────────────────────────────────
 
-local function show(side, text)
-    trigger.action.outTextForCoalition(side, text, MESSAGE_S, true)
+local function show(side, text, seconds)
+    trigger.action.outTextForCoalition(side, text, seconds or MESSAGE_S, true)
 end
 
 -- `items` = { { name, text function } } as commands under `parent`, MENU_PAGE per submenu.
@@ -431,8 +529,8 @@ function BriefAirTasking.start(plan)
         summary[#summary + 1] = shortLine(m, byId)
         local sub = missionCommands.addSubMenuForCoalition(side,
             string.format("%s %s from %s", m.id, missionName(m.mission_type), m.launch_base), human)
-        missionCommands.addCommandForCoalition(side, "Frag", sub, function() show(side, frag) end)
-        missionCommands.addCommandForCoalition(side, "Steerpoints", sub, function() show(side, steer) end)
+        missionCommands.addCommandForCoalition(side, "Frag", sub, function() show(side, frag, FRAG_MESSAGE_S) end)
+        missionCommands.addCommandForCoalition(side, "Steerpoints", sub, function() show(side, steer, STEERPOINT_MESSAGE_S) end)
         Log.info("HUMAN TASKING " .. (frag:gsub("\n", "\n    ")) .. "\n    " .. (steer:gsub("\n", "\n    ")))
     end
     local summaryText = #summary > 0 and table.concat(summary, "\n") or "No human taskings this time."
@@ -460,6 +558,9 @@ function BriefAirTasking.start(plan)
         end
         show(side, table.concat(lines, "\n"))
     end)
+    -- clears a long-lasting frag or steerpoint list once it's entered
+    missionCommands.addCommandForCoalition(side, "Hide text", nil, function() show(side, " ", 1) end)
+    watchStaticKills(plan)
     Log.info(string.format("--- Briefing: %d human taskings, %d packages and %d stations in the %s comms menu ---",
         #res.human_missions, #packages, #stations, sideName:upper()))
 end

@@ -23,6 +23,7 @@ if not load("lib\\logger.lua")             then return end
 if not load("lib\\weather.lua")            then return end
 if not load("lib\\placement.lua")          then return end
 if not load("lib\\threat_routing.lua")     then return end
+if not load("lib\\sam_reach.lua")          then return end
 
 Log.info("============================================")
 Log.info("  Kola F-16 generator loading")

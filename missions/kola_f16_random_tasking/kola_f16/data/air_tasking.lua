@@ -26,15 +26,6 @@
 --   egress_km    the egress point sits this far past the target, turned toward home
 --                Suppression flights (planned_as "escort") fly their package's route, so
 --                their own ingress_km and egress_km are not used
---   missiles_per_threat  suppression: anti-radiation missiles a flight keeps for each
---                group it engages; with the profile's anti_radiation_missiles this sets
---                how many groups one flight takes
---   max_groups_per_flight  suppression: and never more than this many, so a flight
---                with a big load (Su-34, 8 Kh-31P) doesn't take on alone what another
---                coalition sends two flights for. A SAM site's point-defense escort
---                (the Tor / Pantsir / Roland guarding an SA-10 or Patriot) is engaged
---                with its site and counts as one more group; they are the best missile
---                killers in DCS and otherwise shoot the anti-radiation missiles down
 --   return_when_out_of  pydcs WeaponType name: the flight heads home once these are gone —
 --                straight home, off its route, so only for flights with nothing in the way
 --   planned_as   how the stage plans it: "mission" (default: from the weighted
@@ -84,14 +75,24 @@ AIR_MISSION_TYPE = {
         group_name_tag = "OCA", built = true, group_task = "Ground Attack", attack = "bomb_critical_objects",
         weapon_type = "auto", max_attack_points = 4, ingress_km = 25, egress_km = 20,
     },
-    -- EngageGroup on each threat given to the flight, anti-radiation missiles only, from
-    -- the waypoint before the first of their rings. No return_when_out_of: DCS then flies
-    -- straight home, over whatever SAMs lie on the line (first package run, 2026-09-25);
-    -- the flight stays on the package's route and comes home the way it went in
+    -- One SAM site per flight, saturated (John, 2026-10-01: "fly high and fast and dump
+    -- the HARMs at it at distance and then go cold"): the flight flies around other
+    -- threats to a launch point launch_km from the site, the last run_in_km of it at the
+    -- profile's suppression altitude and run_in_speed_mps; at the launch point it attacks
+    -- the site's group with every anti-radiation missile it carries (AttackGroup, expend
+    -- All, one attack), then flies straight back the way it came. A second site gets a
+    -- flight of its own. The site's point-defense escort gets no missiles of its own: the
+    -- salvo is meant to saturate it. The behaviour rule `suppression`
+    -- (data/air_behaviour_rules.lua) sends it home if it presses on.
+    -- No return_when_out_of: DCS then flies straight home, over whatever SAMs lie on the
+    -- line (first package run, 2026-09-25)
     suppression_of_air_defenses = {
-        group_name_tag = "SEAD", built = true, planned_as = "escort", group_task = "SEAD", attack = "engage_group",
-        weapon_type = "arm", ingress_km = 40, egress_km = 30,
-        missiles_per_threat = 2, max_groups_per_flight = 2,
+        group_name_tag = "SEAD", built = true, planned_as = "escort", group_task = "SEAD", attack = "harm_salvo",
+        weapon_type = "arm", ingress_km = 40, egress_km = 30,   -- (not used: see suppressionRoute)
+        -- launch_km 40 (was 80): from 89-92 km every HARM was coasting by the end and the
+        -- Sodankyla SA-10 shot all 8 down (John's run, 2026-10-01). The AI starts the attack
+        -- ~12 km before the waypoint at this speed, so the real shots come from ~50 km
+        launch_km = 40, run_in_km = 40, run_in_speed_mps = 270,
     },
     -- AttackGroup on each of the SAM or early-warning site's groups, from the ingress point
     destruction_of_air_defenses = {
@@ -140,8 +141,9 @@ AIR_WEAPON_TYPE = {
 --   missions            { min, max } per mission window, not counting the suppression
 --                       flights in their packages
 --   mission_types       { { mission type, weight } } — only built types are used
---   max_airborne_aircraft  aircraft of this coalition in the air at once, counting every
---                       flight of every package, the patrols, the AWACS and the scrambles
+--   max_airborne_aircraft  AI aircraft of this coalition in the air at once, counting every
+--                       AI flight of every package, the patrols, the AWACS and the scrambles;
+--                       human flights and players never count (John, 2026-10-01)
 --                       (one shared cap for now, John 2026-09-25). 12 since 2026-10-01 (was
 --                       16; John: performance in VR). Planned flights fill it only up to
 --                       AIR_DEFENSE.scramble_reserve_aircraft below it; the rest is kept
@@ -190,12 +192,24 @@ AIR_TASKING_SKILL = { "Average", "Good", "High" }
 -- Packages. A mission whose route still crosses threat rings (needs_suppression) gets
 -- suppression flights for them, or isn't flown at all: a flight that needs suppression
 -- never goes without it. Each suppression flight takes the next threats in the order the
--- route meets them, as many as its missiles allow (max_groups_per_flight at most). It
--- flies the package's route from its own base and is over the target suppression_lead_s
--- before the mission it escorts, so it reaches every ring on the way that much earlier.
---   suppression_lead_s  { min, max } seconds each suppression flight is ahead
+-- route meets them, one site (with its point-defense escort) per flight.
+-- AI packages fly in sequence (John, 2026-10-01): the suppression flights go first and
+-- come home, and the mission starts strike_after_suppression_s after the last of them is
+-- planned to land, only if its threats are dead by then (consumers/schedule_air_tasking_orders.lua:
+-- else one more suppression flight, then cancelled). A threat an earlier suppression flight
+-- already takes needs no new one: the mission waits for that one instead (rolling the
+-- air defenses back). A package with a human flight keeps flying together: its AI
+-- suppression flights take off first thing and are over the target at least
+-- suppression_lead_s before the player.
+--   suppression_lead_s  { min, max } seconds a human package's suppression flight is ahead
+--   strike_after_suppression_s  an AI mission starts this long after its suppression
+--                       flights' planned landing
+--   wait_for_room_s     at run time, a mission that would put the coalition over its cap
+--                       (a late one) waits this long and looks again
 AIR_PACKAGE = {
     suppression_lead_s = { 180, 300 },
+    strike_after_suppression_s = 600,
+    wait_for_room_s = 120,
 }
 
 -- Human flights (session 10): Blue missions planned for players, listed at mission start
@@ -309,6 +323,10 @@ HUMAN_TASKING = {
 --                         it (John, 2026-10-01: so strikes can't fill the sky and leave no
 --                         room to answer a raid; replaces scramble_over_cap, which let
 --                         scrambles go 2 over)
+--   scramble_takeoff_s    from the spawn, hot on the ramp, to wheels up (taxi and takeoff;
+--                         86-290 s seen on 2026-10-01). With the reaction delay and the dash,
+--                         the time to the intercept point: a scramble that would get there
+--                         after the raid reaches what it threatens isn't sent (John, 2026-10-01)
 --   scramble_min_leg_km   the intercept point (the raid pushed ahead along its heading,
 --                         pulled back to own or contested airspace and out of enemy kill
 --                         zones) must be at least this far from the base, or there's no
@@ -319,6 +337,12 @@ HUMAN_TASKING = {
 AIR_DEFENSE = {
     planned               = true,
     killzone_fraction     = 0.85,
+    -- a kill zone grows with the aircraft's altitude (lib/sam_reach.lua): the low-altitude
+    -- reach up to the first, the full ring from the second (John, 2026-10-01: jets took off
+    -- unharmed 60 km from a Blue SA-10 the high ring called deadly). No AI flight launches
+    -- from a base inside an enemy site's low-altitude kill zone
+    killzone_low_altitude_m  = 3000,
+    killzone_high_altitude_m = 7000,
     max_stations          = 3,
     defended_depth_km     = 60,
     min_defended_value    = 2,
@@ -349,6 +373,7 @@ AIR_DEFENSE = {
     scramble_inbound_rounds = 2,
     scramble_reaction_s   = { 60, 120 },
     scramble_reserve_aircraft = 2,
+    scramble_takeoff_s    = 150,
     scramble_min_leg_km   = 10,
     raid_radius_km        = 20,
     raid_heading_deg      = 45,

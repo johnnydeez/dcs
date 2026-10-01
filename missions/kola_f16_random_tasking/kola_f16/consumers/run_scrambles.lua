@@ -19,10 +19,12 @@
 --   4. the base: the nearest alert base, in the own region facing the raid, with a
 --      jet ready and off cooldown, whose intercept point (the raid pushed ahead along
 --      its heading, pulled back to own or contested airspace and out of enemy kill zones)
---      is in reach and at least scramble_min_leg_km out; never over the airborne cap
---      (the planner keeps AIR_DEFENSE.scramble_reserve_aircraft of it free for scrambles)
---   5. after scramble_reaction_s (cockpit alert) a one-ship spawns hot on a free ramp
---      spot (never on the runway: John), with EngageGroup on each raid group from
+--      is in reach and at least scramble_min_leg_km out, and which gets there before the
+--      raid reaches what it threatens (reaction, scramble_takeoff_s and the dash); never
+--      over the airborne cap (the planner keeps AIR_DEFENSE.scramble_reserve_aircraft of
+--      it free for scrambles; players don't count)
+--   5. after scramble_reaction_s (cockpit alert) a one-ship spawns hot on one of the ramp
+--      spots the plan holds for its base's alert jets (never on the runway: John), with EngageGroup on each raid group from
 --      takeoff, open fire, dash speed with afterburner allowed. The scheduler logs its
 --      shots, kills and losses; its radar joins the picture; the leash
 --      (consumers/enforce_air_behaviour_rules.lua) brings it home
@@ -49,11 +51,13 @@ local _state = {}   -- coalition → state (RunScrambles.start)
 
 -- ── small helpers ───────────────────────────────────────────────
 
+-- AI aircraft of the coalition in the air: players don't count against the cap (John,
+-- 2026-10-01: the cap is for AI aircraft)
 local function airborneAircraft(coalitionName)
     local n = 0
     for _, g in ipairs(coalition.getGroups(SIDE[coalitionName], Group.Category.AIRPLANE) or {}) do
         for _, u in ipairs(g:getUnits() or {}) do
-            local ok, air = pcall(function() return u:inAir() end)
+            local ok, air = pcall(function() return u:inAir() and not u:getPlayerName() end)
             if ok and air then n = n + 1 end
         end
     end
@@ -151,11 +155,13 @@ end
 
 -- ── where and from where ────────────────────────────────────────
 
--- The enemy medium / long-range SAM site whose kill zone holds pos, or nil.
-local function enemyKillZone(coalitionName, pos)
+-- The enemy medium / long-range SAM site whose kill zone holds pos, or nil: at
+-- altitude_m (lib/sam_reach.lua), or the full ring without one (an intercept point,
+-- flown high).
+local function enemyKillZone(coalitionName, pos, altitude_m)
     for _, s in ipairs(_plan.sam_sites and _plan.sam_sites.sites or {}) do
         if s.side ~= coalitionName and AIR_ROUTING.threat_layers[s.layer] and (s.engage_m or 0) > 0
-           and Util.dist(pos, s.pos) < s.engage_m * AIR_DEFENSE.killzone_fraction and liveGroup(s.id) then
+           and Util.dist(pos, s.pos) < SamReach.killZone(s, altitude_m) and liveGroup(s.id) then
             return s.id
         end
     end
@@ -187,28 +193,21 @@ local function interceptPoint(coalitionName, from, c, dash)
     return good
 end
 
--- A free ramp spot at the base for this type, nearest the runway: not a player slot, not
--- a parked-aircraft static, not held by another scramble. { terminal_index, x, z } or nil.
-local function freeSpot(st, baseName, aircraftType)
-    local ab = Airbase.getByName(baseName)
+-- A free ramp spot for an alert jet at alert base b: one of the spots the plan holds for
+-- its alert jets (b.spots, nearest the runway first) that DCS reports free now and no
+-- other scramble is spawning on. { terminal_index, x, z } or nil.
+local function freeSpot(st, b)
+    local ab = Airbase.getByName(b.base)
     if not ab then return nil end
-    local terminals = {}
-    for _, t in ipairs(AIRCRAFT_PROFILE[aircraftType].parking) do terminals[t] = true end
-    local world = _plan.world.airbases[baseName]
-    local statics = _plan.fixed_ground_targets and _plan.fixed_ground_targets.parking_used[baseName] or {}
-    local held = st.held_spots[baseName] or {}
+    local held = st.held_spots[b.base] or {}
     local ok, spots = pcall(function() return ab:getParking(true) end)
     if not ok or type(spots) ~= "table" then return nil end
-    local best
-    for _, s in ipairs(spots) do
-        local idx = s.Term_Index
-        if terminals[s.Term_Type] and not (world and world.player_slots[idx]) and statics[idx] == nil and not held[idx]
-           and (not best or (s.fDistToRW or 0) < (best.fDistToRW or 0)) then
-            best = s
-        end
+    local free = {}
+    for _, s in ipairs(spots) do free[s.Term_Index] = true end
+    for _, s in ipairs(b.spots or {}) do
+        if free[s.terminal_index] and not held[s.terminal_index] then return s end
     end
-    if not best then return nil end
-    return { terminal_index = best.Term_Index, x = best.vTerminalPos.x, z = best.vTerminalPos.z }
+    return nil
 end
 
 -- The alert base to answer from: { base (posture entry), aircraft_type, intercept, leg_m }
@@ -225,11 +224,19 @@ local function pickBase(st, c, now)
             local p = AIRCRAFT_PROFILE[aircraftType]
             local intercept = interceptPoint(st.coalition, b.pos, c, p.dash_speed_mps)
             local leg = Util.dist(b.pos, intercept)
+            -- from the decision to the intercept point: cockpit alert, taxi and takeoff, the dash
+            local R = AIR_DEFENSE.scramble_reaction_s
+            local arrive_s = (R[1] + R[2]) / 2 + AIR_DEFENSE.scramble_takeoff_s + leg / p.dash_speed_mps
             if leg < AIR_DEFENSE.scramble_min_leg_km * 1000 then
                 why = "no way to the raid outside enemy airspace and kill zones"
             elseif leg > p.combat_radius_km * 1000 then
                 why = "out of reach of every ready alert base"
-            elseif not freeSpot(st, b.base, aircraftType) then
+            elseif c.threat_minutes and arrive_s > c.threat_minutes * 60 then
+                -- it would get there after the raid reached what it threatens (John, 2026-10-01:
+                -- refuse a scramble that can't arrive in time)
+                why = string.format("can't reach the raid before it reaches %s (%.0f min, raid %.0f min)",
+                    c.threat_asset or "its target", arrive_s / 60, c.threat_minutes)
+            elseif not freeSpot(st, b) then
                 why = "no free ramp spot at " .. b.base
             elseif not best or leg < best.leg_m then
                 best = { base = b, aircraft_type = aircraftType, intercept = intercept, leg_m = leg }
@@ -284,7 +291,7 @@ local function launch(st, pick, raid, groups, id, number, reserved)
     end
     local gone = raidGone(st, groups)
     if gone then return refund(gone) end
-    local spot = freeSpot(st, b.base, aircraftType)
+    local spot = freeSpot(st, b)
     if not spot then return refund("no free ramp spot at " .. b.base) end
     local now = timer.getTime()
     local mt = AIR_MISSION_TYPE.interception
@@ -321,8 +328,10 @@ local function launch(st, pick, raid, groups, id, number, reserved)
 end
 
 local function refuse(st, c, why)
-    if st.refused[c.group] == why then return end
-    st.refused[c.group] = why
+    -- once per reason: the minutes in a reason change every round, so they don't count
+    local key = why:gsub("%d+", "#")
+    if st.refused[c.group] == key then return end
+    st.refused[c.group] = key
     WriteEventLog.add(st.coalition, "NO_SCRAMBLE", c.group, string.format("%s: %s", c.type or "type unknown", why))
 end
 
@@ -386,7 +395,7 @@ local function check(st)
                     reason = string.format("%s, %s", reason, threatText(minutes, asset))
                 end
                 local patrol = coveringPatrol(st, c.pos)
-                local cover = not patrol and enemyKillZone(st.coalition, c.pos)
+                local cover = not patrol and enemyKillZone(st.coalition, c.pos, c.altitude_m)
                 if patrol then
                     refuse(st, c, "covered by patrol " .. patrol)
                 elseif cover then
@@ -420,6 +429,21 @@ function landingHandler:onEvent(e)
             table.insert(s.returning, now + AIR_DEFENSE.scramble_turnaround_s)
             WriteEventLog.add(st.coalition, "ALERT", name, string.format("landed; its jet is back on alert at %s in %d min; %s has %s",
                 base, math.floor(AIR_DEFENSE.scramble_turnaround_s / 60), base, jetsText(s, now)))
+        end
+    end
+end
+
+-- A scramble the leash stood down on the ramp (consumers/enforce_air_behaviour_rules.lua):
+-- its jet never flew, so it is back on alert at once (closed_issues.md, bug 2).
+function RunScrambles.stoodDown(id)
+    for _, st in pairs(_state) do
+        local base = st.flights[id]
+        if base then
+            st.flights[id] = nil
+            local s = st.bases[base]
+            s.ready = s.ready + 1
+            WriteEventLog.add(st.coalition, "ALERT", id, string.format("stood down on the ramp; its jet is back on alert at %s; %s has %s",
+                base, base, jetsText(s, timer.getTime())))
         end
     end
 end

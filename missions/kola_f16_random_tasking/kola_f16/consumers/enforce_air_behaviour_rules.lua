@@ -7,6 +7,11 @@
 -- longer watched; the scheduler removes it after landing as usual.
 --
 -- Rules (settings in data/air_behaviour_rules.lua):
+--   suppression  SEAD flights (John, 2026-10-01: dump the HARMs from a distance, go cold):
+--           home, by the way back the plan gave it, once every anti-radiation missile
+--           is gone; when it presses more than press_km past its launch point toward its
+--           site; inside the kill zone of another SAM site; or still on the attack
+--           attack_time_s after its time at the launch point
 --   leash   scrambles: home when every group of its raid is dead, dropped from the radar
 --           picture or back over its own airspace heading away (a raid that only dips
 --           over its own airspace on its way in is still a raid), or when the scramble itself is too
@@ -68,11 +73,14 @@ local function enemyDepth(coalition, pos, searchM)
     return math.max(0, d - a.cell_m / 2)
 end
 
--- The enemy medium / long-range SAM site whose kill zone pos is inside, or nil.
-local function enemyKillZone(coalition, pos, fraction)
+-- The enemy medium / long-range SAM site whose kill zone the aircraft at pos (y: its
+-- altitude) is inside, or nil. The zone is `fraction` of how far the site reaches at
+-- that altitude (lib/sam_reach.lua). Never one of `except` (a set of site ids).
+local function enemyKillZone(coalition, pos, fraction, except)
     for _, s in ipairs(_plan.sam_sites and _plan.sam_sites.sites or {}) do
-        if s.side ~= coalition and AIR_ROUTING.threat_layers[s.layer] and (s.engage_m or 0) > 0
-           and Util.dist(pos, s.pos) < s.engage_m * fraction and liveGroup(s.id) then
+        if s.side ~= coalition and not (except and except[s.id]) and AIR_ROUTING.threat_layers[s.layer]
+           and (s.engage_m or 0) > 0
+           and Util.dist({ x = pos.x, z = pos.z }, s.pos) < SamReach.radius(s, pos.y) * fraction and liveGroup(s.id) then
             return s.id
         end
     end
@@ -113,8 +121,53 @@ RULES.leash = function(w, pos, airborne)
         return "home", depth == math.huge and "deep in enemy airspace"
             or string.format("%.0f km into enemy airspace", depth / 1000)
     end
-    local site = enemyKillZone(c, { x = pos.x, z = pos.z }, L.killzone_fraction)
+    local site = enemyKillZone(c, pos, L.killzone_fraction)
     if site then return "home", "inside the kill zone of " .. site end
+    return nil
+end
+
+-- Anti-radiation missiles aboard the flight now (missiles with passive radar guidance).
+local function armsAboard(g)
+    local n = 0
+    pcall(function()
+        for _, u in ipairs(g:getUnits() or {}) do
+            for _, a in ipairs(u:getAmmo() or {}) do
+                local d = a.desc
+                if d and d.category == Weapon.Category.MISSILE and d.guidance == Weapon.GuidanceType.RADAR_PASSIVE then
+                    n = n + (a.count or 0)
+                end
+            end
+        end
+    end)
+    return n
+end
+
+RULES.suppression = function(w, pos, airborne, g)
+    if not airborne then return nil end
+    local R = AIR_BEHAVIOUR_RULES.suppression
+    local m = w.mission
+    local a = m.attack or {}
+    local arms = armsAboard(g)
+    if not w.arms_at_start then w.arms_at_start = arms end
+    if w.arms_at_start > 0 and arms == 0 then return "home", "every anti-radiation missile fired" end
+    if a.site and a.launch then
+        local p = { x = pos.x, z = pos.z }
+        local pressed = Util.dist(a.launch, a.site) - Util.dist(p, a.site)
+        if pressed > R.press_km * 1000 then
+            return "home", string.format("%.0f km past its launch point toward %s", pressed / 1000, a.groups and a.groups[1] or "its site")
+        end
+    end
+    -- not its own site, nor a ring its planned route was routed through on purpose
+    if not w.accepted then
+        w.accepted = {}
+        if a.groups and a.groups[1] then w.accepted[a.groups[1]] = true end
+        for _, id in ipairs(m.route_threats or {}) do w.accepted[id] = true end
+    end
+    local other = enemyKillZone(m.coalition, pos, R.killzone_fraction, w.accepted)
+    if other then return "home", "inside the kill zone of " .. other end
+    if m.tot_s and timer.getTime() > m.tot_s + R.attack_time_s then
+        return "home", string.format("still on the attack %d min after its time at the launch point", math.floor(R.attack_time_s / 60))
+    end
     return nil
 end
 
@@ -135,14 +188,31 @@ local function goHome(w, g, pos)
     local bp = base:getPoint()
     local p = AIRCRAFT_PROFILE[m.aircraft_type]
     local speed = p and p.cruise_speed_mps or 230
-    local points = {
-        { x = pos.x, y = pos.z, alt = pos.y, alt_type = "BARO", speed = speed, speed_locked = true,
-          type = "Turning Point", action = "Turning Point", ETA = 0, ETA_locked = false,
-          task = { id = "ComboTask", params = { tasks = {} } } },
-        { x = bp.x, y = bp.z, alt = bp.y, alt_type = "BARO", speed = speed, speed_locked = true,
+    local function point(x, z, alt, v)
+        return { x = x, y = z, alt = alt, alt_type = "BARO", speed = v or speed, speed_locked = true,
+                 type = "Turning Point", action = "Turning Point", ETA = 0, ETA_locked = false,
+                 task = { id = "ComboTask", params = { tasks = {} } } }
+    end
+    local points = { point(pos.x, pos.z, pos.y) }
+    -- a SEAD flight turns around where it is and goes back the way it came (around the
+    -- other SAMs), not straight home: before its launch point, its route out flown
+    -- backwards from the nearest point behind it; from the launch point on, its planned
+    -- way back
+    if w.rule == "suppression" and m.route then
+        local route, launchAt, nearest = m.route, nil, nil
+        for i, r in ipairs(route) do
+            if r.kind == "target" then launchAt = i end
+            if i > 1 and i < #route and (not nearest or Util.dist(pos, r) < Util.dist(pos, route[nearest])) then nearest = i end
+        end
+        if nearest and launchAt and nearest >= launchAt then
+            for i = nearest + 1, #route - 1 do points[#points + 1] = point(route[i].x, route[i].z, route[i].alt_m, route[i].speed_mps) end
+        elseif nearest then
+            for i = nearest - 1, 2, -1 do points[#points + 1] = point(route[i].x, route[i].z, route[i].alt_m) end
+        end
+    end
+    points[#points + 1] = { x = bp.x, y = bp.z, alt = bp.y, alt_type = "BARO", speed = speed, speed_locked = true,
           type = "Land", action = "Landing", airdromeId = base:getID(), ETA = 0, ETA_locked = false,
-          task = { id = "ComboTask", params = { tasks = {} } } },
-    }
+          task = { id = "ComboTask", params = { tasks = {} } } }
     local ok, err = pcall(function()
         local ctl = g:getController()
         ctl:setTask({ id = "Mission", params = { airborne = true, route = { points = points } } })
@@ -169,7 +239,7 @@ local function check(coalition)
                 if w.airborne_once and not airborne then
                     _watched[id] = nil   -- landed
                 else
-                    local action, why = RULES[w.rule](w, pos, airborne)
+                    local action, why = RULES[w.rule](w, pos, airborne, g)
                     if action == "home" then
                         WriteEventLog.add(coalition, w.rule:upper(), id, string.format("going home: %s (%s)", why, where(w, pos)))
                         goHome(w, g, pos)
@@ -178,6 +248,9 @@ local function check(coalition)
                         WriteEventLog.add(coalition, w.rule:upper(), id, "stood down on the ramp: " .. why)
                         pcall(function() g:destroy() end)
                         _watched[id] = nil
+                        -- it never flew: its jet goes back on alert, and the end summary says so
+                        RunScrambles.stoodDown(id)
+                        ScheduleAirTaskingOrders.stoodDown(id)
                     end
                 end
             end
