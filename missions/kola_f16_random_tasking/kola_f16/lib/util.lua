@@ -75,6 +75,15 @@ function Util.formatLL(lat, lon)
         lat >= 0 and "N" or "S", d1, m1, s1, lon >= 0 and "E" or "W", d2, m2, s2)
 end
 
+-- ── Text ────────────────────────────────────────────────────────
+
+-- 23412.6 → "23,413"
+function Util.thousands(n)
+    local s = string.format("%d", math.floor(n + 0.5))
+    local sign, digits = s:match("^(%-?)(%d+)$")
+    return sign .. digits:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+end
+
 -- ── Serialization ───────────────────────────────────────────────
 
 local function isIdent(k)

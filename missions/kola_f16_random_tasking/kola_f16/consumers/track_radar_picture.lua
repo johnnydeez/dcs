@@ -17,13 +17,14 @@
 --   4. contacts not seen turn stale, then drop; events go to the listeners, then
 --      picture_updated once the round is complete
 --
--- Log lines (grep "picture"):
---   "RED picture: 3 contacts (own 1, contested 2, enemy 0; 1 stale), 28 of 30 sensors answered"
---   "RED picture: new MSN2014 (F-16C_50) seen by early_warning SAM_OLEN_55G6_1 (+2 more), 24000 ft,
---    contested airspace, 62 km from Olenya, inbound Olenya in 11 min"
---   "RED picture: MSN2014 (F-16C_50) entered own airspace (was contested), …"
---   "RED picture: MSN2014 stale (last seen 45 s ago)" / "… regained by …" / "… dropped …"
---   "RED picture: SAM_OLEN_SA10_1 radar tracking MSN2014 (F-16C_50)"   the first time only
+-- Event log lines (consumers/write_event_log.lua), coalition = whose picture:
+--   PICTURE   RED  "3 contacts (own 1, contested 2, enemy 0; 1 stale), 28 of 30 sensors answered"
+--   CONTACT   RED  MSN2014_DEAD  "new, F-16C_50, seen by early_warning SAM_OLEN_55G6_1 (+2 more),
+--                  24,000 ft, contested airspace, 62 km from Olenya, inbound Olenya in 11 min"
+--   CONTACT   RED  MSN2014_DEAD  "entered own airspace (was contested), …" / "stale, last seen
+--                  65 s ago" / "regained by …" / "dropped, last seen 300 s ago"
+--   TRACKING  RED  SAM_OLEN_SA10_1  "radar tracking MSN2014_DEAD (F-16C_50)"   the first time only
+-- The sensors found at start go to dcs.log (grep "picture").
 --
 -- Other code reads it with the calls at the bottom (on, contacts, contactsNear, contact,
 -- sensors). Contacts are returned as they are kept: read them, never change them.
@@ -151,8 +152,8 @@ local function isEnemyAirborne(obj, coalitionName)
     return ok and yes
 end
 
-local function describe(c)
-    return string.format("%s (%s)", c.group, c.type or "type unknown")
+local function typeText(c)
+    return c.type or "type unknown"
 end
 
 local function nearestOwnBase(coalitionName, pos)
@@ -213,7 +214,7 @@ local function locate(p, c, coalitionName, sighting)
 end
 
 local function whereText(c)
-    local text = string.format("%.0f ft, %s airspace", c.altitude_m * FEET_PER_METRE, c.airspace)
+    local text = string.format("%s ft, %s airspace", Util.thousands(c.altitude_m * FEET_PER_METRE), c.airspace)
     if c.nearest_base then text = text .. string.format(", %.0f km from %s", c.nearest_base_km, c.nearest_base) end
     if c.inside_own_sam_ring then text = text .. ", inside " .. c.inside_own_sam_ring end
     if c.inbound then
@@ -282,7 +283,7 @@ local function poll(p, sensor)
                     local key = sensor.id .. "|" .. targetGroup
                     if not p.tracking_logged[key] then
                         p.tracking_logged[key] = true
-                        Log.info(string.format("%s picture: %s radar tracking %s (%s)", p.label, sensor.id,
+                        WriteEventLog.add(p.coalition, "TRACKING", sensor.id, string.format("radar tracking %s (%s)",
                             targetGroup, target:getTypeName()))
                     end
                 end
@@ -312,15 +313,17 @@ local function finishRound(p, now)
         local by = string.format("%s %s", s.first_sensor.kind, s.first_sensor.id)
         if s.sensor_count > 1 then by = by .. string.format(" (+%d more)", s.sensor_count - 1) end
         if isNew then
-            Log.info(string.format("%s picture: new %s seen by %s, %s", p.label, describe(c), by, whereText(c)))
+            WriteEventLog.add(p.coalition, "CONTACT", groupName, string.format("new, %s, seen by %s, %s",
+                typeText(c), by, whereText(c)))
             fire(p, "new_contact", c)
         else
             if wasStale then
-                Log.info(string.format("%s picture: %s regained by %s, %s", p.label, describe(c), by, whereText(c)))
+                WriteEventLog.add(p.coalition, "CONTACT", groupName, string.format("regained, %s, by %s, %s",
+                    typeText(c), by, whereText(c)))
             end
             if airspaceBefore ~= c.airspace then
-                Log.info(string.format("%s picture: %s entered %s airspace (was %s), %s", p.label, describe(c),
-                    c.airspace, airspaceBefore, whereText(c)))
+                WriteEventLog.add(p.coalition, "CONTACT", groupName, string.format("entered %s airspace (was %s), %s, %s",
+                    c.airspace, airspaceBefore, typeText(c), whereText(c)))
                 fire(p, "airspace_changed", c, airspaceBefore)
             end
         end
@@ -332,7 +335,8 @@ local function finishRound(p, now)
             dropped[#dropped + 1] = groupName
         elseif unseen >= RADAR_PICTURE.stale_after_s and c.state == "tracked" then
             c.state = "stale"
-            Log.info(string.format("%s picture: %s stale (last seen %d s ago)", p.label, describe(c), math.floor(unseen)))
+            WriteEventLog.add(p.coalition, "CONTACT", groupName, string.format("stale, %s, last seen %d s ago",
+                typeText(c), math.floor(unseen)))
             fire(p, "contact_stale", c)
         end
     end
@@ -340,8 +344,8 @@ local function finishRound(p, now)
     for _, groupName in ipairs(dropped) do
         local c = p.contacts[groupName]
         p.contacts[groupName] = nil
-        Log.info(string.format("%s picture: %s dropped (last seen %d s ago)", p.label, describe(c),
-            math.floor(now - c.last_seen)))
+        WriteEventLog.add(p.coalition, "CONTACT", groupName, string.format("dropped, %s, last seen %d s ago",
+            typeText(c), math.floor(now - c.last_seen)))
         fire(p, "contact_dropped", c)
     end
 end
@@ -355,12 +359,12 @@ local function summary(p, now)
     end
     local missiles = 0
     for _ in pairs(p.missiles) do missiles = missiles + 1 end
-    local text = string.format("%s picture: %d contacts (own %d, contested %d, enemy %d; %d stale), %d of %d sensors answered",
-        p.label, count, by.own, by.contested, by.enemy, stale, p.last_answered, p.last_asked)
+    local text = string.format("%d contacts (own %d, contested %d, enemy %d; %d stale), %d of %d sensors answered",
+        count, by.own, by.contested, by.enemy, stale, p.last_answered, p.last_asked)
     if RADAR_PICTURE.count_missiles then
         text = text .. string.format(", missiles listed since last summary: %d", missiles)
     end
-    Log.info(text)
+    WriteEventLog.add(p.coalition, "PICTURE", p.label .. " picture", text)
     p.missiles = {}
     p.next_log_s = now + RADAR_PICTURE.log_every_s
 end

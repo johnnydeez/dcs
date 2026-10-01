@@ -4,3 +4,6 @@
 # Python bytecode caches
 __pycache__/
 *.pyc
+
+# Kola event logs: one per mission run, written by the mission script
+missions/kola_f16_random_tasking/event_logs/
