@@ -16,6 +16,10 @@
 --   escort_role  optional: a point-defense group next to the site, types from
 --                COALITION_ROSTER[side][escort_role] (the base-defense rosters)
 --
+--   low_altitude_engage_km  medium / long range: how far it reaches a low flyer (DCS,
+--                researched 2026-09-23, plan.md; IRIS-T and SA-6 estimated). Kill zones
+--                scale from this near the ground to the full ring high up (lib/sam_reach.lua)
+--
 -- One DCS group per site: a system's radars and launchers must share a group to work
 -- together. Engagement and detection radii come from UNIT_POOL (ED's data), not here.
 
@@ -23,6 +27,7 @@ SAM_SITE_RECIPE = {
     -- ── long range ──────────────────────────────────────────────
     ["SA-10"] = {
         layer = "long_range", footprint_m = 150, unit_spacing = 25,
+        low_altitude_engage_km = 40,   -- reach at low altitude (SamReach)
         parts = {
             { "S-300PS 64H6E sr",   1, 1, "centre" },     -- Big Bird search radar
             { "S-300PS 40B6MD sr",  1, 1, "centre" },     -- Clam Shell low-level search
@@ -39,6 +44,7 @@ SAM_SITE_RECIPE = {
     -- side of the threat axis cover ~180°; one radar turned off-axis left sites blind.
     ["Patriot"] = {
         layer = "long_range", footprint_m = 150, unit_spacing = 25,
+        low_altitude_engage_km = 30,   -- reach at low altitude (SamReach)
         parts = {
             { "Patriot str",        2, 2, "centre", aim = { -30, 30 } },
             { "Patriot ECS",        1, 1, "centre" },
@@ -54,6 +60,7 @@ SAM_SITE_RECIPE = {
     -- ── medium range ────────────────────────────────────────────
     ["SA-11"] = {
         layer = "medium_range", footprint_m = 120, unit_spacing = 25,
+        low_altitude_engage_km = 25,   -- reach at low altitude (SamReach)
         parts = {
             { "SA-11 Buk SR 9S18M1",  1, 1, "centre" },
             { "SA-11 Buk CC 9S470M1", 1, 1, "centre" },
@@ -63,6 +70,7 @@ SAM_SITE_RECIPE = {
     },
     ["SA-6"] = {
         layer = "medium_range", footprint_m = 100, unit_spacing = 25,
+        low_altitude_engage_km = 15,   -- reach at low altitude (SamReach)
         parts = {
             { "Kub 1S91 str",       1, 1, "centre" },
             { "Kub 2P25 ln",        3, 4, "launchers" },
@@ -71,6 +79,7 @@ SAM_SITE_RECIPE = {
     },
     ["NASAMS"] = {
         layer = "medium_range", footprint_m = 100, unit_spacing = 25,
+        low_altitude_engage_km = 14,   -- reach at low altitude (SamReach)
         parts = {
             { "NASAMS_Radar_MPQ64F1", 2, 2, "centre" },   -- DCS wants several for coverage
             { "NASAMS_Command_Post",  1, 1, "centre" },
@@ -80,6 +89,7 @@ SAM_SITE_RECIPE = {
     },
     ["IRIS-T SLM"] = {
         layer = "medium_range", footprint_m = 100, unit_spacing = 25,
+        low_altitude_engage_km = 20,   -- reach at low altitude (SamReach)
         parts = {
             { "CHAP_IRISTSLM_STR",  1, 1, "centre" },
             { "CHAP_IRISTSLM_CP",   1, 1, "centre" },
@@ -89,6 +99,7 @@ SAM_SITE_RECIPE = {
     },
     ["Hawk"] = {
         layer = "medium_range", footprint_m = 120, unit_spacing = 25,
+        low_altitude_engage_km = 22,   -- reach at low altitude (SamReach)
         parts = {
             { "Hawk sr",            1, 1, "centre" },
             { "Hawk tr",            2, 2, "centre" },     -- ED's template: two trackers

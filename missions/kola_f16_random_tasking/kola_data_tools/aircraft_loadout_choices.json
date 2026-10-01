@@ -19,7 +19,7 @@
   "FA-18C_hornet": {
     "strike":                      "liberation:STRIKE",
     "airfield_strike":             "liberation:STRIKE",
-    "suppression_of_air_defenses": "liberation:Liberation SEAD",
+    "suppression_of_air_defenses": "hand:SEAD 4 HARM",
     "destruction_of_air_defenses": "liberation:Liberation DEAD",
     "close_air_support":           "hand:Syria CAS",
     "combat_air_patrol":           "liberation:Liberation BARCAP",
@@ -28,7 +28,7 @@
   "F-16C_50": {
     "strike":                      "liberation:Liberation Strike",
     "airfield_strike":             "liberation:Liberation Strike",
-    "suppression_of_air_defenses": "liberation:Liberation SEAD",
+    "suppression_of_air_defenses": "hand:SEAD 4 HARM",
     "destruction_of_air_defenses": "liberation:Liberation DEAD",
     "close_air_support":           "hand:Syria CAS",
     "combat_air_patrol":           "dcs:AIM-120C*4, AIM-9X*2, FUEL*3",

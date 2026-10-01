@@ -2,7 +2,7 @@
 
 > **What this is:** the spec and build state of the Kola F-16C mission generator. When the mission loads, a script rolls the battlefield (who holds which airfield), fills it with ground defenses, SAM networks and targets, plans both coalitions' air war for a ~6-hour window, and briefs human players on their taskings.
 >
-> **Where to look:** *Where we are* (pick up here) → *Backlog* → *As built* (the spec, by stage) → *Design, not built yet* → *Architecture* → *Reference*. Features coming next, in John's order, are in **`roadmap.md`**; bugs found in runs, to come back to, are in **`bugs_and_fixes.md`**. Session-by-session history (run logs, before/after numbers) was cut on 2026-09-30; it's in git (`notes/kola_f16_generator_plan.md` in commits up to `4c49af9`).
+> **Where to look:** *Where we are* (pick up here) → *Backlog* → *As built* (the spec, by stage) → *Design, not built yet* → *Architecture* → *Reference*. Features coming next, in John's order, are in **`roadmap.md`**; bugs found in runs, to come back to, are in **`bugs_and_fixes.md`**; finished roadmap items (1–3 so far) move to **`closed_issues.md`**, keeping their numbers. Session-by-session history (run logs, before/after numbers) was cut on 2026-09-30; it's in git (`notes/kola_f16_generator_plan.md` in commits up to `4c49af9`).
 >
 > **Paths** are relative to this mission folder (`missions/kola_f16_random_tasking/`) unless they say otherwise. Companion: the Syria mission (`missions/syria_a2g/notes.md`); no shared code.
 >
@@ -23,42 +23,46 @@
 
 ---
 
-## Where we are — pick up here  *(2026-09-30, end of session 11)*
+## Where we are — pick up here  *(2026-10-01, end of session 12)*
 
 **Status:** the whole pipeline runs in DCS and the mission is playable by one human player.
 - **Stage 1:** territory roll, 37 airfields.
-- **Stage 2:** base defenses.
+- **Stage 2:** base defenses (trimmed for performance on 2026-10-01: no security infantry, one towed-gun group and one MANPADS team per base).
 - **Stage 3:** SAM networks (127 surveyed zones), fixed ground targets, and the target catalog.
 - **Stage 4:** one Red supply convoy.
 - **Airspace map:** own / contested / enemy, with regions and pockets.
-- **Air tasking for both coalitions:** front-only strike, airfield strike and DEAD, with SEAD packages; front CAP stations with commit circles; one AWACS each.
-- **Players:** F-16C dynamic-spawn slots, two human taskings per roll, frag and steerpoints in the comms menu.
-- **Radar picture** (roadmap item 1, done 2026-09-30): each coalition's picture of the enemy aircraft its radars report (see *Radar picture* under *As built*).
-- **Scrambles and the leash** (roadmap item 2, done 2026-09-30): one-ship scrambles at raids the radar picture shows, burning straight at them from a hot ramp spot; the first AI behaviour rule (the leash) brings them home; alert jets go back on alert 30 min after landing (see *Scrambles and the leash*).
-- **Flight ids carry the mission type:** `MSN2025_DEAD`, `MSN2901_SCRAM` (see *Naming and ids*).
-- **Event log** (roadmap item 3, built 2026-09-30, run twice in DCS the same day; the second run flown by John): a plain-language file per run in `event_logs\` (git-ignored), every event of the air war unit by unit, to watch live or comb through afterwards (see *Event log*). The flight, radar-picture, scramble and leash lines moved there from `dcs.log`.
-- **Performance in VR, first pass** (2026-10-01, not run in DCS yet): John's terrain settings (forest, scenery, LOD) got Kola itself back to 45 fps; the mission's own load is next. Built: no security infantry and one towed-gun group and one MANPADS team per base (*Stage 2*); short-reach base defenses sleep until an enemy aircraft is within 30 km of their base (*Sleeping ground units*); the airborne cap is 12 per coalition, with 2 of it kept for scrambles (planned flights peak at 10; scrambles never go over 12).
+- **Air tasking for both coalitions:** front-only strike, airfield strike and DEAD; AI packages fly **in sequence** (SEAD first and home, the mission only once its SAMs are out of the fight, else one more SEAD, then cancelled), and later packages reuse an earlier SEAD flight's work; front CAP stations with commit circles; one AWACS each (see *Stages 5–6*).
+- **SEAD doctrine** (2026-10-01): one SAM site per 2-ship, all 8 anti-radiation missiles in one salvo from a launch point 40 km out at ~30,000 ft and Mach 0.9, then cold, turned around by a behaviour rule if it presses on or strays into another kill zone.
+- **Players:** F-16C dynamic-spawn slots, two human taskings per roll, frag (3 min) and steerpoints (5 min, target and aim points with ground elevation, no egress) in the comms menu, `Hide text`, a popup for every static object a player destroys.
+- **Radar picture, scrambles and the leash, event log** (roadmap items 1–3, done; `closed_issues.md`). Scrambles are refused when they can't arrive in time, spawn only on ramp spots held for alert jets, and a jet stood down on the ramp goes back on alert.
+- **Airborne cap:** 12 AI aircraft per coalition (players never count), 2 of it kept for scrambles.
+- **Kill zones depend on altitude** (`lib/sam_reach.lua`): low-altitude reach near the ground, the full ring high up; no AI flight launches from a base inside an enemy SAM's low-altitude kill zone.
+- **Performance in VR, first pass** (closed for now, `closed_issues.md`): John's terrain settings got Kola back to 45 fps; short-reach base defenses sleep until an enemy aircraft is within 30 km (*Sleeping ground units*).
 
 **Last DCS runs:**
-- **Session 9, fourth run, ~2 h:** the air-denial rules held (John: "It looked good to me and like it followed our rules"). 0 patrol or AWACS track samples in enemy airspace or inside an enemy ring.
-- **Session 10, 12:18 roll:** the human taskings, frags and steerpoints read well (John: "looking good").
-- **Session 11, first radar picture + scramble run, ~48 min, watched (not flown):** everything designed showed up and nothing errored (details under *Radar picture* and *Scrambles and the leash*). John: MSN2901 and MSN5902 "did exactly what we wanted as a scramble". **Losses were high: 12 aircraft (Blue 4, Red 8)**, both Blue packages caught by Red fighters and both Red packages destroyed, mostly by aircraft that kept flying their route while engaged → roadmap item 4 (AI behaviour logic). Since then: alert jets return after landing, and flight ids carry the mission type; neither run in DCS yet.
+- **Session 11, first radar picture + scramble run, ~48 min, watched:** scrambles worked; losses high (Blue 4, Red 8) → roadmap item 4.
+- **2026-09-30, two event-log runs** (`event_logs\2026-09-30_201105.log`; `2026-09-30_213757.log`, John flying MSN2023_OCA, losses Blue 5 / Red 11) → `bugs_and_fixes.md` 1–12 and roadmap 4c.
+- **2026-10-01, 11:24 run (2D, 35 min, no player):** sleeping, waking and the cap worked; a woken base fighting still unseen. Found bugs 13 (Su-34s blowing up on Afrikanda's small spots) and 14 (the cap counted human flights).
+- **2026-10-01, 13:07 run:** the first SEAD salvo worked as built (MSN2025: 8 HARMs from 89–92 km, then cold) but the Sodankylä SA-10 shot all 8 down → launch point moved from 80 to 40 km. MSN5026 was sent home 15 s after takeoff by the old kill-zone test and flew out to its target before turning → altitude-aware kill zones and turning around on the spot (bug 15).
+- **2026-10-01, 13:49 run** (`event_logs\2026-10-01_134933.log`): found bugs 16 (a scramble from the wrong base, a tail chase) and 17 (an AI DEAD behind a player SEAD nobody flew; fixed).
+- **2026-10-01, 14:14 run (67 min, no player; `event_logs\2026-10-01_141412.log`):** losses Blue 2 / Red 0; on the ground the Sodankylä SA-10 lost both search radars.
+  - **SEAD:** every SEAD flight ran in low (~2,500–3,000 ft) instead of at 30,000 ft, then popped up. MSN2024 (2× F-16) died to the SA-10 before firing; its repeat, MSN2024_SEAD_AGAIN, fired 8 HARMs from 35–41 km at 16–18k ft, killed both search radars, and the SA-10 never fired → John: low ingress and pop-up becomes the SEAD doctrine (backlog, *SEAD follow-ups*). Red's MSN5024 fired 8 Kh-31P at the Rovaniemi Patriot from 40–42 km at ~8,000 ft; the Patriot shot all of them down (12 MIM-104). MSN5025 never fired at the Alakurtti IRIS-T (3,000 ft, cold 15 km past its launch point).
+  - **Worked:** `RETRY` / `_AGAIN`, `DELAYED`, every go-cold reason, scrambles refused when they can't arrive (bug 1), jets back on alert after a ramp stand-down (bug 2).
+  - **Found:** bug 18 (patrol handover overlap), 19 (a wingman missed its landing and flew straight on for 300 km, holding up MSN5023_OCA), 20 (go-cold timer from the planned time sent the late MSN5026 home before it attacked). Six Su-34s spawned at Vuojärvi together took off between 06:06 and 06:30 (John: taxi times are DCS; only limited planning around it). Bug 3's churn seen again (accepted for now). Red planned 3 of 5 missions, Blue 4 of 6; most unplanned ones: "no suppression flight in reach" (no clear launch point).
+  - **Not a bug:** Red's MiG-31 patrol didn't go after the SEAD flights working under the Rovaniemi Patriot's kill zone, low on fuel (John: realistic; a pop shot from the edge of the ring is an idea for roadmap item 4).
 
-**Next (2026-10-01):** the performance pass ran once in 2D (`event_logs\2026-10-01_112448.log`, 35 min, no player): sleeping, waking and the cap worked as designed (Luostari woke at 29 km and slept 3 min after its intruders died; peaks Blue 8 / Red 6; no `LATE_WAKE`), but no enemy came within 10 km of a base, so a woken base fighting is still unseen. VR frame rate not measured yet. Next: the bug list (`bugs_and_fixes.md`, now 1–14), then item 4.
-
-**Before (2026-09-30):** `roadmap.md`, in John's order: radar picture → scrambles → event log → AI behaviour logic → AWACS calls (text) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war (last: the full map is needed while debugging); radar jamming, helicopters, fun callsigns and a player map of the threat picture are optional, at the end. Radar picture, scrambles and the event log are built and run. Two event-log runs on 2026-09-30 (`event_logs6-09-30_201105.log`, and `2026-09-30_213757.log` with John flying MSN2023_OCA: 2 of 3 parked MiG-29s at Vuojärvi, losses Blue 5 / Red 11) fed `bugs_and_fixes.md` and roadmap 4c. **Next: performance in VR (top priority, `roadmap.md`: John's first VR run couldn't hold 45 fps, down to ~12 fps on takeoff), then the bugs, then AI behaviour logic (item 4).** The backlog below holds everything else.
+**Next:** bugs 19 and 20; roadmap item 10 (SEAD ingress doctrine: high transit, low ingress, pop up, fire, low out), together with rolling the air defenses back outside-in and continuous tempo (the next flight goes up when one comes back; discuss with John). Then bug 8 (John's decision on the intercept margin) and roadmap item 4 (AI behaviour logic).
 
 **Still to watch in runs:**
-- **Lone F-15E crash:** an F-15E of a Banak DEAD crashed alone in Blue airspace ~30 min after bombing (1,237 ft, no hit recorded). An AI approach crash or fuel? Watch for a repeat.
-- **Late bombers:** Red's Rovaniemi bombers dropped ~8 min after their TOT, after their SEAD had died, and hit nothing.
-- **Airborne cap:** Blue hits it on some territories because long-haul patrols overlap (Kallax / Rovaniemi → Banak, 450–570 km each way). Options: count only on-station time, or use nearer bases or fewer stations.
+- **SEAD:** the real launch range (the AI starts the attack ~12 km before the launch point), how many HARMs the target shoots down, whether `SUPPRESSION` sends flights home for the right reasons.
+- **The `expend` limits:** whether the AI honours one salvo (`AttackGroup`, expend All, one attack).
+- **A woken base fighting:** a run where an enemy flies low over a defended base (`UNIT_AWAKE`, then `GUNS` / `SHOT` from `DEF_` groups; the end summary's `CHECK`).
+- **Lone F-15E crash:** an F-15E of a Banak DEAD crashed alone in Blue airspace ~30 min after bombing (1,237 ft, no hit recorded). Watch for a repeat.
 - **Endurance:** does the AWACS stay on station the whole 6 hours (A-50 fuel)?
-- **Frame rate:** measured by feel in John's first VR run (2026-09-30): choppy, ~12 fps on takeoff, smooth once the Rovaniemi battle ended. Now the top roadmap item (*Top priority: performance in VR*).
+- **F-16 SEAD fuel:** the 4-HARM loadout has only the centerline tank; the planner still uses a 550 km reach.
 - **MiG-29S:** left out of the Red rosters, because its loadouts carry CLSIDs `aircraft_pylons.lua` doesn't know.
-- **Su-34 takeoff crash** (session 11): MSN5024_2 ejected at 161 ft 32 s after spawning at Poduzhemye. Watch for a repeat at that field.
-- **Alert jets back on alert:** built after the session 11 run; check the event log's `ALERT` lines and a second launch by the same jet.
-- **Event log:** answered by the two runs: `WAYPOINT` lines fire, folding works, DCS's weapon names are `AGM_88`, `X_31P`, `SA5B55`, `P_73` and so on, `ABORTED` only repeats hits and deaths, and the end summary is written. Still open: no `GUNS` line yet (nobody flew low over a defended base); frame rate not measured. Wording fixes are in `bugs_and_fixes.md` 5.
-- **Scramble trigger misses dog-legs** (session 11, not changed): "inbound" follows the current heading, so a raid on a leg around SAM rings reads as heading elsewhere. Red's Su-34s attacking `SAM_KUUS_SA11_1` read as 19 / 25 min from other assets and were never scrambled against (a Blue patrol got them). Possible addition: a contact in contested airspace within a few minutes' flight of any own asset counts, whatever its heading.
+- **Wingmen taking off late:** MSN5026_SEAD_2 took off 6 min after its lead (DCS taxi queue?).
+- **Scramble trigger misses dog-legs** (session 11, not changed): "inbound" follows the current heading, so a raid on a leg around SAM rings reads as heading elsewhere. Possible addition: a contact in contested airspace within a few minutes' flight of any own asset counts, whatever its heading.
 
 **Reading a run:** the story is in the event log (`event_logs\<date>_<time>.log` in this folder, git-ignored, one per run; see *Event log*). Grep a unit or flight name for its whole life, or an event word:
 
@@ -72,6 +76,8 @@
 | `TARGET` | a mission's target objects destroyed ("3 of 6 critical") |
 | `CONTACT`, `TRACKING`, `PICTURE` | each coalition's radar picture: new / regained / stale / dropped contacts and airspace changes, a SAM radar's first track of a group, the 5-min summary |
 | `SCRAMBLE`, `NO_SCRAMBLE`, `STOOD_DOWN`, `ALERT`, `LEASH` | scramble decisions and refusals, stood down before launch, jets back on alert, leash decisions |
+| `SUPPRESSION` | a SEAD flight sent home by the go-cold rule, and why |
+| `DELAYED`, `RETRY`, `CANCELLED` | packages in sequence: a mission waiting for its SEAD flight, a SEAD flight flying again (`<id>_AGAIN`), a mission or SEAD flight not launched and why |
 | `UNIT_AWAKE`, `UNIT_ASLEEP`, `LATE_WAKE`, `AWAKE_COUNT`, `(asleep)` | sleeping ground units: a base's short-reach defenses waking and sleeping, an enemy within 10 km of a sleeping base (never expected), the 5-min count; hits and deaths of a sleeping unit end in `(asleep)` |
 | `PLAYER_IN`, `PLAYER_OUT` | players |
 | `== Mission end` | the summary: flights launched, losses by cause, ground losses, each flight's outcome |
@@ -96,12 +102,12 @@ Decide with John, step by step. Roadmap items are in `roadmap.md`.
 
 **Playability follow-ups** (session 10, none built):
 - **Spread the two taskings:** require the second human tasking's target ≥ ~75 km from the first, falling back to any target. On the 12:18 roll both went to Rovaniemi.
-- **Unflown taskings' AI flights:** the AI SEAD of a human package flies even when nobody takes that tasking (4–6 jets, part of the airborne cap). Goes with picking a tasking: once a player takes one, cancel the other's AI flights, or never spawn a package's AI flights before a player shows up.
+- **Unflown taskings' AI flights:** the AI SEAD of a human package flies even when nobody takes that tasking (part of the airborne cap; John, 2026-10-01: those SEAD flights fly first thing, ahead of other AI tasking, since they make the player's tasking possible). The human flight itself no longer counts against the cap. Still open, with picking a tasking: once a player takes one, cancel the other's AI flights.
 - **Assignment and completion tracking** (John: later; the design leaves room): take a tasking from the comms menu, bind by slot (`player_slot.group`) or by the player's base at birth; report the target result; "take another tasking" after landing.
 - **DEAD frag:** replace the "Groups: SAM_…" line with what the site holds (radars, launchers).
 - **Brief items:** AWACS and tanker frequencies and callsigns (callsign policy below), bullseye (currently 0,0), divert fields.
 - **More players:** more slots per base (the tool and planner already take several per base; the planner uses the first one that exists); 2-ship human flights.
-- **Steerpoints:** moved to `bugs_and_fixes.md` 10 (target elevation) and 11 (no egress or return points).
+- **Steerpoints:** done 2026-10-01 (`closed_issues.md`, bugs 10 and 11: target elevation and aim points, no egress or return points).
 
 **Front targets.** The fixed-target "front" echelon is still "≤ 100 km from an enemy base":
 - **The gap:** on rolls where the sides sit far apart, nothing counts as front, so armor assembly areas and artillery never roll. Blue leaves ~3.5 missions per roll unplanned ("no target near the front in reach"), and human taskings fall back to DEAD / SEAD / CAP.
@@ -121,7 +127,14 @@ Overlaps roadmap item 6 (cruise missiles).
 - strikes go home if their SEAD fails;
 - scrambles that identify one jet and kill it only in certain airspace.
 
-Built: `consumers/enforce_air_behaviour_rules.lua`, with the scramble leash as its first rule (see *Scrambles and the leash*). The rest, plus attack flights defending themselves, is now roadmap item 4 (AI behaviour logic).
+Built: `consumers/enforce_air_behaviour_rules.lua`, with the scramble leash (see *Scrambles and the leash*) and the SEAD go-cold rule `suppression` (2026-10-01, *Stages 5–6*). "Strikes go home if their SEAD fails" is now handled before launch: a mission doesn't launch until its SAMs are out of the fight (packages in sequence). The rest, plus attack flights defending themselves, is roadmap item 4 (AI behaviour logic).
+
+**SEAD follow-ups** (offered 2026-10-01, not built):
+- **Low ingress and pop-up becomes the SEAD doctrine** (John, 2026-10-01, after the 14:14 run: "my instinct to go high was wrong"): now roadmap item 10, next in the order.
+- **Rolling back outside-in:** a SAM site inside another's ring has no clear launch point, so it can't be attacked alone and targets behind such clusters aren't planned. Order the SEAD flights so the outer site goes first, and let the next site's launch point ignore sites already handled, each flight launching after the one before it lands and only if its site is dead.
+- **Two flights at once for SA-10 / Patriot:** if one 8-HARM salvo still can't get through an SA-10 and its escort (the 13:07 run: all 8 shot down), send two SEAD flights to fire together (16 HARMs).
+
+**Hunting an enemy patrol** (John, 2026-10-01, idea for later): if an enemy patrol keeps drawing scrambles or guards a viable target, task a sweep to go after it and eliminate it, the way a real air force would.
 
 **Escorts:** fighter escorts for attack packages; on hold since the session 8 change of direction.
 - **Hook:** a package gets one more member, like its SEAD flights.
@@ -464,7 +477,7 @@ One Red supply convoy per mission (`CONVOYS_PER_COALITION`: Red 1, Blue 0).
 
 **Order inside `PlanAirTasking`, per coalition:** defensive air (AWACS → CAP stations and rotations) → human flights → AI attack packages. Human flights come before the AI's so they get first pick of targets.
 
-**Airborne cap:** `max_airborne_aircraft` 12 per coalition (16 until 2026-10-01; cut 25 % for performance in VR, John: strike volume is all relative), counting every package member, patrol, AWACS and scramble. Planned flights fill it only up to `AIR_DEFENSE.scramble_reserve_aircraft` (2) below it (`plannedCap`), so strikes can't leave no room for a scramble; scrambles never go over it. Up to 24 aircraft airborne in total. In the harness on the 21:37 plan, planned peaks went from 13–16 to 7–10, and Red planned ~22–28 flights instead of ~30–36.
+**Airborne cap:** `max_airborne_aircraft` 12 per coalition (16 until 2026-10-01; cut 25 % for performance in VR, John: strike volume is all relative), counting every AI package member, patrol, AWACS and scramble; human flights and players never count (John, 2026-10-01: the cap is for AI aircraft). A human package's AI escorts do count, and are planned before the AI's own packages. Planned flights fill it only up to `AIR_DEFENSE.scramble_reserve_aircraft` (2) below it (`plannedCap`), so strikes can't leave no room for a scramble; scrambles never go over it. Up to 24 aircraft airborne in total. In the harness on the 21:37 plan, planned peaks went from 13–16 to 7–10, and Red planned ~22–28 flights instead of ~30–36.
 
 **Launch fields:** fighters and attack jets fly from any held field whose runway and parking fit them (John: in wartime every usable runway is used).
 - F-16 / F/A-18 `min_runway_m` is 1,500 m (4,900 ft), so Alta (1,490 m) is just short and Kirkenes (1,795 m) qualifies.
@@ -505,11 +518,16 @@ One Red supply convoy per mission (`CONVOYS_PER_COALITION`: Red 1, Blue 0).
   - every CLSID is checked against `aircraft_pylons.lua`; pylons carry weapon names;
   - `--list <type>` shows the options.
 
-**Packages: SEAD / DEAD** (John: a mission that needs suppression never flies without it, and whether the suppression works doesn't need tracking; it's flavour):
+**Packages: SEAD / DEAD** (John: a mission that needs suppression never flies without it. Since 2026-10-01 whether it worked is tracked: an AI mission launches only once its SAMs are out of the fight):
 - **Unsuppressed:** a mission whose route crosses rings gets suppression flights, or isn't planned and another target is tried.
-- **Dividing the threats:** in the order the route meets them. Each suppression flight takes `count × anti_radiation_missiles / missiles_per_threat` of them (2 missiles per threat; F-16 / F/A-18 carry 2, Su-34 / Su-24M 4), at most `max_groups_per_flight` 2 groups.
-- **Point-defense escorts:** a SAM site's `<id>_escort` is engaged together with its site.
-- **Base and timing:** a suppression flight flies the package's route from the mission's own base when it can, else from the region's base nearest the target. It is over the target `AIR_PACKAGE.suppression_lead_s` (3–5 min) ahead, with its `EngageGroup` tasks on the waypoint before its first ring.
+- **Dividing the threats:** in the order the route meets them, **one SAM site per SEAD flight** (John, 2026-10-01: "fly high and fast and dump the HARMs at it at distance and then go cold"; a second site gets its own flight). SEAD loadouts carry 4 anti-radiation missiles per jet (F-16: 4 HARMs + centerline tank + an AMRAAM on each wingtip; F/A-18: 4 HARMs, Sidewinders and AMRAAMs, no tanks; both `hand:SEAD 4 HARM`, John's specs; Su-34 4 Kh-31P).
+- **The SEAD profile** (`suppressionRoute`, attack kind `harm_salvo`): around the other threats to a **launch point `launch_km` (40; was 80 until John's 13:07 run, where HARMs fired from 89–92 km were all shot down by the SA-10) from the site** (the AI starts the attack ~12 km before the waypoint at this speed, so real shots come from ~50 km), the last `run_in_km` (40) at the suppression altitude (now 9,000 m, ~30,000 ft) and `run_in_speed_mps` (270, ~Mach 0.9); at the launch point an `AttackGroup` on the site's own group with every anti-radiation missile (`expend = "All"`, one attack); then straight back the way it came, high and fast to the egress. The point-defense escort gets no missiles of its own (the salvo saturates it). A long-range ring may reach past the launch point (SA-10, Patriot): it runs in, fires and turns away. The launch point must lie **outside every other threat's ring** (+ margin): the bearing toward the base first, then every 15° either side; a site with no clear launch point can't be attacked alone, and the package isn't planned.
+- **Go cold** (`EnforceAirBehaviourRules`, rule `suppression`, `AIR_BEHAVIOUR_RULES.suppression`): checked every radar-picture round; home once every anti-radiation missile is gone, when it presses more than `press_km` (10) past its launch point toward the site, inside the kill zone of another SAM site (not one its planned route passes through on purpose: `route_threats`), or still on the attack `attack_time_s` (10 min) after its time at the launch point. Event word `SUPPRESSION`. **Going home turns it around where it is** (John, 2026-10-01): before its launch point it flies its route out backwards from the nearest point behind it; from the launch point on, its planned way back. (The first version always flew the planned way back, which starts near the launch point: MSN5026, sent home 15 s after takeoff, flew out to its target and turned there without firing.)
+- **Base:** the mission's own base when it can, else the region's base nearest the target.
+- **AI packages fly in sequence** (John, 2026-10-01: "we can still task and launch all these missions, they just can't all run at the same time"): the suppression flights first (spread over the window), then the mission `strike_after_suppression_s` (10 min) after the last of them is planned to land (`scheduleSequentialPackage`). Each flight is held under the cap only for its own time in the air, so a package needs room for one flight at a time. In the harness Blue went from 0–2 to 6–7 of 6–7 AI missions planned, Red 4–6 of 4–6, peaks still ≤ 10.
+- **Rolling the air defenses back:** a threat an earlier AI suppression flight already takes (`ctx.cleared`) gets no new flight; the mission waits until that one has landed (+10 min). A player's suppression flight never counts for this (nobody may fly it). Plan fields: `cleared_by = { threat → flight }`, `requires_cleared = { threats }`.
+- **At run time** (`ScheduleAirTaskingOrders`, `launch`): a mission with `requires_cleared` launches only once those threats are out of the fight (a SAM site's critical radars to its success fraction; a base-defense group with no live unit). If not: it waits (`DELAYED`, 10 min at a time, at most an hour) while one of its suppression flights is still up; otherwise those flights fly once more (`RETRY`, a copy `<id>_AGAIN` on parking free now; one repeat per suppression flight however many missions rely on it) and the mission waits for them; if the threats are still alive after that, it's `CANCELLED` (John: (b) then (a)). A suppression flight whose threats are already out of the fight isn't sent (`CANCELLED … not needed`). A mission launched late flies a copy on parking free now, once there is room under the cap (checked every `wait_for_room_s`).
+- **Packages with a human flight:** a player's own mission flies together with its AI suppression flights, which take off first thing (`first_start_s`; John: they make the player's tasking possible) and stay at least `suppression_lead_s` (3–5 min) ahead of the player over the target; human flights aren't gated. **A player's SEAD tasking in front of an AI mission** is the other way round (bug 17): the AI mission flies in sequence after it, `strike_after_suppression_s` after the player's planned landing (`scheduleHumanSeadPackage`), only once its threats are out of the fight; if not, two AI jets fly the player's tasking once (`<id>_AGAIN`), then it's cancelled. (Found when MSN2023_DEAD flew with JSOWs into a live SA-11 behind a player SEAD nobody flew, and lost both jets.)
 - **Enemy airspace:** suppression flights obey the same enemy-airspace limit as their mission.
 - **Mission types:** `suppression_of_air_defenses` is escort-only (anti-radiation missiles). `destruction_of_air_defenses` is a primary (`AttackGroup` on each group; Red: Su-34 with 4 Kh-29T, attack altitude 4,000 m).
 - **Scaling:** nothing is per-site; more zones → more rings → more suppression flights, automatically.
@@ -523,6 +541,8 @@ One Red supply convoy per mission (`CONVOYS_PER_COALITION`: Red 1, Blue 0).
 - **Defended zone:** that circle around the covered sites' value-weighted centre, cut short of every enemy threat ring, never below `min_zone_radius_km` (20). Drawn dashed.
 - **Orbit:** walked out from the nearest own base of that region toward the zone centre, as far as it stays on own held ground (all three points, per the airspace grid) and out of enemy kill zones. Legs run across the line to the nearest enemy base.
 - **Kill zones** (John: SAMs don't fire to their full drawn range, so jets may work close to a ring or a little inside it, just not fly into the kill zone for no reason): patrols and the AWACS keep out of `AIR_DEFENSE.killzone_fraction` (0.85) of each ring, for routes, orbits and zones. Attack flights still route around the full ring + margin.
+- **At run time the kill zone depends on altitude** (2026-10-01, `lib/sam_reach.lua`): a site reaches a low flyer much less far than its drawn ring (radar horizon, low envelope). Each medium / long-range recipe has `low_altitude_engage_km` (SA-10 40, Patriot 30, SA-11 25, Hawk 22, IRIS-T 20 (estimated), SA-6 15 (estimated), NASAMS 14); the zone is 85 % of that up to `killzone_low_altitude_m` (3,000 m), of the full ring from `killzone_high_altitude_m` (7,000 m), straight between. Used by the leash, the SEAD rule and the scrambles' "under enemy SAM cover" (the contact's altitude). Found when the SEAD rule sent MSN5026 home 15 s after takeoff from Vuojärvi, 60 km from a Blue SA-10 whose 120 km ring called it deadly, though flights had used that base all mission unharmed.
+- **No AI flight launches from a base inside an enemy site's low-altitude kill zone** (`launchBases`, `underEnemySam`; John: no flights up into instant death). The alert posture uses the same test (it used 85 % of the full ring).
 - **Station flights** may fly at most `AIR_DEFENSE.station_enemy_airspace_km` (5) of enemy airspace to their station; otherwise that base doesn't fly it. A base whose route enters any enemy threat ring can't fly the station.
 - **Patrol tasking:**
   - rules of engagement `open_fire`, with `EngageTargetsInZone` on the defended zone from the takeoff waypoint, so a patrol in transit defends too;
@@ -605,7 +625,8 @@ Rebuilt 2026-09-30 (roadmap item 2; design agreed with John, recorded there). A 
 **Alert posture** (`planAlertPosture`, `AIR_DEFENSE`):
 - held bases whose runway and parking fit an interception type (`COALITION_AIRCRAFT[c].interception`), the `alert_bases` (3) nearest the enemy, plus the nearest of each other region, so a pocket answers for itself;
 - **not a base inside an enemy kill zone** (found in the harness: Vuojarvi under a Blue ring had no way out that didn't start in the kill zone);
-- **3 alert jets per base** (`alert_aircraft_per_base`), 15 min cooldown between launches. A jet that lands is back on alert `scramble_turnaround_s` (30 min) later; one shot down is gone for the mission (John, 2026-09-30: a base shouldn't run out if its jets came back; replaced the first version's fixed 3 launches, which ran Red dry ~1.5 h into the first run). `plan.air_tasking_orders[c].alert = { bases = { { base, code, region, aircraft, pos, enemy_km, alert_aircraft, cooldown_s } }, max_airborne_aircraft, first_number }`.
+- **3 alert jets per base** (`alert_aircraft_per_base`), 15 min cooldown between launches. A jet that lands is back on alert `scramble_turnaround_s` (30 min) later; one shot down is gone for the mission (John, 2026-09-30: a base shouldn't run out if its jets came back; replaced the first version's fixed 3 launches, which ran Red dry ~1.5 h into the first run). `plan.air_tasking_orders[c].alert = { bases = { { base, code, region, aircraft, pos, enemy_km, alert_aircraft, cooldown_s, spots } }, max_airborne_aircraft, first_number }`.
+- **Alert spots** (2026-10-01, bug 7): the posture is planned before the patrols, and each alert base holds `alert_aircraft_per_base` ramp spots for the whole mission (`reserveAlertSpots`: free of statics, player slots and planned flights, a terminal type every interception type there fits, nearest a runway). No planned flight gets them; scrambles spawn only on them. A base that can't spare them isn't an alert base.
 - Session 11's roll: Red Alakurtti, Koshka Yavr, Banak; Blue Kuusamo, Ivalo, Vuojarvi.
 
 **Trigger** (every radar-picture round):
@@ -614,10 +635,10 @@ Rebuilt 2026-09-30 (roadmap item 2; design agreed with John, recorded there). A 
 
 **The raid:** the trigger plus the other contacts within `raid_radius_km` (20) on a heading within `raid_heading_deg` (45); one scramble takes them all, `EngageGroup` on each, in order.
 
-**The base:** the nearest ready alert base in the region facing the raid (`DivideAirspace.facingRegion`) whose intercept point is in reach and at least `scramble_min_leg_km` (10) out, with a free ramp spot; never over `max_airborne_aircraft`: the planner keeps `scramble_reserve_aircraft` (2) of it free (2026-10-01; it used to allow `scramble_over_cap`, 2 over). The intercept point is the raid pushed ahead along its heading by the scramble's flight time, pulled back in 5 km steps until it lies in own or contested airspace outside enemy kill zones.
+**The base:** the nearest ready alert base in the region facing the raid (`DivideAirspace.facingRegion`) whose intercept point is in reach and at least `scramble_min_leg_km` (10) out, that gets there before the raid reaches what it threatens (the mean reaction delay + `scramble_takeoff_s` 150 s + the dash, against the raid's `threat_minutes`; John, 2026-10-01), with a free alert spot; never over `max_airborne_aircraft`: the planner keeps `scramble_reserve_aircraft` (2) of it free (2026-10-01; it used to allow `scramble_over_cap`, 2 over). The intercept point is the raid pushed ahead along its heading by the scramble's flight time, pulled back in 5 km steps until it lies in own or contested airspace outside enemy kill zones.
 
 **The launch:**
-- after `scramble_reaction_s` (60–120 s, cockpit alert), **hot on a free ramp spot, never the runway** (John: no spawning on top of jets lined up there). The spot is chosen at spawn time from `Airbase:getParking(true)`, nearest the runway, not a player slot or a parked-aircraft static. If the raid is gone by then, or no spot is free, the scramble is **stood down before launch** and its jet stays on alert;
+- after `scramble_reaction_s` (60–120 s, cockpit alert), **hot on one of its base's alert spots, never the runway** (John: no spawning on top of jets lined up there): the first of the base's `spots` that `Airbase:getParking(true)` reports free. If the raid is gone by then, or no spot is free, the scramble is **stood down before launch** and its jet stays on alert. A jet the leash stands down on the ramp is back on alert at once (`RunScrambles.stoodDown`);
 - **the session 7 fixes:** `EngageGroup` on the takeoff waypoint, so it's active from wheels-up and the AI flies its own intercept (it used to sit on waypoint 2, the intruder's position at launch, and DCS starts a waypoint's tasks only on arrival); waypoints at the profile's `dash_speed_mps` (F-16 / F/A-18 325, F-15C / Su-27 / Su-30 / Su-33 355, MiG-31 440 m/s) with afterburner explicitly allowed (option 16 false), instead of `speed_locked` at cruise speed; `open_fire`, no `EngageTargets` on everything; one-ship, `interception` loadout, gun kept, may jettison;
 - then `ScheduleAirTaskingOrders.track`, `TrackRadarPicture.addFlight` (its radar joins the picture) and `EnforceAirBehaviourRules.watch(m, "leash", { targets })`.
 - Ids `MSN2901_SCRAM+` / `MSN5901_SCRAM+`.
@@ -700,7 +721,7 @@ Built 2026-09-30 (roadmap item 3). A catalogue of everything that happened in th
 
 ### Sleeping ground units (`consumers/sleep_ground_units.lua`, `data/ground_unit_sleep.lua`)
 
-Built 2026-10-01 (roadmap, *Top priority: performance in VR*); not run in DCS yet. A sleeping group has its AI off (`Controller:setOnOff(false)`), so it doesn't scan the sky. Standing units cost little by themselves; ~500 of them checking every aircraft and missile is what multiplies.
+Built 2026-10-01 (the performance-in-VR item, now in `closed_issues.md`); run once in 2D the same day, where one base woke and slept as designed. A sleeping group has its AI off (`Controller:setOnOff(false)`), so it doesn't scan the sky. Standing units cost little by themselves; ~500 of them checking every aircraft and missile is what multiplies.
 - **What sleeps:** base-defense groups of `GROUND_UNIT_SLEEP.components`: towed and mobile guns, infrared missile launchers, MANPADS teams (and security infantry if it comes back). **Never:** SAM sites (the air denial) and `radar_missile_launchers` (they reach ~20 km and feed the radar picture).
 - **Per base, every 10 s:** all its sleeping groups wake together when an enemy aircraft (plane or helicopter, AI or player) is within `wake_km` (30) of the base, with alarm state red. They sleep again once no enemy has been within 30 km, and the base hasn't fired, for `sleep_after_s` (180), so a base never sleeps mid-fight or flaps. Everything starts asleep.
 - **Watching for problems** (John: see problems without spamming the log):
@@ -726,7 +747,7 @@ Built 2026-10-01 (roadmap, *Top priority: performance in VR*); not run in DCS ye
   - `Human taskings > <MSN> > Frag / Steerpoints`, and `All human taskings`;
   - `Air tasking order > Attack packages / Patrols and AWACS / All flights`, each flight with its state.
 
-  Texts stay 60 s.
+  Texts stay 60 s; the frag 180 s and the steerpoints 300 s (John, 2026-10-01). `Hide text` at the top of the comms menu clears the screen.
 - **Frag contents:**
   - times (local);
   - target: description, degrees and decimal minutes (F-16) + MGRS + elevation, aim points, success as "destroy at least n of its m critical objects";
@@ -736,6 +757,8 @@ Built 2026-10-01 (roadmap, *Top priority: performance in VR*); not run in DCS ye
   - **SEAD frags** add the escorted mission and "your" threats; **CAP frags** add the orbit, the defended zone and the other patrols.
 
   Every frag and steerpoint list also goes to `dcs.log` (`HUMAN TASKING`).
+- **Steerpoints** (2026-10-01, bugs 10 and 11): the route out to `TGT` (or `CAP B`), then `LAND`; no egress or way home. `TGT` and each aim point (`AIM 1`, `AIM 2`, …) give the spot on the ground with its elevation, for fire-and-forget weapons; route points give the flight altitude.
+- **Static kills** (2026-10-01, bug 9): a player who destroys a static object the mission spawned gets a 15 s popup (DCS's kill list doesn't show static objects), with the human tasking's critical progress and "target destroyed: success" when its target is reached. Credited through the weapon if the player is gone by impact.
 - **Not built yet:** tanker and AWACS frequencies and callsigns, threat fidelity (every SAM ring is listed as known; see *Design*), fuel, ROE, in-flight updates.
 - **Warnings stay off screen** (`CONFIG.WARNINGS_ON_SCREEN = false`); errors still show.
 
@@ -915,6 +938,7 @@ kola_f16\
     weather.lua                  -- weather + time/sun derivation
     placement.lua                -- isClear, findClear, ring/disc points, buildAnchors, pickAnchorPoint
     threat_routing.lua           -- threat map, routes around rings, priced by airspace
+    sam_reach.lua                -- how far a SAM site reaches at an altitude; kill zones (SamReach)
   data\                          -- plain data, no logic; hand-authored or generated
     clusters.lua                 -- cluster table, bases per cluster (hand)
     zones.lua                    -- ground zones + classes (miz_zones.py)

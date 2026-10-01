@@ -93,10 +93,23 @@ local function attackTasks(m, first)
                 altitudeEnabled = false, altitude = 0,
             })
         end
+    elseif a.kind == "harm_salvo" then
+        -- the SEAD flight at its launch point: every anti-radiation missile at the site, once
+        for _, id in ipairs(groupIds(m, a.groups)) do
+            add("AttackGroup", {
+                groupId = id, weaponType = a.weapon_type, expend = "All", groupAttack = true,
+                attackQtyLimit = true, attackQty = 1, directionEnabled = false, direction = 0,
+                altitudeEnabled = false, altitude = 0,
+            })
+        end
     elseif a.kind == "engage_group" then
-        -- en-route task: attacks each group once it is detected, in route order
+        -- en-route task: attacks each group once it is detected, in route order; with
+        -- a.expend, each aircraft fires that many at a group, once (one attack), so the
+        -- missiles last for every group it was given
         for i, id in ipairs(groupIds(m, a.groups)) do
-            add("EngageGroup", { groupId = id, weaponType = a.weapon_type, priority = i, visible = false })
+            local t = { groupId = id, weaponType = a.weapon_type, priority = i, visible = false }
+            if a.expend then t.expend, t.attackQtyLimit, t.attackQty = a.expend, true, 1 end
+            add("EngageGroup", t)
         end
     elseif a.kind == "engage_aircraft_on_station" or a.kind == "early_warning_on_station" then
         if a.kind == "engage_aircraft_on_station" then

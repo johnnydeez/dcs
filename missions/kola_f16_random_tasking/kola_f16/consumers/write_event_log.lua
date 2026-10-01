@@ -16,6 +16,7 @@
 -- Event words (grep them): SPAWNED LOADOUT TAKEOFF WAYPOINT LAND POSITION SHOT GUNS HIT
 -- DESTROYED CRASHED EJECTED PILOT_DEAD PARACHUTE ABORTED TARGET CONTACT TRACKING PICTURE
 -- SCRAMBLE NO_SCRAMBLE STOOD_DOWN ALERT LEASH UNIT_AWAKE UNIT_ASLEEP LATE_WAKE AWAKE_COUNT
+-- DELAYED RETRY CANCELLED
 -- PLAYER_IN PLAYER_OUT
 --
 -- The DCS events (shots, hits, kills, takeoffs, landings, …) are caught here for every
@@ -58,6 +59,10 @@ local _flights = {}     -- group name → mission (planned, or spawned at run ti
 local _launched = { red = 0, blue = 0 }
 local _stations = {}    -- station id → station
 local _ended = false
+local _launchers = {}   -- weapon → who fired it, kept from SHOT for when the shooter is gone (5 a)
+local _ejected = {}     -- ejected pilot → the aircraft it left (5 e)
+local _liveSites = {}   -- SAM site id → { live, checked_at } (5 j)
+local _taskingsFrom = {}  -- base → human taskings launching from it (5 k)
 
 -- ── small helpers ───────────────────────────────────────────────
 
@@ -79,6 +84,33 @@ end
 
 local function isAircraft(o)
     return isUnit(o) and safe(function() return o:getDesc().category <= Unit.Category.HELICOPTER end) == true
+end
+
+local function isWeapon(o)
+    return o and safe(function() return o:getCategory() == Object.Category.WEAPON end) == true
+end
+
+-- A key for a DCS object that holds across events (each event hands over a new table).
+local function keyOf(o)
+    return o and (safe(function() return o.id_ end) or o) or nil
+end
+
+-- Whether a SAM site still has a live unit, checked at most every 30 s (the POSITION and
+-- WAYPOINT ring column skips dead sites; the leash's kill zone uses the same test).
+local function liveSite(id)
+    local now = timer.getTime()
+    local c = _liveSites[id]
+    if c and now - c.checked_at < 30 then return c.live end
+    local live = safe(function()
+        local g = Group.getByName(id)
+        if not (g and g:isExist()) then return false end
+        for _, u in ipairs(g:getUnits() or {}) do
+            if u:isExist() and u:getLife() > 0 then return true end
+        end
+        return false
+    end) == true
+    _liveSites[id] = { live = live, checked_at = now }
+    return live
 end
 
 local function isNamedThing(o)
@@ -122,7 +154,7 @@ local function whereIs(u, side)
     local pos = { x = p.x, z = p.z }
     local nearest, edge
     for _, s in ipairs(_plan.sam_sites and _plan.sam_sites.sites or {}) do
-        if s.side ~= c and AIR_ROUTING.threat_layers[s.layer] and (s.engage_m or 0) > 0 then
+        if s.side ~= c and AIR_ROUTING.threat_layers[s.layer] and (s.engage_m or 0) > 0 and liveSite(s.id) then
             local d = Util.dist(pos, s.pos) - s.engage_m
             if not edge or d < edge then nearest, edge = s.id, d end
         end
@@ -274,6 +306,19 @@ local function killerKind(killer)
     return "other ground units"
 end
 
+-- Who fired: the initiator while it exists; else whoever launched the weapon (kept at
+-- SHOT), so a missile that lands after its shooter died is still credited (5 a).
+-- { name, text, kind } or nil.
+local function shooterOf(initiator, weapon)
+    local name = nameOf(initiator)
+    if name then return { name = name, text = who(initiator), kind = killerKind(initiator) } end
+    local kept = weapon and _launchers[keyOf(weapon)]
+    if kept then return kept end
+    local launcher = weapon and safe(function() return weapon:getLauncher() end)
+    if nameOf(launcher) then return { name = nameOf(launcher), text = who(launcher), kind = killerKind(launcher) } end
+    return nil
+end
+
 local function deathText(e)
     local text = e.what
     if e.killer then
@@ -294,7 +339,7 @@ local function destroyed(o, killer, weapon)
     local e = _deaths[name]
     if e then
         if killer and not e.killer and not e.written then
-            e.killer, e.killer_kind, e.weapon = who(killer), killerKind(killer), weapon
+            e.killer, e.killer_kind, e.weapon = killer.text, killer.kind, weapon
         end
         return
     end
@@ -304,7 +349,7 @@ local function destroyed(o, killer, weapon)
     local player = playerOf(o)
     e = push(side, "DESTROYED", name, nil, {
         what = t .. (player and (", player " .. player) or "") .. (aircraft and "" or asleepTag(o)),
-        killer = killer and who(killer), killer_kind = killerKind(killer), weapon = weapon,
+        killer = killer and killer.text, killer_kind = killer and killer.kind or "no killer recorded", weapon = weapon,
         where = aircraft and whereIs(o, side) or nil,
         aircraft = aircraft, static = not isUnit(o), coalition = coalitionName(side),
         render = deathText,
@@ -321,12 +366,15 @@ local function shot(e)
     local name = nameOf(shooter)
     if not name then return end
     local weapon = typeOf(e.weapon) or "?"
+    if e.weapon then _launchers[keyOf(e.weapon)] = { name = name, text = who(shooter), kind = killerKind(shooter) } end
     local target = e.weapon and safe(function() return e.weapon:getTarget() end)
-    local targetName = target and nameOf(target)
+    local incoming = isWeapon(target)
+    local targetName = target and (incoming and typeOf(target) or nameOf(target))
     fold(table.concat({ "shot", name, weapon, targetName or "" }, "|"), EVENT_LOG.fold_shots_s, function()
         local text = ""
         if targetName then
-            text = " at " .. who(target)
+            -- a SAM shooting at a missile: "at an incoming AGM_88" (5 b)
+            text = incoming and (" at an incoming " .. targetName) or (" at " .. who(target))
             local a, b = safe(function() return shooter:getPoint() end), safe(function() return target:getPoint() end)
             if a and b then text = text .. string.format(", %.0f km", Util.dist(a, b) / 1000) end
         end
@@ -361,16 +409,27 @@ local function hit(e)
     if not isNamedThing(target) then return end
     local name = nameOf(target)
     if not name then return end
-    local shooterName = nameOf(e.initiator) or "?"
-    local weapon = weaponName(e)
-    fold(table.concat({ "hit", name, shooterName, weapon }, "|"), EVENT_LOG.fold_hits_s, function()
-        local by = e.initiator and who(e.initiator) or "unknown"
+    local shooter = shooterOf(e.initiator, e.weapon)
+    -- the "weapon" is a unit or object blowing up next to it (5 c), or there's nothing at
+    -- all: a blast DCS names no weapon and no shooter for (5 h)
+    local exploding = isNamedThing(e.weapon) and who(e.weapon)
+    local unexplained = not shooter and not exploding and not e.weapon_name and not e.weapon
+    local weapon = exploding and "explosion" or weaponName(e)
+    fold(table.concat({ "hit", name, shooter and shooter.name or "?", exploding or weapon }, "|"), EVENT_LOG.fold_hits_s, function()
+        local by = shooter and shooter.text or "unknown"
         local asleep = isAircraft(target) and "" or asleepTag(target)
         return push(sideOf(target), "HIT", name, nil, { weapon = weapon, by = by, target_type = typeOf(target),
             where = isAircraft(target) and whereIs(target) or nil,
             render = function(l)
-                local text = string.format("%s hit by %s%s from %s", l.target_type or "?", l.weapon,
-                    l.count > 1 and string.format(" (%d hits)", l.count) or "", l.by)
+                local hits = l.count > 1 and string.format(" (%d hits)", l.count) or ""
+                local text
+                if exploding then
+                    text = string.format("%s caught in the explosion of %s%s", l.target_type or "?", exploding, hits)
+                elseif unexplained then
+                    text = string.format("%s damaged by a nearby explosion%s", l.target_type or "?", hits)
+                else
+                    text = string.format("%s hit by %s%s from %s", l.target_type or "?", l.weapon, hits, l.by)
+                end
                 if l.where then text = text .. ", " .. l.where end
                 return text .. asleep
             end })
@@ -394,22 +453,36 @@ function handler:onEvent(e)
         elseif id == ev.S_EVENT_HIT then
             hit(e)
         elseif id == ev.S_EVENT_KILL then
-            if isNamedThing(e.target) then destroyed(e.target, o, e.weapon_name or typeOf(e.weapon)) end
+            if isNamedThing(e.target) then destroyed(e.target, shooterOf(o, e.weapon), e.weapon_name or typeOf(e.weapon)) end
         elseif id == ev.S_EVENT_DEAD or id == ev.S_EVENT_UNIT_LOST then
             if isNamedThing(o) then destroyed(o) end
         elseif id == ev.S_EVENT_CRASH then
             if isAircraft(o) then push(sideOf(o), "CRASHED", nameOf(o), string.format("%s crashed%s", typeOf(o) or "?",
                 whereIs(o) and (", " .. whereIs(o)) or "")) end
         elseif id == ev.S_EVENT_EJECTION then
-            if isAircraft(o) then push(sideOf(o), "EJECTED", nameOf(o), string.format("pilot of %s ejected%s",
-                typeOf(o) or "?", whereIs(o) and (", " .. whereIs(o)) or "")) end
+            if isAircraft(o) then
+                if e.target then _ejected[keyOf(e.target)] = { name = nameOf(o), type = typeOf(o), side = sideOf(o) } end
+                push(sideOf(o), "EJECTED", nameOf(o), string.format("pilot of %s ejected%s",
+                    typeOf(o) or "?", whereIs(o) and (", " .. whereIs(o)) or ""))
+            end
         elseif id == ev.S_EVENT_PILOT_DEAD then
             if isAircraft(o) then push(sideOf(o), "PILOT_DEAD", nameOf(o), "pilot of " .. (typeOf(o) or "?") .. " killed") end
         elseif ev.S_EVENT_LANDING_AFTER_EJECTION and id == ev.S_EVENT_LANDING_AFTER_EJECTION then
-            push(sideOf(o), "PARACHUTE", nameOf(o) or "pilot", "an ejected pilot landed by parachute")
+            -- named after the aircraft the pilot left, when the ejection said who it was (5 e)
+            local from = _ejected[keyOf(o)]
+            if from then
+                push(from.side, "PARACHUTE", from.name, string.format("the pilot of %s (%s) landed by parachute", from.name, from.type or "?"))
+            else
+                push(sideOf(o), "PARACHUTE", nameOf(o) or "pilot", "an ejected pilot landed by parachute")
+            end
         elseif id == ev.S_EVENT_TAKEOFF then
-            if isAircraft(o) then push(sideOf(o), "TAKEOFF", nameOf(o), string.format("%s, from %s", typeOf(o) or "?",
-                placeName(e) or "open ground")) end
+            if isAircraft(o) then
+                local text = string.format("%s, from %s", typeOf(o) or "?", placeName(e) or "open ground")
+                -- a player: the human tasking from that base, when only one starts there (5 k)
+                local list = playerOf(o) and _taskingsFrom[placeName(e) or ""]
+                if list and #list == 1 then text = text .. string.format(", flying %s?", list[1]) end
+                push(sideOf(o), "TAKEOFF", nameOf(o), text)
+            end
         elseif id == ev.S_EVENT_LAND then
             if isAircraft(o) then push(sideOf(o), "LAND", nameOf(o), string.format("%s, at %s", typeOf(o) or "?",
                 placeName(e) or "open ground")) end
@@ -421,7 +494,13 @@ function handler:onEvent(e)
             local player = playerOf(o)
             if player then push(sideOf(o), "PLAYER_OUT", nameOf(o), player .. " left the " .. (typeOf(o) or "?")) end
         elseif ev.S_EVENT_AI_ABORT_MISSION and id == ev.S_EVENT_AI_ABORT_MISSION then
-            push(sideOf(o), "ABORTED", groupOf(o) or nameOf(o), "the DCS AI gave up its mission")
+            -- DCS often sends it twice in a second: folded per flight (5 f)
+            local g = groupOf(o) or nameOf(o) or "?"
+            fold("aborted|" .. g, 10, function()
+                return push(sideOf(o), "ABORTED", g, nil, { render = function(l)
+                    return "the DCS AI gave up its mission" .. (l.count > 1 and string.format(" (%dx)", l.count) or "")
+                end })
+            end)
         elseif id == ev.S_EVENT_MISSION_END then
             WriteEventLog.finish()
         end
@@ -443,9 +522,11 @@ local function positions()
                         local speed = math.sqrt(v.x * v.x + v.z * v.z)
                         local heading = math.deg(math.atan2(v.z, v.x))
                         if heading < 0 then heading = heading + 360 end
-                        local text = string.format("%s, %.0f kt, heading %03d, fuel %.0f %%, %s", typeOf(u) or "?",
-                            speed * KNOTS_PER_MPS, math.floor(heading + 0.5) % 360, (u:getFuel() or 0) * 100,
-                            whereIs(u, side) or "?")
+                        -- getFuel is a fraction of internal fuel, so external tanks take it over 100 % (5 i)
+                        local fuel = u:getFuel() or 0
+                        local text = string.format("%s, %.0f kt, heading %03d, fuel %.0f %%%s, %s", typeOf(u) or "?",
+                            speed * KNOTS_PER_MPS, math.floor(heading + 0.5) % 360, fuel * 100,
+                            fuel > 1 and " (with external tanks)" or "", whereIs(u, side) or "?")
                         if st and st.centre then
                             local p = u:getPoint()
                             text = text .. string.format(", %.0f km from station centre", Util.dist({ x = p.x, z = p.z }, st.centre) / 1000)
@@ -590,7 +671,13 @@ function WriteEventLog.open(plan)
     for _, c in ipairs({ "red", "blue" }) do
         local ato = plan.air_tasking_orders and plan.air_tasking_orders[c]
         for _, st in ipairs(ato and ato.stations or {}) do _stations[st.id] = st end
-        for _, m in ipairs(ato and ato.missions or {}) do _flights[m.id] = m end
+        for _, m in ipairs(ato and ato.missions or {}) do
+            _flights[m.id] = m
+            if m.flown_by == "human" then
+                _taskingsFrom[m.launch_base] = _taskingsFrom[m.launch_base] or {}
+                table.insert(_taskingsFrom[m.launch_base], m.id)
+            end
+        end
     end
     local stamp = safe(function() return os.date("%Y-%m-%d_%H%M%S") end)
         or string.format("%s_%s", plan.world.time.date_str, tostring(math.floor(timer.getTime())))
