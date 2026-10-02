@@ -202,11 +202,34 @@ AIR_MISSION_TYPE = {
 -- way home turns back from it. Its route is priced (and its SEAD needs worked out) only to
 -- that point. Each aircraft fires its weapons spread over the target's critical objects,
 -- once (no re-attack). Untested in DCS: how far out the AI really releases each one.
+-- A DEAD flight carrying one gets the same release-point route (bug 4, 2026-10-02); its
+-- AttackGroup on the site still lets the AI close in if it can't fire from there.
 --   name        a piece of the weapon's name
 --   release_km  how far short of the target the release point sits
 AIR_STANDOFF_WEAPONS = {
     { name = "Kh-59M",   release_km = 40 },   -- inertial standoff missile (real range ~115 km)
     { name = "KAB-500S", release_km = 8 },    -- satellite-guided glide bomb from ~5,000 m
+    { name = "AGM-154",  release_km = 20 },   -- JSOW glide weapon (real ~22 km low, ~110 km high)
+}
+
+-- DEAD against a short-range SAM site (bug 4, 2026-10-02: Su-34s fired Kh-29Ts at a
+-- Roland from 7–9 km, at the edge of its 8 km ring, and lost a jet each time; John: build
+-- what completes missions and is realistic). Short-range sites have no SEAD in front of
+-- them, so the DEAD flight itself must hit from out of the site's reach: its weapon
+-- reaches at least the site's ring + reach_margin_km, or its attack height above the
+-- site is at least the system's ceiling (SAM_SITE_RECIPE ceiling_km) + ceiling_margin_m.
+-- The planner picks a DEAD loadout that does (AIRCRAFT_LOADOUT_OPTIONS); a target no
+-- loadout of the aircraft can hit that way isn't taken by it. Medium and long-range
+-- sites need no rule: a DEAD there waits until SEAD has put the site out of the fight.
+-- Human flights carry their own weapons and aren't held to it.
+--   weapon_reach_km  how far each non-standoff weapon reaches, by a piece of its name
+--                    (a standoff weapon counts its release_km)
+AIR_DEAD_WEAPONS = {
+    reach_margin_km  = 5,
+    ceiling_margin_m = 1000,
+    weapon_reach_km  = {
+        { name = "Kh-29T", reach_km = 9 },   -- TV-guided; Su-34s fired from 7–9 km (2026-09-30, 10-02 runs)
+    },
 }
 
 -- DCS WeaponType bit masks (pydcs dcs/task.py) for the names used above.
@@ -374,12 +397,30 @@ HUMAN_TASKING = {
 -- airspace near a patrol is engaged, one in its own airspace isn't. Once engaged, DCS
 -- may chase it further (the leash is on the AI behaviour list).
 --
--- AWACS, one per coalition, on the runway at mission start:
+-- AWACS, one per coalition (two where its fronts are too far apart for one radar), on the
+-- runway at mission start (2026-10-02, John: put it where its coalition fights; in the
+-- 19:29 run Blue's E-3A, held 200 km from every enemy base, orbited off Bodø 460-550 km
+-- from the player's Kola tasking, and two Red scrambles at him never reached Blue's
+-- picture):
 --   early_warning_start_s      mission time it is spawned
---   early_warning_standoff_km  its orbit stays at least this far from every enemy base, in
---                              own (not contested) airspace, and outside every enemy kill
---                              zone by early_warning_clearance_km
+--   early_warning_weights      what it should see, weighed: each contested-airspace
+--                              sample (front), each enemy target the attacks can reach ×
+--                              its value (target), each enemy fighter base (scrambles)
+--   early_warning_coverage_km  how far an orbit counts as seeing (a planning figure: the
+--                              E-3A's first detections came at 120-210 km for jets low
+--                              down, session 11; farther for jets high up)
+--   early_warning_fighter_base_km  the orbit stays this far from every enemy fighter base
+--   early_warning_front_km     and this far from the contested airspace, in own (not
+--                              contested) airspace on own ground, the whole race-track
+--                              outside every enemy kill zone by early_warning_clearance_km
+--   early_warning_step_km      the grid the orbit and the front are sampled on
+--   early_warning_max          at most this many AWACS, per coalition
+--   early_warning_second_share a second when the first leaves more than this share of the
+--   early_warning_second_gain  weight unseen and it would see at least this share
+--   early_warning_tries        best orbits tried in turn when one can't be flown
 --   early_warning_leg_km       length of its race-track
+--   early_warning_legacy_standoff_km  the old orbit's distance from every enemy base, for a
+--                              coalition with no orbit clear of the standoffs above
 --
 -- Scrambles (roadmap.md item 2; the plan holds the alert posture, consumers/control_air_flights/scramble_fighters.lua
 -- reacts to the radar picture every round, the controller (consumers/control_air_flights/)
@@ -459,9 +500,18 @@ AIR_DEFENSE = {
     commit_min_radius_km  = 15,
 
     early_warning_start_s      = 5,
-    early_warning_standoff_km  = 200,
+    early_warning_weights      = { front = 1, target = 1, enemy_fighter_base = 3 },
+    early_warning_coverage_km  = 250,
+    early_warning_fighter_base_km = 150,
+    early_warning_front_km     = 80,
+    early_warning_step_km      = 20,
+    early_warning_max          = { blue = 2, red = 1 },   -- Russia has few A-50s
+    early_warning_second_share = 0.3,
+    early_warning_second_gain  = 0.2,
+    early_warning_tries        = 5,
     early_warning_clearance_km = 30,
     early_warning_leg_km       = 80,
+    early_warning_legacy_standoff_km = 200,
 
     alert_posture_planned = true,
     alert_aircraft_per_base = 3,

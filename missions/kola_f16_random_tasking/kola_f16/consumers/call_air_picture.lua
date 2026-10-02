@@ -20,11 +20,18 @@
 -- Aspect is the angle between the contact's heading and the line from it to the player.
 -- Threat order: range × a factor per aspect (AIR_PICTURE_CALLS.threat_range_factor).
 -- A contact whose range no sensor knows (a jammer) reads "135/?nm".
+-- Coverage (2026-10-02, John: in the 19:29 run Darkstar called "clean" while two Red
+-- scrambles closed on him, 450+ km from Blue's E-3A): a player outside every live
+-- sensor's reach hears it in the header, "no radar coverage your area", instead of a
+-- picture that only looks clean. A sensor's reach at the player's height above the
+-- ground (AIR_PICTURE_CALLS.coverage): the AWACS awacs_km, fighters fighter_km, a ground
+-- radar its type's detection range (UNIT_POOL), each no farther than the radar horizon.
 --
 -- The facts per group are worked out in one place (describe) and the text is only one
 -- way of sending them, so the AI radio calls (item 7) can speak them later.
 -- Informs players only: no orders, nothing written to the plan. Event log:
 --   PICTURE_CALL  BLUE  f16_rovaniemi  "to New callsign: 3 groups; first Su-27 - 135/42nm, 25k, hot, 5s"
+--   PICTURE_CALL  BLUE  f16_ivalo      "to New callsign: nothing; no radar coverage"
 
 CallAirPicture = {}
 
@@ -176,12 +183,62 @@ local function ownFrom(unit)
     local p = unit:getPoint()
     local pos = { x = p.x, z = p.z }
     local lat, lon = latLon(pos)
-    return { pos = pos, lat = lat, lon = lon, variation = variation(lat, lon) }
+    local okGround, ground = pcall(land.getHeight, { x = p.x, y = p.z })
+    return { pos = pos, lat = lat, lon = lon, variation = variation(lat, lon),
+             height_m = p.y - (okGround and ground or 0) }
 end
 
--- The list for one player unit: the text and the groups in threat order.
+-- ── coverage ────────────────────────────────────────────────────
+
+-- Radar horizon, metres, between antennas / targets h1 and h2 metres up (4/3 earth).
+local function horizonM(h1, h2)
+    return 4120 * (math.sqrt(math.max(h1, 0)) + math.sqrt(math.max(h2, 0)))
+end
+
+local _groundDetection = {}   -- group name → its longest unit detection range, metres
+
+local function groundDetectionM(g, name)
+    if _groundDetection[name] == nil then
+        local best = 0
+        for _, u in ipairs(g:getUnits() or {}) do
+            local pool = UNIT_POOL.ground[u:getTypeName()]
+            if pool and (pool.detection_m or 0) > best then best = pool.detection_m end
+        end
+        _groundDetection[name] = best > 0 and best or AIR_PICTURE_CALLS.coverage.ground_default_km * 1000
+    end
+    return _groundDetection[name]
+end
+
+-- True when some live sensor of the coalition reaches the player where they are.
+local function covered(sideName, own)
+    local C = AIR_PICTURE_CALLS.coverage
+    for _, sensor in ipairs(TrackRadarPicture.sensors(sideName)) do
+        local ok, yes = pcall(function()
+            local g = Group.getByName(sensor.id)
+            local u = g and g:getUnits()[1]
+            if not u then return false end
+            local q = u:getPoint()
+            local reach
+            if sensor.kind == "awacs" then
+                reach = math.min(C.awacs_km * 1000, horizonM(q.y, own.height_m))
+            elseif sensor.kind == "patrol" or sensor.kind == "scramble" then
+                reach = C.fighter_km * 1000
+            else
+                reach = math.min(groundDetectionM(g, sensor.id), C.ground_max_km * 1000,
+                    horizonM(C.radar_height_m, own.height_m))
+            end
+            return Util.dist(own.pos, { x = q.x, z = q.z }) <= reach
+        end)
+        if ok and yes then return true end
+    end
+    return false
+end
+
+-- The list for one player unit: the text, the groups in threat order, and whether the
+-- coalition's radars cover the player.
 local function pictureFor(sideName, unit)
     local own = ownFrom(unit)
+    local inCoverage = covered(sideName, own)
     local groups = {}
     for _, c in ipairs(TrackRadarPicture.contacts(sideName)) do
         if c.pos and c.heading_deg then groups[#groups + 1] = describe(c, own) end
@@ -191,12 +248,17 @@ local function pictureFor(sideName, unit)
         return a.contact.group < b.contact.group
     end)
     local P = AIR_PICTURE_CALLS
-    local header = (P.callsign[sideName] or "AWACS") .. " picture"
-    if #groups == 0 then return header .. ", clean", groups end
-    local lines = { string.format("%s, %d group%s", header, #groups, #groups == 1 and "" or "s") }
+    local callsign = P.callsign[sideName] or "AWACS"
+    local header = callsign .. " picture"
+    if #groups == 0 then
+        if not inCoverage then return callsign .. ": no radar coverage your area, picture unknown", groups, false end
+        return header .. ", clean", groups, true
+    end
+    local lines = { string.format("%s, %d group%s%s", header, #groups, #groups == 1 and "" or "s",
+        inCoverage and "" or "; no radar coverage your area") }
     for i = 1, math.min(#groups, P.max_groups) do lines[#lines + 1] = lineText(groups[i]) end
     if #groups > P.max_groups then lines[#lines + 1] = string.format("+%d more", #groups - P.max_groups) end
-    return table.concat(lines, "\n"), groups
+    return table.concat(lines, "\n"), groups, inCoverage
 end
 
 local function airborne(unit)
@@ -217,14 +279,15 @@ local function callAll()
                 if not groupId or done[groupId] then return end
                 if not P.on_the_ground and not airborne(unit) then return end
                 done[groupId] = true
-                local text, groups = pictureFor(sideName, unit)
+                local text, groups, inCoverage = pictureFor(sideName, unit)
                 trigger.action.outTextForGroup(groupId, text, P.show_s, false)
                 if P.log_calls then
                     local first = groups[1]
-                    WriteEventLog.add(sideName, "PICTURE_CALL", group:getName(), string.format("to %s: %s",
+                    WriteEventLog.add(sideName, "PICTURE_CALL", group:getName(), string.format("to %s: %s%s",
                         unit:getPlayerName() or "player",
                         first and string.format("%d group%s; first %s", #groups, #groups == 1 and "" or "s",
-                            lineText(first)) or "clean"))
+                            lineText(first)) or (inCoverage and "clean" or "nothing"),
+                        inCoverage and "" or "; no radar coverage"))
                 end
             end)
             if not ok then Log.warn("air picture: a call failed: " .. tostring(err)) end

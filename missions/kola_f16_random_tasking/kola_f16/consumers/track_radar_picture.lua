@@ -19,7 +19,7 @@
 --
 -- Event log lines (consumers/write_event_log.lua), coalition = whose picture:
 --   PICTURE   RED  "3 contacts (own 1, contested 2, enemy 0; 1 stale), 28 of 30 sensors answered"
---   CONTACT   RED  MSN2014_DEAD  "new, F-16C_50, seen by early_warning SAM_OLEN_55G6_1 (+2 more),
+--   CONTACT   RED  MSN2014_DEAD  "new, F-16C_50, seen by early_warning SAM_OLEN_55G6_1 212 km away (+2 more),
 --                  24,000 ft, contested airspace, 62 km from Olenya, inbound Olenya in 11 min"
 --   CONTACT   RED  MSN2014_DEAD  "entered own airspace (was contested), …" / "stale, last seen
 --                  65 s ago" / "regained by …" / "dropped, last seen 300 s ago"
@@ -244,6 +244,10 @@ local function poll(p, sensor)
     local ok, list = pcall(function() return g:getController():getDetectedTargets(Controller.Detection.RADAR) end)
     if not ok or type(list) ~= "table" then return end
     p.answered = p.answered + 1
+    -- where the sensor is, for how far it saw each contact (calibrates the coverage the
+    -- air picture calls assume, data/air_picture_calls.lua)
+    local okPos, sensorPos = pcall(function() return g:getUnits()[1]:getPoint() end)
+    if not okPos then sensorPos = nil end
     for _, t in ipairs(list) do
         local obj = t.object
         local kind, category
@@ -269,7 +273,10 @@ local function poll(p, sensor)
                 s.range_known = s.range_known or t.distance == true
                 s.seen_by[sensor.kind] = (s.seen_by[sensor.kind] or 0) + 1
                 s.sensor_count = (s.sensor_count or 0) + 1
-                s.first_sensor = s.first_sensor or sensor
+                if not s.first_sensor then
+                    s.first_sensor = sensor
+                    s.first_range_m = sensorPos and Util.dist({ x = sensorPos.x, z = sensorPos.z }, { x = point.x, z = point.z })
+                end
             end
         end
     end
@@ -311,6 +318,7 @@ local function finishRound(p, now)
         c.category = s.category
         locate(p, c, p.coalition, s)
         local by = string.format("%s %s", s.first_sensor.kind, s.first_sensor.id)
+        if s.first_range_m then by = by .. string.format(" %.0f km away", s.first_range_m / 1000) end
         if s.sensor_count > 1 then by = by .. string.format(" (+%d more)", s.sensor_count - 1) end
         if isNew then
             WriteEventLog.add(p.coalition, "CONTACT", groupName, string.format("new, %s, seen by %s, %s",

@@ -52,6 +52,9 @@
 --   BLUE MSN2002_CAP     "handover: relieved by MSN2003_CAP, on station (2 km from the race-track) (…)"
 --   RED  MSN7025_SEAD    "land: MSN7025_SEAD_2 lost after its landing: 45 km from Vuojarvi and getting farther
 --                         (it was 2 km away); sent to land at Vuojarvi (…)"
+--   RED  MSN7023_SEAD_2  ">>orphan<< removed: by the controller 8 min 00 s after MSN7023_SEAD_1 landed, counted
+--                         as landed (Su-34 at 4,232 ft, 64 km from Banak)" (and the other >>orphan<< lines,
+--                         schedule_air_tasking_orders.lua)
 --   BLUE MSN2026_SEAD    "no shot: 2 min after reaching its launch point, 31 km from DEF_VUOJ_…, all 8 … still aboard"
 --   RED  MSN7024_SEAD    "stand down: MSN7024_SEAD_1, MSN7024_SEAD_2 carry no weapons (…); removed on the ramp; …"
 -- plus the launch decisions (decide_launches.lua), scrambles (scramble_fighters.lua) and
@@ -128,6 +131,12 @@ local function act(w, s, intent)
             w.state, w.defending = "going_home", nil
             mem.closest = nil   -- measured again from here
         end
+    elseif intent.kind == "remove" then
+        -- its CONTROL line is the scheduler's ">>orphan<< removed", one per jet, with the rest
+        -- of that jet's >>orphan<< lines; written before they go, to read where they are
+        _watched[m.id] = nil
+        ScheduleAirTaskingOrders.removedInAir(m.id, intent.units)
+        GiveOrders.remove(intent.units)
     elseif intent.kind == "stand_down" then
         GiveOrders.standDown(w, g)
         log(w, intent, intent.why)

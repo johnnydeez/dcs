@@ -693,5 +693,37 @@ AIRCRAFT_LOADOUT_OPTIONS = {
                 },
             },
         },
+        destruction_of_air_defenses = {
+            {
+                source = "hand", name = "DEAD R-77",
+                fuel = 9800, chaff = 64, flare = 64, gun = 100,
+                pylons = {
+                    { num = 1, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82F}", weapon = "L005 Sorbtsiya ECM pod (left)" },
+                    { num = 2, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}", weapon = "R-73 (AA-11 Archer) - Infra Red" },
+                    { num = 3, CLSID = "{X-29T}", weapon = "Kh-29T (AS-14 Kedge) - 670kg, ASM, TV Guided" },
+                    { num = 4, CLSID = "{X-29T}", weapon = "Kh-29T (AS-14 Kedge) - 670kg, ASM, TV Guided" },
+                    { num = 5, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}", weapon = "R-77 (AA-12 Adder) - Active Rdr" },
+                    { num = 8, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}", weapon = "R-77 (AA-12 Adder) - Active Rdr" },
+                    { num = 9, CLSID = "{X-29T}", weapon = "Kh-29T (AS-14 Kedge) - 670kg, ASM, TV Guided" },
+                    { num = 10, CLSID = "{X-29T}", weapon = "Kh-29T (AS-14 Kedge) - 670kg, ASM, TV Guided" },
+                    { num = 11, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}", weapon = "R-73 (AA-11 Archer) - Infra Red" },
+                    { num = 12, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82A}", weapon = "L005 Sorbtsiya ECM pod (right)" },
+                },
+            },
+            {
+                source = "dcs", name = "Kh-59M*2,R-73*2,R-77*2,ECM",
+                fuel = 9800, chaff = 64, flare = 64, gun = 100,
+                pylons = {
+                    { num = 1, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82F}", weapon = "L005 Sorbtsiya ECM pod (left)" },
+                    { num = 2, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}", weapon = "R-73 (AA-11 Archer) - Infra Red" },
+                    { num = 3, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}", weapon = "R-77 (AA-12 Adder) - Active Rdr" },
+                    { num = 4, CLSID = "{40AB87E8-BEFB-4D85-90D9-B2753ACF9514}", weapon = "Kh-59M (AS-18 Kazoo) - 930kg, ASM, IN" },
+                    { num = 9, CLSID = "{40AB87E8-BEFB-4D85-90D9-B2753ACF9514}", weapon = "Kh-59M (AS-18 Kazoo) - 930kg, ASM, IN" },
+                    { num = 10, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}", weapon = "R-77 (AA-12 Adder) - Active Rdr" },
+                    { num = 11, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}", weapon = "R-73 (AA-11 Archer) - Infra Red" },
+                    { num = 12, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82A}", weapon = "L005 Sorbtsiya ECM pod (right)" },
+                },
+            },
+        },
     },
 }

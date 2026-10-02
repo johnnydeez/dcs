@@ -26,23 +26,6 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ---
 
-## 4. A DEAD flight's weapon can't outrange its target
-
-**Status:** waiting for the standoff work (John, 2026-10-01: it goes with the *Standoff attacks* backlog item and roadmap item 6).
-
-**Seen:** same log; grep `MSN5023_DEAD`.
-- MSN5023_DEAD, 2× Su-34 from Banak on `SAM_ENON_Roland_1`, carried Kh-29T, a TV-guided missile fired from about 9 km. The Roland reaches about 8 km.
-- Both fired from 9 km at ~12,800 ft, and both were shot down by the Roland (08:21–08:22).
-- The Roland lost one launcher.
-
-**Cause:** DEAD loadouts are chosen per aircraft type (`aircraft_loadout_choices.json`), and the attack altitude is realistic for the weapon. Nothing compares the weapon's release range with the target's ring.
-
-**Proposed fix:**
-- Planning: only pick a DEAD target whose ring is shorter than the flight's weapon range, with a margin; or pick the loadout by target.
-- Ties in with the *Standoff attacks* item in the `plan.md` backlog: which weapons the DCS AI really releases at range.
-
----
-
 ## 5. Event log: no GUNS line yet
 
 **Status:** open, waiting for a run (the other event-log fixes, (a)–(f) and (h)–(k), are done: `closed.md`, bug 5).
@@ -98,21 +81,6 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ---
 
-## 26. The AWACS's enemy tracks don't reach the player's HSD
-
-**Status:** open (found 2026-10-02 in the Caucasus datalink test; bug 25, friendly contacts and threat rings, is fixed and confirmed in Kola: `closed.md`).
-
-**Seen:** `Saved Games\DCS\Missions\datalink_hsd_test.miz`: the E-3A (EPLRS on, listed as the player's Link 16 donor) showed on the HSD as a datalink contact, but the Red MiG-29S 250 km from it never did; John saw the MiG only on his own radar.
-
-**Suspects:**
-- The E-3A has no STN of its own in the test (the editor template gave it none), so the donor link may not work.
-- Since 2026, air-track identity on the F-16 depends on the DTC's ROE tab, and the test's DTC was empty: hostile tracks may be filtered or never declared.
-- The E-3A may not have detected the MiG (no way to tell from the test; the Kola event log's radar picture would show it).
-
-**Next:** in a Kola run with bug 25's fix, check whether Red aircraft that Blue's picture holds (`CONTACT` lines, seen by `awacs`) show on the HSD. If not, a second test: the E-3A with an STN, the MiG in front of the AI F-16 team (fighter-to-fighter tracks), and a DTC saved from the editor with ROE set.
-
----
-
 ## 32. The leash read a Red fighter flying straight at Blue as "heading away"
 
 **Status:** open (found by John 2026-10-02, during the 14:55 run). **The decision was right, the reading was wrong** (John: CAP was covering that area, so standing the scramble down was fine; reading the Red fighter as going home was not). The right reason would have been "covered by patrol", and the leash doesn't look at patrol cover at all.
@@ -143,7 +111,7 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 **Seen:** `event_logs\2026-10-02_145532.log`; grep `retry`. Both rotations retried at once, as the rotation's next flight, with the same base, route and profile: MSN7023_SEAD_AGAIN spawned at 04:11:59, 1 s after MSN7023's last jet died, and MSN2025_SEAD_AGAIN at 04:13:09, 1 s after MSN2025's. Both retries were lost like the first (bug 33). 4 jets per side against one site in ~15 min. John, after the 00:57 run: losing some SEAD is fine, losing most isn't.
 
-**Seen again** in the 16:50 run (`event_logs6-10-02_165055.log`): MSN2025_SEAD_AGAIN spawned at 04:15:56, 1 s after the SA-10 killed both F-16s of MSN2025 (bug 40), same base and route.
+**Seen again** in the 16:50 run (`event_logs\2026-10-02_165055.log`): MSN2025_SEAD_AGAIN spawned at 04:15:56, 1 s after the SA-10 killed both F-16s of MSN2025 (bug 40), same base and route.
 
 **Cause:** the rule (roadmap item 12, point 8): a site still in the fight after its SEAD flight gets one more try, and the rotation flies it next. It doesn't ask whether the first flight fired its salvo and came back, or was shot down. A flight shot down before or at its salvo is exactly the case where a second identical try is most likely to die too.
 
@@ -188,7 +156,7 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 38. Blue's AWACS adds nothing to the picture until it reaches its station, ~26 min into the mission
 
-**Status:** open (John, 2026-10-02, 16:03 run: "it has a radar, it's flying at altitude"). **The first fix is built, not flown; copied to DCS 2026-10-02 with bug 36's fix** (John, 2026-10-02): the `AWACS` task moved from the station waypoint to the takeoff waypoint (`spawn_aircraft_groups.lua`), so it runs from wheels-up; the orbit stays on the station waypoint. The next run shows whether cause 2 was it: `seen by awacs` lines while the E-3A is still on its way out. Cause 1 (far base, far station) is untouched. **Seen working in the 17:15 run** (`event_logs6-10-02_171553.log`): the E-3A (takeoff 04:01:27 from Bodo) gave Blue its first `seen by awacs` contact at 04:09:04 (MSN7016_CAP, 132 km from Rovaniemi), 12 min before it reached its station at 04:21:36. So cause 2 was real and is fixed; move to `closed.md` once John agrees.
+**Status:** open (John, 2026-10-02, 16:03 run: "it has a radar, it's flying at altitude"). **The first fix is built, not flown; copied to DCS 2026-10-02 with bug 36's fix** (John, 2026-10-02): the `AWACS` task moved from the station waypoint to the takeoff waypoint (`spawn_aircraft_groups.lua`), so it runs from wheels-up; the orbit stays on the station waypoint. The next run shows whether cause 2 was it: `seen by awacs` lines while the E-3A is still on its way out. Cause 1 (far base, far station) is untouched. **Seen working in the 17:15 run** (`event_logs\2026-10-02_171553.log`): the E-3A (takeoff 04:01:27 from Bodo) gave Blue its first `seen by awacs` contact at 04:09:04 (MSN7016_CAP, 132 km from Rovaniemi), 12 min before it reached its station at 04:21:36. So cause 2 was real and is fixed; move to `closed.md` once John agrees.
 
 **Seen:** `event_logs\2026-10-02_160358.log`; grep `MSN2001_AEW`, `seen by awacs`. The E-3A took off from Bodø at 04:01:27 (the held base farthest from the enemy, by design), was at ~29,300 ft by 04:12, and reached its station at 04:27:22. Its first contact (`seen by awacs`) was at 04:26:04, a minute before the station. Until then Blue's picture held 0–1 contacts, all from ground radars or a patrol (`PICTURE` 04:05 / 04:10 / 04:15 / 04:20: 0, 1, 1, 2 contacts). Red's A-50 behaved the same way: on station at 04:06:32 (it launched much nearer the front), first contact 04:05:04.
 
@@ -236,7 +204,7 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 **Proposed (decide with John):** a SEAD flight with its anti-radiation missiles still aboard doesn't commit to a bandit at long range: only when fired upon, or inside a short range (e.g. 25 km, inside which it can't outrun the fight anyway); otherwise it stays low on its route (the DCS AI still evades missiles by itself). After its salvo it is an ordinary flight going home. And a fight's break-off for a kill zone could hold off re-engaging that bandit while the flight is still inside that ring, instead of 30 s (`reengage_after_s`).
 
-**Seen again, Red, on the low run-in** (`event_logs6-10-02_165055.log`, grep `MSN7023_SEAD`): 2× Su-34 from Vuojarvi on the Kittila Patriot, low from takeoff (Vuojarvi sits on the edge of the Patriot's ring). At 04:12:54, 2 min after takeoff and still low (1,579 ft), `defend` on the Blue Hornet patrol MSN2009_CAP at 82 km. The fight climbed both Su-34s to 11,000–14,600 ft **inside the Patriot's ring (13–43 km inside)**. The Patriot fired 6 MIM-104 at them from 59–80 km. The Hornet's AIM-120C killed MSN7023_SEAD_1 at 04:15:54. The fight was never broken off for the Patriot's ring: the break-off skips the rings the route passes through on purpose, and the flight's own target is one of them. So a SEAD flight's self-defence pulls it up out of its low run-in into its target's full envelope, and nothing stops it.
+**Seen again, Red, on the low run-in** (`event_logs\2026-10-02_165055.log`, grep `MSN7023_SEAD`): 2× Su-34 from Vuojarvi on the Kittila Patriot, low from takeoff (Vuojarvi sits on the edge of the Patriot's ring). At 04:12:54, 2 min after takeoff and still low (1,579 ft), `defend` on the Blue Hornet patrol MSN2009_CAP at 82 km. The fight climbed both Su-34s to 11,000–14,600 ft **inside the Patriot's ring (13–43 km inside)**. The Patriot fired 6 MIM-104 at them from 59–80 km. The Hornet's AIM-120C killed MSN7023_SEAD_1 at 04:15:54. The fight was never broken off for the Patriot's ring: the break-off skips the rings the route passes through on purpose, and the flight's own target is one of them. So a SEAD flight's self-defence pulls it up out of its low run-in into its target's full envelope, and nothing stops it.
 - Proposed with the rest of bug 39: while a SEAD flight is on its low run-in, a bandit call either keeps the fight low (no way to tell DCS that, as far as known) or breaks off as soon as the flight climbs above the low altitude inside any ring, its own target's included.
 
 ---
@@ -262,11 +230,11 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 - Find out whether the AI's RWR shows an SA-10 at all: a test mission with one AI F-16 with HARMs flying at an SA-10 at 8,000 ft from 60 km, logging `getDetectedTargets(RWR)` every 5 s.
 - The wingman 5 min behind its lead (taxi queue at Kirkenes) is DCS's; noted only because the lead burned fuel circling low.
 
-**17:15 run, with the pop-up top** (`event_logs6-10-02_171553.log`; grep `MSN2024_SEAD`, `SAM_SODA_SA10_1`): **the first full salvo since bug 36.** MSN2024 (2× F/A-18C, a player's AI SEAD from Rovaniemi) on the Sodankyla SA-10:
+**17:15 run, with the pop-up top** (`event_logs\2026-10-02_171553.log`; grep `MSN2024_SEAD`, `SAM_SODA_SA10_1`): **the first full salvo since bug 36.** MSN2024 (2× F/A-18C, a player's AI SEAD from Rovaniemi) on the Sodankyla SA-10:
 - Pop-up 04:12:55 at 1,548 ft; `TOP` reached 04:13:10 at 3,682 ft; launch point 04:13:17 at 3,779 ft. So DCS still counts both waypoints reached early and the jets are at about half the pop-up altitude at the launch point, but this time they kept climbing: the first HARMs left 22 s later at 8,907 ft.
 - **8 HARMs from 39–47 km at 6,100–8,900 ft** at the SA-10's 40B6M tracking radar, 40B6MD and 64H6E search radars. MSN2024_SEAD_1 fired its 4 in 9 s (04:13:39–04:13:48); MSN2024_SEAD_2 spread 3 over a minute (04:14:04, 04:14:58, 04:15:04, from 44 down to 39 km) and was killed by the SA-10 at 04:15:27 with its 4th aboard. The SA-10 fired ~11 SA5B55 at the HARMs from 13–27 km, and the Pantsir escort more. Results: see below once in.
 - **`RADAR_WARNING` at the launch point again said "not seen"** (04:13:17), yet the SA-10 fired at the flight 20 s later and the HARMs went at its radars. So the line is only a snapshot: the SA-10's radars weren't on the flight yet at the launch point. Suspect 3 above (the AI can't see an SA-10 at all) looks wrong; the 16:50 F-16s were simply killed before the SA-10's radar showed or before they could shoot.
-- **New, not yet a bug (decide with John): the go cold waits for the whole flight.** The lead was empty 04:13:48, but the flight stayed on the attack while the wingman fired one HARM at a time for another 76 s inside the SA-10's envelope, which killed it. The `go cold` came only when the wingman died (04:15:29, "every anti-radiation missile fired"). A flight is one DCS group, so the controller can't send one jet home alone. Option: once one jet's missiles are gone, give the rest `salvo_time_s` (e.g. 20 s) and then go cold with whatever is left. **17:48 run (`event_logs6-10-02_174852.log`): it works.** MSN2024 (2× F-16) on the Sodankyla SA-10 reached `TOP` at 7,404 ft and fired all 8 HARMs within 13 s from 45–48 km at 6,500–8,240 ft; go cold at once. The SA-10 fired 6 interceptors at them, and at 04:14:29 the HARMs hit: **64H6E search radar and 40B6M tracking radar destroyed** (`TARGET … 2 of 3 critical`), the command post, the 40B6MD search radar and two launchers hit. Red's MSN7023 fired all 8 Kh-31P at the Rovaniemi SA-10 within 24 s from 43–49 km at 1,500–3,300 ft; that SA-10 fired 12 interceptors and nothing got through. Both F-16s were lost after the shot (the SA-10, and a base Tor during a fight: bug 41). Move to `closed.md` once John agrees. **Then built 2026-10-02, not flown (John agreed):** the "fire at first ping" `EngageGroup` moved from the pop-up waypoint to the pop-up top, so the Su-34s fire from altitude like the F-16s, not at 1,500–3,300 ft on the way up (0 of 24 Kh-31Ps through against SA-10s and Patriots so far).
+- **New, not yet a bug (decide with John): the go cold waits for the whole flight.** The lead was empty 04:13:48, but the flight stayed on the attack while the wingman fired one HARM at a time for another 76 s inside the SA-10's envelope, which killed it. The `go cold` came only when the wingman died (04:15:29, "every anti-radiation missile fired"). A flight is one DCS group, so the controller can't send one jet home alone. Option: once one jet's missiles are gone, give the rest `salvo_time_s` (e.g. 20 s) and then go cold with whatever is left. **17:48 run (`event_logs\2026-10-02_174852.log`): it works.** MSN2024 (2× F-16) on the Sodankyla SA-10 reached `TOP` at 7,404 ft and fired all 8 HARMs within 13 s from 45–48 km at 6,500–8,240 ft; go cold at once. The SA-10 fired 6 interceptors at them, and at 04:14:29 the HARMs hit: **64H6E search radar and 40B6M tracking radar destroyed** (`TARGET … 2 of 3 critical`), the command post, the 40B6MD search radar and two launchers hit. Red's MSN7023 fired all 8 Kh-31P at the Rovaniemi SA-10 within 24 s from 43–49 km at 1,500–3,300 ft; that SA-10 fired 12 interceptors and nothing got through. Both F-16s were lost after the shot (the SA-10, and a base Tor during a fight: bug 41). Move to `closed.md` once John agrees. **Then built 2026-10-02, not flown (John agreed):** the "fire at first ping" `EngageGroup` moved from the pop-up waypoint to the pop-up top, so the Su-34s fire from altitude like the F-16s, not at 1,500–3,300 ft on the way up (0 of 24 Kh-31Ps through against SA-10s and Patriots so far).
 
 **Built 2026-10-02, not flown (John agreed):** `salvo_time_s` 20; `CONTROL … go cold: salvo over: <jet> fired its last 20 s ago, n anti-radiation missiles left aboard`.
 

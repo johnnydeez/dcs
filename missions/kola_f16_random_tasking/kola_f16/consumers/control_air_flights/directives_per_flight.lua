@@ -8,6 +8,8 @@
 --   home        go home now, returning fire only ("going home: <why>")
 --   land        a flight lost on its way home: a new landing order straight to its base
 --   stand_down  still on the ramp: removed, never flies
+--   remove      `units` still in the air long after the flight's last landing: removed,
+--               counted as landed
 --   defend      engage one of `threats` (the coordination across flights picks which)
 --   resume      the fight is over: back to the mission
 --
@@ -25,7 +27,8 @@
 --                 with "no shot" at its press-on point when it has fired nothing
 --   handover      patrols: home once the next patrol of its station is on station
 --   landing       every flight on its way home: a new landing order when a jet of it
---                 gets lost (flies away from its base, or is long overdue)
+--                 gets lost (flies away from its base, or is long overdue); a jet still
+--                 up 8 min after the flight's last landing is removed
 --   self_defence  attack flights: a bandit hot on the flight is called at once; a flight
 --                 with radar missiles engages it, then carries on with its mission; one
 --                 without leaves (goes home)
@@ -189,6 +192,25 @@ DIRECTIVES.landing = {
         local mem = w.memo.landing
         local m = s.mission
         local now = timer.getTime()
+        -- an orphan: a jet still up long after its flight's last landing never comes down
+        -- (bug 19: the wingman stays in its hold and flies a straight line, deaf to landing
+        -- orders); removed, counted as landed, fight or not
+        local record = ScheduleAirTaskingOrders.record(m.id)
+        if s.airborne and record and record.last_landing_at
+            and now - record.last_landing_at >= L.orphan_remove_after_s then
+            local names, words = {}, {}
+            for _, u in ipairs(s.units) do
+                if u.airborne then
+                    names[#names + 1] = u.name
+                    words[#words + 1] = s.landing_base_pos
+                        and string.format("%s %.0f km from %s", u.name, Util.dist({ x = u.pos.x, z = u.pos.z }, s.landing_base_pos) / 1000, m.landing_base)
+                        or u.name
+                end
+            end
+            return { kind = "remove", units = names,
+                     why = string.format("%s still in the air %d min after %s landed; removed, counted as landed",
+                         table.concat(words, ", "), math.floor((now - record.last_landing_at) / 60), record.last_landed or "its lead") }
+        end
         if not s.airborne or w.defending then
             mem.closest = nil   -- a fight takes it anywhere: measure again afterwards
             return nil
@@ -201,7 +223,6 @@ DIRECTIVES.landing = {
         for _, u in ipairs(s.units) do
             if u.airborne then up[#up + 1] = u else onGround = true end
         end
-        local record = ScheduleAirTaskingOrders.record(m.id)
         local landedOne = record and (record.landed or 0) > 0
         local homebound = w.state == "going_home" or landedOne or (m.end_s and now > m.end_s)
         if not homebound then return nil end

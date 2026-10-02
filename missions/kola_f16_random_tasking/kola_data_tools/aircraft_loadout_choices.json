@@ -9,7 +9,7 @@
     "strike":                      ["hand:Strike KAB-500S R-77", "dcs:Kh-59M*2,R-73*2,R-77*2,ECM"],
     "airfield_strike":             "hand:Airfield strike R-77",
     "suppression_of_air_defenses": "hand:SEAD R-77",
-    "destruction_of_air_defenses": "hand:DEAD R-77",
+    "destruction_of_air_defenses": ["hand:DEAD R-77", "dcs:Kh-59M*2,R-73*2,R-77*2,ECM"],
     "interdiction":                "hand:Interdiction R-77"
   },
   "Tu-22M3": {

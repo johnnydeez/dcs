@@ -35,4 +35,18 @@ AIR_PICTURE_CALLS = {
     fallback_magnetic_variation = { { lon = 14, deg = 5 }, { lon = 19, deg = 8 }, { lon = 26, deg = 12 }, { lon = 33, deg = 16 } },
 
     log_calls = true,       -- one PICTURE_CALL line per player per call in the event log
+
+    -- coverage: a player outside every live sensor's reach gets "no radar coverage your
+    -- area" instead of a clean picture (2026-10-02, John: two Red scrambles closed on him
+    -- unseen while the picture read clean). Reach at the player's height, each no farther
+    -- than the radar horizon. Planning figures, to tune from the CONTACT lines' "seen by
+    -- … km away" (the E-3A's first detections came at 120-210 km for jets low down,
+    -- session 11)
+    coverage = {
+        awacs_km          = 250,   -- an AWACS (AIR_DEFENSE.early_warning_coverage_km)
+        fighter_km        = 80,    -- a patrol's or scramble's own radar
+        ground_max_km     = 300,   -- a ground radar: its type's detection range, at most this
+        ground_default_km = 60,    -- a ground radar whose types the unit pool has no range for
+        radar_height_m    = 10,    -- a ground radar's antenna above its ground, for the horizon
+    },
 }

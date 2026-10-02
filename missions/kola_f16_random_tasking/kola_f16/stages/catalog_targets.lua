@@ -23,6 +23,9 @@
 --                   later stage can work out where it is at a given time
 --   critical_names  DCS unit / static-object names that count for success
 --   success         { critical_fraction }: destroy at least this share of them (rounded up)
+--   destruction     SAM sites only: { critical_names, success } for a DEAD flight, which
+--                   finishes the site, while critical_names / success above (its radars)
+--                   say whether it is out of the fight (the SEAD gate)
 --   covered_by      ids of the owner's other SAM sites whose engagement ring reaches it
 --   defended_base   the owner's airbase within DEFENDED_BASE_KM, whose defenses stand
 --                   around it, or nil
@@ -39,6 +42,14 @@ local MISSION_TYPES = { "suppression_of_air_defenses", "destruction_of_air_defen
 
 -- SAM parts that count for suppression: the radars (pool roles), else the whole site.
 local RADAR_ROLES = { sam_sr = true, sam_tr = true, ewr = true }
+-- SAM parts that count for destruction (DEAD; John, 2026-10-03: DEAD has its own success
+-- metric): everything that sees, directs or shoots: radars, command posts, launchers
+-- (short-range launchers carry their own radars), at DESTRUCTION_FRACTION. Supply trucks
+-- and support vehicles don't count. Until then a DEAD counted only the radars, so a SEAD
+-- flight's HARM on the Banak SA-11's one search radar read "1 of 1 critical destroyed"
+-- for the DEAD planned hours later (19:29 run, MSN2036_DEAD).
+local DESTRUCTION_ROLES    = { sam_sr = true, sam_tr = true, ewr = true, sam_cp = true, sam_ln = true, shorad = true }
+local DESTRUCTION_FRACTION = 0.75
 local SAM_VALUE   = { long_range = 3, medium_range = 2, short_range = 1, early_warning = 2 }
 
 local function describe(label, zone, base)
@@ -56,12 +67,13 @@ local function airDefenseTargets(plan, add)
     for _, g in ipairs(ss.groups) do groupsById[g.id] = g end
     for _, s in ipairs(ss.sites) do
         local main = groupsById[s.id]
-        local radars, all = {}, {}
+        local radars, all, finish = {}, {}, {}
         for i, u in ipairs(main and main.units or {}) do
             local name = s.id .. "_" .. i
             all[#all + 1] = name
             local pool = UNIT_POOL.ground[u.type]
             if pool and RADAR_ROLES[pool.role] then radars[#radars + 1] = name end
+            if pool and DESTRUCTION_ROLES[pool.role] then finish[#finish + 1] = name end
         end
         local ew = s.layer == "early_warning"
         local zone = plan.world.zones[s.zone]
@@ -76,6 +88,8 @@ local function airDefenseTargets(plan, add)
             group_ids = s.group_ids, static_object_ids = {},
             critical_names = #radars > 0 and radars or all,
             success = { critical_fraction = ew and 1 or 0.5 },
+            destruction = (not ew and #finish > 0)
+                and { critical_names = finish, success = { critical_fraction = DESTRUCTION_FRACTION } } or nil,
             description = describe(label, zone),
             system = s.system, layer = s.layer,
         })

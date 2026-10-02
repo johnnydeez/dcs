@@ -14,6 +14,12 @@
 -- adds each mission's target progress, and jets lost on the ramp before takeoff:
 --   "TARGET     MSN2001_STRIKE  TGT_IVAL_command_post_1_static_2 destroyed: 3 of 6 critical"
 --   "RAMP_LOSS  MSN7009_CAP_1  Su-27 destroyed on the ramp 8 s after spawning, before taking off, at Afrikanda spot 37: …"
+-- and wingmen that may be orphaned (bug 19), one line when it may be, one for how it ended:
+-- (CONTROL lines, as the controller runs them; John: >>orphan<< to find them at a glance)
+--   "CONTROL  MSN7023_SEAD_2  >>orphan<< possibly orphaned: still in the air when MSN7023_SEAD_1 landed (Su-34 at 4,232 ft, 7 km from Banak)"
+--   "CONTROL  MSN7023_SEAD_2  >>orphan<< not orphaned: landed at Banak 4 min 40 s after MSN7023_SEAD_1"
+--   "CONTROL  MSN7023_SEAD_2  >>orphan<< removed: by the controller 8 min 10 s after MSN7023_SEAD_1 landed, counted as landed (…)"
+--   "CONTROL  MSN7023_SEAD_2  >>orphan<< lost: 9 min 50 s after MSN7023_SEAD_1 landed"
 -- Reads the plan; writes nothing back to it. What has launched, landed and been
 -- destroyed is runtime state, kept here under the plan's mission ids.
 
@@ -51,11 +57,55 @@ local function checkDown(name)
     if not ok then Log.warn(string.format("%s: flight down: %s", name, tostring(err))) end
 end
 
+-- Where jet `u` is, for an >>orphan<< line: "Su-34 at 4,232 ft, 7 km from Banak".
+local function orphanWhere(m, u)
+    local ok, text = pcall(function()
+        local p = u:getPoint()
+        local base = Airbase.getByName(m.landing_base):getPoint()
+        return string.format("%s at %s ft, %.0f km from %s", m.aircraft_type, Util.thousands(p.y * 3.28084),
+            Util.dist({ x = p.x, z = p.z }, { x = base.x, z = base.z }) / 1000, m.landing_base)
+    end)
+    return ok and text or m.aircraft_type
+end
+
+local function minSec(s)
+    s = math.floor(s)
+    return string.format("%d min %02d s", math.floor(s / 60), s % 60)
+end
+
+-- Orphaned wingmen (bug 19): a jet still in the air when another of its flight lands may
+-- never come out of its hold. Each gets an >>orphan<< line then, and another when it lands
+-- after all or the controller removes it, so the rate can be followed run to run.
+local function watchOrphans(name, f, landedName)
+    local m = f.mission_flown or f.mission
+    f.orphans = f.orphans or {}
+    local ok, units = pcall(function() return Group.getByName(name):getUnits() end)
+    for _, u in ipairs(ok and units or {}) do
+        local uName = nameOf(u)
+        local okUp, up = pcall(function() return u:isExist() and u:inAir() end)
+        if uName and uName ~= landedName and okUp and up and not f.orphans[uName] then
+            f.orphans[uName] = { since = timer.getTime(), lead = landedName }
+            ControlAirFlights.say(m.coalition, uName, ">>orphan<< possibly orphaned", string.format("still in the air when %s landed (%s)",
+                landedName, orphanWhere(m, u)))
+        end
+    end
+end
+
 local function landed(unit)
     local name = flightOf(unit)
     if not name then return end
     local unitName = unit:getName()
-    _flights[name].landed = _flights[name].landed + 1
+    local f = _flights[name]
+    f.landed = f.landed + 1
+    f.last_landing_at, f.last_landed = timer.getTime(), unitName   -- for the landing directive's orphans
+    local orphan = f.orphans and f.orphans[unitName]
+    if orphan and not orphan.closed then
+        orphan.closed = true
+        local m = f.mission_flown or f.mission
+        ControlAirFlights.say(m.coalition, unitName, ">>orphan<< not orphaned", string.format("landed at %s %s after %s",
+            m.landing_base, minSec(timer.getTime() - orphan.since), orphan.lead))
+    end
+    watchOrphans(name, f, unitName)
     checkDown(name)
     timer.scheduleFunction(function()
         local u = Unit.getByName(unitName)
@@ -97,6 +147,13 @@ local function destroyed(object)
         local f = _flights[flight]
         f.lost = f.lost + 1
         rampLoss(f, name)
+        local orphan = f.orphans and f.orphans[name]
+        if orphan and not orphan.closed then
+            orphan.closed = true
+            local m = f.mission_flown or f.mission
+            ControlAirFlights.say(m.coalition, name, ">>orphan<< lost", string.format("%s after %s landed",
+                minSec(timer.getTime() - orphan.since), orphan.lead))
+        end
         checkDown(flight)
     end
 end
@@ -203,8 +260,9 @@ function ScheduleAirTaskingOrders.planned(id)
     return _byId[id]
 end
 
--- The record of flight `id`: { mission, spawned, destroyed, lost, landed, again (the id
--- of its second try), note, stood_down }, or nil. Read it, never change it.
+-- The record of flight `id`: { mission, spawned, destroyed, lost, landed, last_landing_at,
+-- last_landed (unit name), again (the id of its second try), note, stood_down }, or nil.
+-- Read it, never change it.
 function ScheduleAirTaskingOrders.record(id)
     return _flights[id]
 end
@@ -274,6 +332,25 @@ function ScheduleAirTaskingOrders.targetProgress(id)
     local f = _flights[id]
     if not f then return 0, 0 end
     return f.destroyed, #(f.mission.critical_names or {})
+end
+
+-- Jets of flight `id` the controller is removing in the air (`names`), called before they
+-- go: wingmen still up long after their flight's last landing (bug 19). They count as
+-- landed, so whatever waits on the flight sees it down.
+function ScheduleAirTaskingOrders.removedInAir(id, names)
+    local f = _flights[id]
+    if not f then return end
+    local m = f.mission_flown or f.mission
+    for _, name in ipairs(names) do
+        _gone[name] = true   -- a stray dead event isn't a loss
+        local orphan = f.orphans and f.orphans[name]
+        if orphan then orphan.closed = true end
+        ControlAirFlights.say(m.coalition, name, ">>orphan<< removed", string.format("by the controller %s after %s landed, counted as landed (%s)",
+            minSec(timer.getTime() - (orphan and orphan.since or f.last_landing_at or timer.getTime())),
+            orphan and orphan.lead or f.last_landed or "its lead", orphanWhere(m, Unit.getByName(name))))
+    end
+    f.landed = f.landed + #names
+    checkDown(id)
 end
 
 -- A flight removed on the ramp before it took off (a scramble the leash stood down).

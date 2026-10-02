@@ -12,7 +12,7 @@
 -- check_every_s: the fast check, for directives that can't wait for the radar picture's
 --   round (self_defence). leash and suppression run on the picture's round (30 s).
 -- intent_priority: when directives want different things, the higher number wins
---   (safety first): stand down > land > home > resume > defend.
+--   (safety first): remove > stand down > land > home > resume > defend.
 -- going_home_rules_of_engagement: what a flight sent home may still shoot at.
 
 -- leash: a scramble chases its raid away or kills it, without flying head first into
@@ -56,6 +56,11 @@
 -- base, at most max_orders times (bug 19, 2026-10-01: MSN5025_SEAD_2 missed its landing
 -- and flew on for 300 km). The order waits while a jet of the flight that landed is still
 -- on the ramp (it is removed 3 min after landing), so it never sends that one up again.
+-- A jet still in the air orphan_remove_after_s after its flight's last landing is
+-- removed and counted as landed, so whatever waits on the flight sees it down (bug 19,
+-- 2026-10-02, John: 7 of 13 wingmen whose lead landed first never came out of their
+-- holding pattern and flew a straight line, ignoring landing orders; the latest wingman
+-- that did land came down 7.5 min after its lead).
 
 -- self_defence: the controller calls a bandit as soon as the coalition's radar picture
 -- shows it coming for an attack flight, and decides at once (John, 2026-10-01: "you
@@ -104,7 +109,7 @@ AIR_CONTROL = {
         airborne_early_warning      = { "landing" },
     },
 
-    intent_priority = { stand_down = 5, land = 4, home = 3, resume = 2, defend = 1 },
+    intent_priority = { remove = 6, stand_down = 5, land = 4, home = 3, resume = 2, defend = 1 },
 
     going_home_rules_of_engagement = "return_fire",
 
@@ -123,6 +128,7 @@ AIR_CONTROL = {
         away_km            = 20,
         overdue_s          = 1200,
         max_orders         = 2,
+        orphan_remove_after_s = 480, -- 8 min after the flight's last landing
     },
     leash = {
         enemy_airspace_km  = 5,      -- as far past the contested airspace as it may go
