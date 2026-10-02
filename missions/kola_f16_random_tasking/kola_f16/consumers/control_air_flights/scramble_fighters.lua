@@ -17,12 +17,14 @@
 --   3. the raid: it and the other contacts within raid_radius_km on a heading within
 --      raid_heading_deg; one scramble takes them all, in order
 --   4. the base: the nearest alert base, in the own region facing the raid, with a
---      jet ready and off cooldown, whose intercept point (the raid pushed ahead along
---      its heading, pulled back to own or contested airspace and out of enemy kill zones)
---      is in reach and at least scramble_min_leg_km out, and which gets there before the
---      raid reaches what it threatens (reaction, scramble_takeoff_s and the dash); never
---      over the airborne cap (the planner keeps AIR_DEFENSE.scramble_reserve_aircraft of
---      it free for scrambles; players don't count)
+--      jet ready and off cooldown, that the raid isn't flying away from (no tail chases:
+--      scramble_tail_chase_deg), whose intercept point (the raid pushed ahead along
+--      its heading, pulled back to own or contested airspace and
+--      scramble_killzone_margin_km outside enemy kill zones) is in reach and at least
+--      scramble_min_leg_km out, and which gets there before the raid reaches what it
+--      threatens (reaction, scramble_takeoff_s and the dash); never over the airborne cap
+--      (the planner keeps AIR_DEFENSE.scramble_reserve_aircraft of it free for scrambles;
+--      players don't count). Refused: the reason of the ready base nearest the raid
 --   5. after scramble_reaction_s (cockpit alert) a one-ship spawns hot on one of the ramp
 --      spots the plan holds for its base's alert jets (never on the runway: John), with
 --      EngageGroup on each raid group from takeoff, open fire, dash speed with afterburner
@@ -33,6 +35,7 @@
 --   RED  MSN7901_SCRAM   "scramble: MiG-31 from Monchegorsk after MSN2014_STRIKE (F-16C_50), own airspace,
 --                         9 min from Olenya; intercept 85 km out; launching in 95 s; Monchegorsk has 2 alert jet(s) ready"
 --   RED  MSN2014_STRIKE  "no scramble: F-16C_50: covered by patrol MSN7003_CAP"   once per reason
+--   RED  MSN2014_STRIKE  "no scramble: F-16C_50: Kuusamo: flying away from it (and 2 more alert bases refused)"
 --   RED  MSN7901_SCRAM   "stand down before launch: MSN2014_STRIKE destroyed"
 -- Scramble ids are MSN<first_number + n>_SCRAM (Blue 2901+, Red 7901+), the DCS group name.
 -- Reads the plan; writes nothing back to it.
@@ -112,13 +115,13 @@ end
 
 -- ── where and from where ────────────────────────────────────────
 
--- The enemy medium / long-range SAM site whose kill zone holds pos, or nil: at
--- altitude_m (lib/sam_reach.lua), or the full ring without one (an intercept point,
+-- The enemy medium / long-range SAM site whose kill zone (+ margin_m) holds pos, or nil:
+-- at altitude_m (lib/sam_reach.lua), or the full ring without one (an intercept point,
 -- flown high).
-local function enemyKillZone(coalitionName, pos, altitude_m)
+local function enemyKillZone(coalitionName, pos, altitude_m, margin_m)
     for _, s in ipairs(_plan.sam_sites and _plan.sam_sites.sites or {}) do
         if s.side ~= coalitionName and AIR_ROUTING.threat_layers[s.layer] and (s.engage_m or 0) > 0
-           and Util.dist(pos, s.pos) < SamReach.killZone(s, altitude_m) and liveGroup(s.id) then
+           and Util.dist(pos, s.pos) < SamReach.killZone(s, altitude_m) + (margin_m or 0) and liveGroup(s.id) then
             return s.id
         end
     end
@@ -126,9 +129,10 @@ local function enemyKillZone(coalitionName, pos, altitude_m)
 end
 
 -- The raid pushed ahead along its heading by the time the scramble needs to get there,
--- then pulled back toward the base until it lies in own or contested airspace, outside
--- enemy kill zones.
+-- then pulled back toward the base until it lies in own or contested airspace, and
+-- scramble_killzone_margin_km outside enemy kill zones (the leash's line: bug 8).
 local function interceptPoint(coalitionName, from, c, dash)
+    local margin = AIR_DEFENSE.scramble_killzone_margin_km * 1000
     local hx, hz = headingVector(c)
     local t = Util.dist(from, c.pos) / dash
     local ahead
@@ -142,7 +146,7 @@ local function interceptPoint(coalitionName, from, c, dash)
     for i = 1, steps do
         local f = math.min(1, i * INTERCEPT_STEP_M / d)
         local p = { x = from.x + (ahead.x - from.x) * f, z = from.z + (ahead.z - from.z) * f }
-        if DivideAirspace.kindFor(_plan.airspace, p, coalitionName) == "enemy" or enemyKillZone(coalitionName, p) then
+        if DivideAirspace.kindFor(_plan.airspace, p, coalitionName) == "enemy" or enemyKillZone(coalitionName, p, nil, margin) then
             break
         end
         good = p
@@ -150,37 +154,60 @@ local function interceptPoint(coalitionName, from, c, dash)
     return good
 end
 
+-- True when the raid flies away from the base: its heading more than
+-- scramble_tail_chase_deg off the line from the raid to the base (bug 16: no tail chases;
+-- a base ahead of the raid answers it). A raid too slow to have a heading never is.
+local function flyingAway(c, basePos)
+    if (c.speed_mps or 0) < 50 then return false end
+    local toBase = math.deg(math.atan2(basePos.z - c.pos.z, basePos.x - c.pos.x))
+    return angleBetween(c.heading_deg, toBase) > AIR_DEFENSE.scramble_tail_chase_deg
+end
+
 -- The alert base to answer from: { base (posture entry), aircraft_type, intercept, leg_m }
--- or nil and why not.
+-- or nil and why not: the reason of the ready base nearest the raid, "<base>: <why>" (bug
+-- 23: the reason used to be the last base tried, wherever it was).
 local function pickBase(st, c, now)
     local region = DivideAirspace.facingRegion(_plan.airspace, c.pos, st.coalition, FRONT_SEARCH_M)
-    local best, why = nil, "no alert base with a jet ready"
+    local best, nearest, refused = nil, nil, 0
     for _, b in ipairs(st.posture.bases) do
         if TrackAlertJets.canLaunch(st.coalition, b.base, now) and (not region or b.region == region) then
-            local aircraftType = Util.weightedPick(b.aircraft)
-            local p = AIRCRAFT_PROFILE[aircraftType]
-            local intercept = interceptPoint(st.coalition, b.pos, c, p.dash_speed_mps)
-            local leg = Util.dist(b.pos, intercept)
-            -- from the decision to the intercept point: cockpit alert, taxi and takeoff, the dash
-            local R = AIR_DEFENSE.scramble_reaction_s
-            local arrive_s = (R[1] + R[2]) / 2 + AIR_DEFENSE.scramble_takeoff_s + leg / p.dash_speed_mps
-            if leg < AIR_DEFENSE.scramble_min_leg_km * 1000 then
-                why = "no way to the raid outside enemy airspace and kill zones"
-            elseif leg > p.combat_radius_km * 1000 then
-                why = "out of reach of every ready alert base"
-            elseif c.threat_minutes and arrive_s > c.threat_minutes * 60 then
-                -- it would get there after the raid reached what it threatens (John, 2026-10-01:
-                -- refuse a scramble that can't arrive in time)
-                why = string.format("can't reach the raid before it reaches %s (%.0f min, raid %.0f min)",
-                    c.threat_asset or "its target", arrive_s / 60, c.threat_minutes)
-            elseif not TrackAlertJets.freeSpot(st.coalition, b) then
-                why = "no free ramp spot at " .. b.base
-            elseif not best or leg < best.leg_m then
-                best = { base = b, aircraft_type = aircraftType, intercept = intercept, leg_m = leg }
+            local why
+            if flyingAway(c, b.pos) then
+                why = "flying away from it"
+            else
+                local aircraftType = Util.weightedPick(b.aircraft)
+                local p = AIRCRAFT_PROFILE[aircraftType]
+                local intercept = interceptPoint(st.coalition, b.pos, c, p.dash_speed_mps)
+                local leg = Util.dist(b.pos, intercept)
+                -- from the decision to the intercept point: cockpit alert, taxi and takeoff, the dash
+                local R = AIR_DEFENSE.scramble_reaction_s
+                local arrive_s = (R[1] + R[2]) / 2 + AIR_DEFENSE.scramble_takeoff_s + leg / p.dash_speed_mps
+                if leg < AIR_DEFENSE.scramble_min_leg_km * 1000 then
+                    why = "no way to the raid outside enemy airspace and kill zones"
+                elseif leg > p.combat_radius_km * 1000 then
+                    why = "out of reach"
+                elseif c.threat_minutes and arrive_s > c.threat_minutes * 60 then
+                    -- it would get there after the raid reached what it threatens (John, 2026-10-01:
+                    -- refuse a scramble that can't arrive in time)
+                    why = string.format("can't reach the raid before it reaches %s (%.0f min, raid %.0f min)",
+                        c.threat_asset or "its target", arrive_s / 60, c.threat_minutes)
+                elseif not TrackAlertJets.freeSpot(st.coalition, b) then
+                    why = "no free ramp spot"
+                elseif not best or leg < best.leg_m then
+                    best = { base = b, aircraft_type = aircraftType, intercept = intercept, leg_m = leg }
+                end
+            end
+            if why then
+                refused = refused + 1
+                local d = Util.dist(b.pos, c.pos)
+                if not nearest or d < nearest.d then nearest = { d = d, base = b.base, why = why } end
             end
         end
     end
-    return best, why
+    if best then return best end
+    if not nearest then return nil, "no alert base with a jet ready" end
+    return nil, string.format("%s: %s%s", nearest.base, nearest.why,
+        refused > 1 and string.format(" (and %d more alert bases refused)", refused - 1) or "")
 end
 
 -- ── launch ──────────────────────────────────────────────────────

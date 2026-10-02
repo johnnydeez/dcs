@@ -9,20 +9,23 @@
 -- parking spots and the alive-aircraft budget (the Syria S_EVENT_LAND pattern).
 -- What the flights did (shots, kills, losses, landings, positions) goes to the event
 -- log (consumers/write_event_log.lua), which catches the DCS events for every unit; this
--- adds each mission's target progress:
+-- adds each mission's target progress, and jets lost on the ramp before takeoff:
 --   "TARGET     MSN2001_STRIKE  TGT_IVAL_command_post_1_static_2 destroyed: 3 of 6 critical"
+--   "RAMP_LOSS  MSN7009_CAP_1  Su-27 destroyed on the ramp 8 s after spawning, before taking off, at Afrikanda spot 37: …"
 -- Reads the plan; writes nothing back to it. What has launched, landed and been
 -- destroyed is runtime state, kept here under the plan's mission ids.
 
 ScheduleAirTaskingOrders = {}
 
 local REMOVE_AFTER_LANDING_S = 180
+local RAMP_LOSS_S = 120   -- a jet destroyed this soon after spawning, before takeoff, is a spawn failure
 
 local _plan
 local _byId = {}      -- mission id → planned mission
-local _flights = {}   -- mission id → { mission, spawned, destroyed = n, lost, landed, again, note, stood_down }
+local _flights = {}   -- mission id → { mission, spawned, spawned_at, destroyed = n, lost, landed, removed, again, note, stood_down }
 local _targets = {}   -- critical object name → mission id
 local _gone    = {}   -- names already counted destroyed or lost
+local _tookOff = {}   -- unit names of AI jets that have taken off
 
 local function nameOf(object)
     local ok, name = pcall(function() return object:getName() end)
@@ -47,6 +50,22 @@ local function landed(unit)
     end, nil, timer.getTime() + REMOVE_AFTER_LANDING_S)
 end
 
+-- A jet destroyed before it ever took off, within RAMP_LOSS_S of its spawn: a spawn
+-- failure, not combat (bug 13: Su-34s and a Su-27 blew up on Afrikanda's ramp seconds
+-- after spawning, no killer recorded). Said in dcs.log and the event log, with its spot.
+local function rampLoss(f, unitName)
+    if _tookOff[unitName] or not f.spawned_at then return end
+    local after = timer.getTime() - f.spawned_at
+    if after > RAMP_LOSS_S then return end
+    local m = f.mission_flown or f.mission
+    local n = tonumber(unitName:match("_(%d+)$") or "")
+    local spot = n and m.parking and m.parking[n]
+    local text = string.format("%s destroyed on the ramp %d s after spawning, before taking off, at %s spot %s: a spawn failure, not combat",
+        m.aircraft_type, math.floor(after), m.launch_base, spot and tostring(spot.terminal_index) or "?")
+    Log.warn(unitName .. ": " .. text)
+    WriteEventLog.add(m.coalition, "RAMP_LOSS", unitName, text)
+end
+
 local function destroyed(object)
     local name = nameOf(object)
     if not name or _gone[name] then return end
@@ -62,7 +81,9 @@ local function destroyed(object)
     local flight = flightOf(object)
     if flight then
         _gone[name] = true
-        _flights[flight].lost = _flights[flight].lost + 1
+        local f = _flights[flight]
+        f.lost = f.lost + 1
+        rampLoss(f, name)
     end
 end
 
@@ -74,7 +95,10 @@ function handler:onEvent(e)
         return
     end
     if not e.initiator then return end
-    if e.id == world.event.S_EVENT_LAND then
+    if e.id == world.event.S_EVENT_TAKEOFF then
+        local name = nameOf(e.initiator)
+        if name then _tookOff[name] = true end
+    elseif e.id == world.event.S_EVENT_LAND then
         local ok, category = pcall(function() return e.initiator:getCategory() end)
         if ok and category == Object.Category.UNIT then landed(e.initiator) end
     elseif e.id == world.event.S_EVENT_DEAD then
@@ -199,6 +223,7 @@ function ScheduleAirTaskingOrders.launchNow(id, delay)
     f.note = nil
     local grp = SpawnAircraftGroups.spawn(m)
     f.spawned = grp ~= nil
+    f.spawned_at = timer.getTime()
     return grp and m or nil
 end
 
@@ -208,7 +233,7 @@ function ScheduleAirTaskingOrders.flyAgain(by)
     local s = aiVersion(_byId[by])
     local copy = later(s, timer.getTime() + 1 - s.start_s, s.id .. "_AGAIN")
     if not copy or not SpawnAircraftGroups.spawn(copy) then return nil end
-    _flights[copy.id] = { mission = copy, spawned = true, destroyed = 0, lost = 0, landed = 0 }
+    _flights[copy.id] = { mission = copy, spawned = true, spawned_at = timer.getTime(), destroyed = 0, lost = 0, landed = 0 }
     _flights[by].again = copy.id
     return copy
 end
@@ -216,7 +241,14 @@ end
 -- A flight spawned at run time (a scramble), tracked like a planned one: its losses
 -- count and its aircraft are removed after landing.
 function ScheduleAirTaskingOrders.track(m)
-    _flights[m.id] = { mission = m, spawned = true, destroyed = 0, lost = 0, landed = 0 }
+    _flights[m.id] = { mission = m, spawned = true, spawned_at = timer.getTime(), destroyed = 0, lost = 0, landed = 0 }
+end
+
+-- Jets of flight `id` the controller removed on the ramp (they carried no weapons): they
+-- never fly, and the flight's state counts them out.
+function ScheduleAirTaskingOrders.removed(id, n)
+    local f = _flights[id]
+    if f then f.removed = (f.removed or 0) + n end
 end
 
 -- A mission's target progress: critical objects destroyed so far (anyone's hits count),
@@ -247,12 +279,17 @@ function ScheduleAirTaskingOrders.statusOf(id)
         state = "stood down on the ramp"
     elseif not f.spawned then
         state = f.note == "delayed" and "delayed" or "planned"
+    elseif (f.removed or 0) >= m.count then
+        state = "removed on the ramp, unarmed"
     elseif f.lost >= m.count then
         state = string.format("%d of %d lost", f.lost, m.count)
-    elseif f.lost + f.landed >= m.count then
+    elseif f.lost + f.landed + (f.removed or 0) >= m.count then
         state = f.lost > 0 and string.format("landed, %d lost", f.lost) or "landed"
     else
         state = f.lost > 0 and string.format("airborne, %d lost", f.lost) or "airborne"
+    end
+    if (f.removed or 0) > 0 and f.removed < m.count then
+        state = string.format("%s, %d removed unarmed", state, f.removed)
     end
     if f.destroyed > 0 then
         state = string.format("%s; target %d of %d critical destroyed", state, f.destroyed, #(m.critical_names or {}))

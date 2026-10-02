@@ -16,6 +16,10 @@
 --                        { group, type, range_m, aspect_deg, closing_mps, pos }
 --   shot_at              the last report of an enemy firing at the flight (from the
 --                        controller's DCS event handler), or false
+--   units                every live jet of the flight: { name, pos, airborne }
+--   landing_base_pos     { x, z } of its landing base, or false
+--   relief               patrols: the next patrol of its station, on station now
+--                        ({ id, km from the race-track }), or false
 -- Fair-knowledge rule (as the radar picture's): an enemy group's exact position and
 -- motion are read live only once the picture holds it.
 -- Reads the plan; writes nothing back to it.
@@ -192,6 +196,57 @@ end
 FACTS.shot_at = function(s)
     local r = s.watch.reports.shot_at
     if r and timer.getTime() - r.time <= AIR_CONTROL.self_defence.shot_memory_s then return r end
+    return false
+end
+
+-- Every live jet of the flight: { name, pos, airborne }.
+FACTS.units = function(s)
+    local list = {}
+    pcall(function()
+        for _, u in ipairs(s.group:getUnits() or {}) do
+            if u:isExist() and u:getLife() > 0 then
+                list[#list + 1] = { name = u:getName(), pos = u:getPoint(), airborne = u:inAir() }
+            end
+        end
+    end)
+    return list
+end
+
+-- Where the flight lands: { x, z } of its landing base (from the plan), or false.
+FACTS.landing_base_pos = function(s)
+    local ab = _plan.world.airbases[s.mission.landing_base]
+    return ab and { x = ab.pos.x, z = ab.pos.z } or false
+end
+
+local function distanceToSegment(p, a, b)
+    local dx, dz = b.x - a.x, b.z - a.z
+    local len2 = dx * dx + dz * dz
+    local t = len2 > 0 and math.max(0, math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2)) or 0
+    return Util.dist(p, { x = a.x + t * dx, z = a.z + t * dz })
+end
+
+-- A patrol's relief: the next patrol of its station (a later planned start) that is in
+-- the air, on its task and within handover.on_station_km of the race-track, as
+-- { id, km }; or false.
+FACTS.relief = function(s)
+    local m = s.mission
+    local a = m.attack
+    if not (m.station and a and a.station) then return false end
+    local e1, e2 = { x = a.station[1], z = a.station[2] }, { x = a.station[3], z = a.station[4] }
+    local limit = AIR_CONTROL.handover.on_station_km * 1000
+    for _, w in ipairs(ControlAirFlights.watchedFlights()) do
+        local other = w.mission
+        if other.station == m.station and other.id ~= m.id and other.start_s > m.start_s
+           and w.state == "on_task" then
+            local g = AssessFlightSituations.liveGroup(other.id)
+            local lead = g and leadOf(g)
+            local ok, p, air = pcall(function() return lead:getPoint(), lead:inAir() end)
+            if ok and p and air then
+                local d = distanceToSegment(p, e1, e2)
+                if d <= limit then return { id = other.id, km = d / 1000 } end
+            end
+        end
+    end
     return false
 end
 

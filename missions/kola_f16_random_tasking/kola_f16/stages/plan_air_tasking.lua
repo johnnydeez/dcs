@@ -203,9 +203,10 @@ function PlanAirTasking.validate()
                          "station_enemy_airspace_km", "commit_range_km", "commit_spacing_km", "commit_radius_km",
                          "commit_min_radius_km",
                          "early_warning_standoff_km", "early_warning_clearance_km", "early_warning_leg_km",
-                         "alert_bases", "alert_aircraft_per_base", "scramble_turnaround_s", "scramble_cooldown_s", "scramble_warning_min",
+                         "alert_aircraft_per_base", "scramble_turnaround_s", "scramble_cooldown_s", "scramble_warning_min",
                          "scramble_inbound_rounds", "scramble_reserve_aircraft", "scramble_takeoff_s",
-                         "scramble_min_leg_km", "raid_radius_km", "raid_heading_deg" }) do
+                         "scramble_min_leg_km", "scramble_killzone_margin_km", "scramble_tail_chase_deg",
+                         "raid_radius_km", "raid_heading_deg" }) do
         if type(AIR_DEFENSE[f]) ~= "number" or AIR_DEFENSE[f] < 0 then bad("AIR_DEFENSE needs a non-negative " .. f) end
     end
     local reaction = AIR_DEFENSE.scramble_reaction_s
@@ -224,8 +225,9 @@ function PlanAirTasking.validate()
     if not (sead and sead.built and sead.planned_as == "escort" and sead.attack == "harm_salvo") then
         bad(SUPPRESSION .. " must be a built harm_salvo mission type planned_as escort (packages need it)")
     else
-        for _, f in ipairs({ "launch_km", "low_altitude_m", "low_speed_mps", "low_entry_margin_km", "low_waypoint_km",
-                             "popup_km", "popup_altitude_m", "low_fuel_factor" }) do
+        for _, f in ipairs({ "launch_km", "launch_past_reach_km", "low_altitude_m", "low_speed_mps", "low_entry_margin_km",
+                             "low_waypoint_km", "popup_km", "popup_altitude_m", "low_fuel_factor",
+                             "short_range_margin_km" }) do
             if type(sead[f]) ~= "number" or sead[f] <= 0 then bad(SUPPRESSION .. " needs a positive " .. f) end
         end
         -- the launch point is only cleared of other sites' low-altitude reach, which holds up
@@ -591,9 +593,10 @@ end
 --   ground, every low_waypoint_km) → popup → target (the launch point, popup_altitude_m,
 --   carries the attack) → egress (back down, afterburner allowed) → low … → climb (out of
 --   the rings, afterburner off again) → transit … (cruise) → landing
--- The way in is routed around every other site's low-altitude reach (ctx.low_threats)
--- to a launch point launch_km from the site on the side the flight comes from, outside
--- every other site's low-altitude reach (+ margin): the bearing from the site toward the
+-- The way in is routed around every other site's low-altitude reach and every short-range
+-- site's ring (ctx.low_threats) to a launch point launch_km from the site (closer for a
+-- short-reaching one: its reach + launch_past_reach_km) on the side the flight comes from,
+-- outside every other site's low-altitude reach (+ margin): the bearing from the site toward the
 -- base first, then every 15° either side; nil and no route when none is clear. The
 -- flight is down low_entry_margin_km before the route first enters any enemy ring (full
 -- reach + margin, ctx.threats) and stays low until the pop-up; the way back is the way
@@ -656,7 +659,9 @@ local function suppressionRoute(ctx, baseName, p, threat)
         for k, val in pairs(extra or {}) do fields[k] = val end
         return add(kind, q, mt.low_altitude_m, fast, fields)
     end
-    local launch = launchPoint(ctx, basePos, site, threat, mt.launch_km)
+    -- a short-reaching target is shot at from closer in (bug 29)
+    local launchKm = math.min(mt.launch_km, (c.reach_m or math.huge) / 1000 + mt.launch_past_reach_km)
+    local launch = launchPoint(ctx, basePos, site, threat, launchKm)
     if not launch then return nil end
     local start = basePos
     if Util.dist(basePos, launch) > (DEPARTURE_KM + 40) * 1000 then
@@ -1829,13 +1834,14 @@ end
 
 -- The scramble posture: the alert bases and the aircraft they hold. Nothing here spawns;
 -- the controller (consumers/control_air_flights/scramble_fighters.lua) launches from it at run time, on what the radar picture
--- shows. Alert bases: held bases whose runway and parking fit an interception type (in
--- wartime every usable runway is used: Finnish and Swedish dispersal doctrine), the
--- AIR_DEFENSE.alert_bases nearest the enemy, each holding alert_aircraft_per_base jets, plus the nearest of each other region that
--- has one, so a pocket can answer for itself. A base inside an enemy kill zone holds no
--- alert: nobody keeps quick-reaction fighters under the enemy's SAM umbrella, and every
--- way out of it would start inside the kill zone. Each alert base holds ramp spots for
--- its alert jets (reserveAlertSpots); a base that can't spare them isn't one.
+-- shows. Alert bases: every held base whose runway and parking fit an interception type
+-- (in wartime every usable runway is used: Finnish and Swedish dispersal doctrine), each
+-- holding alert_aircraft_per_base jets (John, 2026-10-02, bug 16: the 3 nearest the enemy
+-- left Finnmark with none, and a raid there was chased from Rovaniemi). A base inside an
+-- enemy kill zone holds no alert: nobody keeps quick-reaction fighters under the enemy's
+-- SAM umbrella, and every way out of it would start inside the kill zone. Each alert base
+-- holds ramp spots for its alert jets (reserveAlertSpots); a base that can't spare them
+-- isn't one.
 local function planAlertPosture(ctx)
     local D = AIR_DEFENSE
     local roster = COALITION_AIRCRAFT[ctx.coalition][INTERCEPTION]
@@ -1861,29 +1867,17 @@ local function planAlertPosture(ctx)
         if a.enemy_km ~= b.enemy_km then return a.enemy_km < b.enemy_km end
         return a.base < b.base
     end)
-    local alert, regions, tried = {}, {}, {}
-    local function take(c)
-        if tried[c] then return false end
-        tried[c] = true
+    local alert = {}
+    for _, c in ipairs(candidates) do
         c.spots = reserveAlertSpots(ctx, c.base, c.aircraft, D.alert_aircraft_per_base)
-        if not c.spots then
+        if c.spots then
+            c.alert_aircraft = D.alert_aircraft_per_base
+            c.cooldown_s = D.scramble_cooldown_s
+            alert[#alert + 1] = c
+        else
             Log.warn(string.format("  %s: %s has no %d free ramp spots for alert jets — not an alert base",
                 ctx.coalition:upper(), c.base, D.alert_aircraft_per_base))
-            return false
         end
-        c.alert_aircraft = D.alert_aircraft_per_base
-        c.cooldown_s = D.scramble_cooldown_s
-        alert[#alert + 1] = c
-        regions[c.region] = true
-        return true
-    end
-    local taken = 0
-    for _, c in ipairs(candidates) do
-        if taken >= D.alert_bases then break end
-        if take(c) then taken = taken + 1 end
-    end
-    for _, c in ipairs(candidates) do
-        if not regions[c.region] then take(c) end   -- the nearest of a region not covered yet
     end
     local names = {}
     for _, c in ipairs(alert) do names[#names + 1] = string.format("%s (%d km from the enemy)", c.base, c.enemy_km) end
@@ -2059,21 +2053,29 @@ end
 -- AIR_DEFENSE.killzone_fraction, no margin (what patrols and the AWACS keep out of).
 -- `kind` "low": a SAM site's circle is how far it reaches a low flyer
 -- (lib/sam_reach.lua) + margin (what a SEAD flight's low run-in keeps out of; base
--- defenses keep their full reach, they are low-altitude weapons).
+-- defenses keep their full reach, they are low-altitude weapons), plus every enemy
+-- short-range SAM site's ring + short_range_margin_km (bug 22: they reach a low flyer).
+-- Every circle also carries reach_m, the threat's own reach (the SEAD launch distance).
 local function threatCircles(plan, coalition, kind)
     local killzone = kind == "killzone"
     local circles, groups = {}, {}
     local scale = killzone and AIR_DEFENSE.killzone_fraction or 1
     local margin = killzone and 0 or AIR_ROUTING.threat_margin_km * 1000
+    local shortMargin = AIR_MISSION_TYPE[SUPPRESSION].short_range_margin_km * 1000
     for _, s in ipairs(plan.sam_sites and plan.sam_sites.sites or {}) do
         if s.side ~= coalition and AIR_ROUTING.threat_layers[s.layer] and (s.engage_m or 0) > 0 then
             local reach = kind == "low" and SamReach.radius(s, 0) or s.engage_m
-            circles[#circles + 1] = { id = s.id, x = s.pos.x, z = s.pos.z, radius_m = reach * scale + margin }
+            circles[#circles + 1] = { id = s.id, x = s.pos.x, z = s.pos.z, radius_m = reach * scale + margin,
+                                      reach_m = s.engage_m }
             local g = { s.id }
             for _, name in ipairs(s.group_ids or {}) do
                 if name ~= s.id then g[#g + 1] = name end
             end
             groups[s.id] = g
+        elseif kind == "low" and s.side ~= coalition and s.layer == "short_range" and (s.engage_m or 0) > 0 then
+            -- below a cruising jet, but not below a low one (bug 22)
+            circles[#circles + 1] = { id = s.id, x = s.pos.x, z = s.pos.z, radius_m = s.engage_m + shortMargin,
+                                      reach_m = s.engage_m }
         end
     end
     local bdMargin = killzone and 0 or AIR_ROUTING.base_defense_margin_km * 1000
@@ -2085,7 +2087,8 @@ local function threatCircles(plan, coalition, kind)
                 if pool and (pool.threat_m or 0) > reach then reach = pool.threat_m end
             end
             if reach > 0 then
-                circles[#circles + 1] = { id = g.id, x = g.pos.x, z = g.pos.z, radius_m = reach * scale + bdMargin }
+                circles[#circles + 1] = { id = g.id, x = g.pos.x, z = g.pos.z, radius_m = reach * scale + bdMargin,
+                                          reach_m = reach }
                 groups[g.id] = { g.id }
             end
         end

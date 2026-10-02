@@ -14,7 +14,7 @@
 --      each flight's outcome
 --
 -- Event words (grep them): SPAWNED LOADOUT TAKEOFF WAYPOINT LAND POSITION SHOT GUNS HIT
--- DESTROYED CRASHED EJECTED PILOT_DEAD PARACHUTE ABORTED TARGET CONTACT TRACKING PICTURE
+-- DESTROYED CRASHED EJECTED PILOT_DEAD PARACHUTE ABORTED TARGET RAMP_LOSS CONTACT TRACKING PICTURE
 -- SCRAMBLE NO_SCRAMBLE STOOD_DOWN ALERT LEASH UNIT_AWAKE UNIT_ASLEEP LATE_WAKE AWAKE_COUNT
 -- DELAYED RETRY CANCELLED
 -- PLAYER_IN PLAYER_OUT PICTURE_CALL
@@ -22,7 +22,7 @@
 -- The DCS events (shots, hits, kills, takeoffs, landings, …) are caught here for every
 -- unit. The other modules hand their own events over with WriteEventLog.add: the flight
 -- spawner (SPAWNED, LOADOUT, and WAYPOINT through a script command on each waypoint),
--- the scheduler (TARGET), the radar picture, scrambles, the leash and sleeping ground
+-- the scheduler (TARGET, RAMP_LOSS), the radar picture, scrambles, the leash and sleeping ground
 -- units (consumers/sleep_ground_units.lua; HIT and DESTROYED lines of a sleeping unit
 -- end in "(asleep)").
 --

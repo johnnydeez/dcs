@@ -6,6 +6,7 @@
 --
 -- An intent is { kind, why, … }:
 --   home        go home now, returning fire only ("going home: <why>")
+--   land        a flight lost on its way home: a new landing order straight to its base
 --   stand_down  still on the ramp: removed, never flies
 --   defend      engage one of `threats` (the coordination across flights picks which)
 --   resume      the fight is over: back to the mission
@@ -20,7 +21,11 @@
 --   leash         scrambles: home when the raid is gone or back over its own airspace
 --                 heading away, or the scramble is too deep in enemy airspace or inside
 --                 an enemy kill zone; stood down on the ramp when the raid is gone first
---   suppression   SEAD flights: go cold after the salvo (see data/air_control.lua)
+--   suppression   SEAD flights: go cold after the salvo (see data/air_control.lua); a
+--                 "no shot" line when it reached its launch point and fired nothing
+--   handover      patrols: home once the next patrol of its station is on station
+--   landing       every flight on its way home: a new landing order when a jet of it
+--                 gets lost (flies away from its base, or is long overdue)
 --   self_defence  attack flights: a bandit hot on the flight is called at once; a flight
 --                 with radar missiles engages it, then carries on with its mission; one
 --                 without leaves (goes home)
@@ -111,7 +116,77 @@ DIRECTIVES.suppression = {
             return { kind = "home", why = string.format("still on the attack %d min after it reached its launch point",
                 math.floor(R.attack_time_s / 60)) }
         end
+        -- said once: at its launch point a while and not one missile away (bug 29)
+        if mem.arrived_s and not mem.no_shot and arms > 0 and arms == mem.arms_at_start
+           and now > mem.arrived_s + R.no_shot_after_s then
+            mem.no_shot = true
+            ControlAirFlights.say(m.coalition, m.id, "no shot", string.format(
+                "%d min after reaching its launch point, %.0f km from %s, all %d anti-radiation missiles still aboard",
+                math.floor(R.no_shot_after_s / 60), a.site and Util.dist({ x = s.pos.x, z = s.pos.z }, a.site) / 1000 or 0,
+                a.groups and a.groups[1] or "its site", arms))
+        end
         return nil
+    end,
+}
+
+-- ── handover (patrols) ──────────────────────────────────────────
+
+DIRECTIVES.handover = {
+    clock = "picture",
+    on_task_only = true,
+    check = function(w, s)
+        if not s.airborne then return nil end
+        local r = s.relief
+        if not r then return nil end
+        return { kind = "home", why = string.format("relieved by %s, on station (%.0f km from the race-track)", r.id, r.km) }
+    end,
+}
+
+-- ── landing ─────────────────────────────────────────────────────
+
+DIRECTIVES.landing = {
+    clock = "picture",
+    on_task_only = false,
+    check = function(w, s)
+        local L = AIR_CONTROL.landing
+        local mem = w.memo.landing
+        local m = s.mission
+        local now = timer.getTime()
+        if not s.airborne or w.defending then
+            mem.closest = nil   -- a fight takes it anywhere: measure again afterwards
+            return nil
+        end
+        local base = s.landing_base_pos
+        if not base or (mem.orders or 0) >= L.max_orders then return nil end
+        -- (a jet on the ground may also be a wingman not yet taken off: only the record's
+        -- landings say one is home)
+        local up, onGround = {}, false
+        for _, u in ipairs(s.units) do
+            if u.airborne then up[#up + 1] = u else onGround = true end
+        end
+        local record = ScheduleAirTaskingOrders.record(m.id)
+        local landedOne = record and (record.landed or 0) > 0
+        local homebound = w.state == "going_home" or landedOne or (m.end_s and now > m.end_s)
+        if not homebound then return nil end
+        -- each jet's closest approach to its base since it was on its way home
+        mem.closest = mem.closest or {}
+        local lost
+        for _, u in ipairs(up) do
+            local d = Util.dist({ x = u.pos.x, z = u.pos.z }, base)
+            local closest = math.min(mem.closest[u.name] or d, d)
+            mem.closest[u.name] = closest
+            if not lost and d > closest + L.away_km * 1000 then
+                lost = string.format("%s lost after its landing: %.0f km from %s and getting farther (it was %.0f km away)",
+                    u.name, d / 1000, m.landing_base, closest / 1000)
+            end
+        end
+        -- overdue: counted from the planned landing, or from the last landing order
+        if not lost and m.end_s and now > math.max(m.end_s, mem.ordered_at or 0) + L.overdue_s then
+            lost = string.format("still in the air %d min after its planned landing", math.floor((now - m.end_s) / 60))
+        end
+        -- never while a jet of it that landed is still on the ramp: the order would send it up again
+        if not lost or onGround then return nil end
+        return { kind = "land", why = lost }
     end,
 }
 

@@ -49,6 +49,11 @@
 --   RED  MSN7028_OCA     "leave: bandit MSN2002_CAP (F-15C), 92 km, hot, closing 950 kt; no air-to-air
 --                         missiles aboard (Su-24M at 25,000 ft, contested airspace)"
 --   BLUE MSN2027_OCA     "leave threat: MSN7009_CAP to MSN2023_STRIKE"
+--   BLUE MSN2002_CAP     "handover: relieved by MSN2003_CAP, on station (2 km from the race-track) (…)"
+--   RED  MSN7025_SEAD    "land: MSN7025_SEAD_2 lost after its landing: 45 km from Vuojarvi and getting farther
+--                         (it was 2 km away); sent to land at Vuojarvi (…)"
+--   BLUE MSN2026_SEAD    "no shot: 2 min after reaching its launch point, 31 km from DEF_VUOJ_…, all 8 … still aboard"
+--   RED  MSN7024_SEAD    "stand down: MSN7024_SEAD_1, MSN7024_SEAD_2 carry no weapons (…); removed on the ramp; …"
 -- plus the launch decisions (decide_launches.lua), scrambles (scramble_fighters.lua) and
 -- alert jets (track_alert_jets.lua).
 -- Reads the plan; writes nothing back to it. Which flights are watched is runtime state.
@@ -61,6 +66,8 @@ local DECISION = {
     leash = { home = "leash home", stand_down = "leash stand down" },
     suppression = { home = "go cold" },
     self_defence = { defend = "defend", resume = "back on mission", home = "leave" },
+    handover = { home = "handover" },
+    landing = { land = "land" },
 }
 
 local _plan
@@ -112,6 +119,14 @@ local function act(w, s, intent)
         if GiveOrders.home(w, g, s.pos) then
             log(w, intent, string.format("%s (%s)", intent.why, where(w, s.pos)))
             w.state, w.defending = "going_home", nil   -- setTask replaced any fight
+        end
+    elseif intent.kind == "land" then
+        local mem = w.memo.landing
+        mem.orders, mem.ordered_at = (mem.orders or 0) + 1, now
+        if GiveOrders.land(w, g) then
+            log(w, intent, string.format("%s; sent to land at %s (%s)", intent.why, m.landing_base, where(w, s.pos)))
+            w.state, w.defending = "going_home", nil
+            mem.closest = nil   -- measured again from here
         end
     elseif intent.kind == "stand_down" then
         GiveOrders.standDown(w, g)
@@ -274,6 +289,37 @@ end
 function ControlAirFlights.onTask(id)
     local w = _watched[id]
     return w ~= nil and w.state == "on_task"
+end
+
+-- Every watched flight's watch entry (for facts that look across flights: a patrol's
+-- relief). Read them, never change them.
+function ControlAirFlights.watchedFlights()
+    local list = {}
+    for _, w in pairs(_watched) do list[#list + 1] = w end
+    return list
+end
+
+-- A spawned flight's jets that carry no weapons although their loadout lists some
+-- (logAmmo, consumers/spawn_aircraft_groups.lua; bug 6: two Su-24Ms flew 75 km into an
+-- SA-10's ring with nothing to shoot): removed on the ramp, never flown. A flight left
+-- with no jet isn't flying; its package's gate (decide_launches.lua) then sees its
+-- threats still in the fight, as if it had failed.
+function ControlAirFlights.unarmed(m, unitNames, loadoutText)
+    local removed = 0
+    for _, name in ipairs(unitNames) do
+        local u = Unit.getByName(name)
+        if u and u:isExist() then
+            pcall(function() u:destroy() end)
+            removed = removed + 1
+        end
+    end
+    if removed == 0 then return end
+    local left = AssessFlightSituations.liveGroup(m.id) ~= nil
+    ControlAirFlights.say(m.coalition, m.id, "stand down", string.format("%s carr%s no weapons (its loadout %s); removed on the ramp%s",
+        table.concat(unitNames, ", "), #unitNames == 1 and "ies" or "y", loadoutText,
+        left and "; the rest of the flight flies" or "; the flight isn't flying"))
+    ScheduleAirTaskingOrders.removed(m.id, removed)
+    if not left then _watched[m.id] = nil end
 end
 
 function ControlAirFlights.start(plan)
