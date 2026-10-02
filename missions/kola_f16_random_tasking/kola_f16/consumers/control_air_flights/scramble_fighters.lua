@@ -30,11 +30,11 @@
 --      watches it with the leash, which brings it home
 --
 -- Event log lines (word CONTROL):
---   RED  MSN5901_SCRAM   "scramble: MiG-31 from Monchegorsk after MSN2014_STRIKE (F-16C_50), own airspace,
+--   RED  MSN7901_SCRAM   "scramble: MiG-31 from Monchegorsk after MSN2014_STRIKE (F-16C_50), own airspace,
 --                         9 min from Olenya; intercept 85 km out; launching in 95 s; Monchegorsk has 2 alert jet(s) ready"
---   RED  MSN2014_STRIKE  "no scramble: F-16C_50: covered by patrol MSN5003_CAP"   once per reason
---   RED  MSN5901_SCRAM   "stand down before launch: MSN2014_STRIKE destroyed"
--- Scramble ids are MSN<first_number + n>_SCRAM (Blue 2901+, Red 5901+), the DCS group name.
+--   RED  MSN2014_STRIKE  "no scramble: F-16C_50: covered by patrol MSN7003_CAP"   once per reason
+--   RED  MSN7901_SCRAM   "stand down before launch: MSN2014_STRIKE destroyed"
+-- Scramble ids are MSN<first_number + n>_SCRAM (Blue 2901+, Red 7901+), the DCS group name.
 -- Reads the plan; writes nothing back to it.
 
 ScrambleFighters = {}

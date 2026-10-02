@@ -13,10 +13,11 @@ missions/
     a2g_dynamic_syria/        scripts → Saved Games\DCS\Scripts\a2g_dynamic_syria\
     offline_test_harness.lua  runs the scripts outside DCS with luae.exe (usage in its header)
   kola_f16_random_tasking/    F-16 tasking generator on Kola (air denial, human strike missions)
-    plan.md                   status and design: start at "Where we are"
-    roadmap.md                where the mission is headed next (features, open questions, order)
-    bugs.md                   bugs found in runs, to come back to
-    closed.md                 finished roadmap items and fixed bugs, keeping their numbers
+    development_docs/
+      plan.md                 status and design: start at "Where we are"
+      roadmap.md              where the mission is headed next (features, open questions, order)
+      bugs.md                 bugs found in runs, to come back to
+      closed.md               finished roadmap items and fixed bugs, keeping their numbers
     event_logs/               one event log per mission run (git-ignored; see below)
     kola_f16_random_tasking.miz
     kola_f16/                 scripts → Saved Games\DCS\Scripts\kola_f16\
@@ -41,7 +42,7 @@ Git Bash:
 tail -n 40 -f "$(ls -t ~/Git/dcs/missions/kola_f16_random_tasking/event_logs/*.log | head -1)"
 ```
 
-Without the once-a-minute position lines, add `| Where-Object { $_ -notmatch 'POSITION' }` (PowerShell) or `| grep --line-buffered -v POSITION` (Git Bash) to the end. What each line means, and what to grep for: `plan.md`, *Event log* and *Reading a run*.
+Without the once-a-minute position lines, add `| Where-Object { $_ -notmatch 'POSITION' }` (PowerShell) or `| grep --line-buffered -v POSITION` (Git Bash) to the end. What each line means, and what to grep for: `development_docs/plan.md`, *Event log* and *Reading a run*.
 
 ## De-sanitize MissionScripting.lua
 

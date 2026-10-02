@@ -121,7 +121,7 @@ local function isNamedThing(o)
     end) == true
 end
 
--- "MSN5901_SCRAM_1 (Su-30)", with the player's name when a player flies it
+-- "MSN7901_SCRAM_1 (Su-30)", with the player's name when a player flies it
 local function who(o)
     if not o then return "unknown" end
     local text = string.format("%s (%s)", nameOf(o) or "?", typeOf(o) or "?")
