@@ -14,9 +14,9 @@
 --
 -- Event log lines (consumers/write_event_log.lua), so problems with sleeping can be seen
 -- without a line per switch:
---   UNIT_AWAKE   BLUE  DEF_ROVA  "6 groups / 14 units awake: MSN5023_STRIKE_1 (Su-34) 28 km out"
+--   UNIT_AWAKE   BLUE  DEF_ROVA  "6 groups / 14 units awake: MSN7023_STRIKE_1 (Su-34) 28 km out"
 --   UNIT_ASLEEP  BLUE  DEF_ROVA  "6 groups / 14 units asleep after 12 min awake; 3 close passes, 41 shots, 6 hits, 1 kill"
---   LATE_WAKE    BLUE  DEF_ROVA  "MSN5023_STRIKE_1 (Su-34) 8 km out while the base slept: woken now"
+--   LATE_WAKE    BLUE  DEF_ROVA  "MSN7023_STRIKE_1 (Su-34) 8 km out while the base slept: woken now"
 --                                 never expected: the wake-up rule missed an aircraft
 --   AWAKE_COUNT  BLUE            "2 of 18 bases awake: 27 of 160 sleeping units awake"   every summary_every_s
 -- HIT and DESTROYED lines of a sleeping unit end in "(asleep)" (WriteEventLog asks

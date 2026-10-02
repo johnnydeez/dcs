@@ -14,8 +14,8 @@
 -- ramp is back on alert at once (closed.md, bug 2).
 --
 -- Event log lines (word CONTROL, consumers/write_event_log.lua):
---   CONTROL  RED  MSN5901_SCRAM  "alert: landed; its jet is back on alert at Monchegorsk in 30 min; Monchegorsk has …"
---   CONTROL  RED  MSN5901_SCRAM  "alert: stood down on the ramp; its jet is back on alert at Monchegorsk; …"
+--   CONTROL  RED  MSN7901_SCRAM  "alert: landed; its jet is back on alert at Monchegorsk in 30 min; Monchegorsk has …"
+--   CONTROL  RED  MSN7901_SCRAM  "alert: stood down on the ramp; its jet is back on alert at Monchegorsk; …"
 -- Reads the plan; writes nothing back to it.
 
 TrackAlertJets = {}

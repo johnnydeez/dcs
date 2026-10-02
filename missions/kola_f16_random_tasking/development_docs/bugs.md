@@ -155,22 +155,6 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ---
 
-## 21. Red flight numbers: MSN7xxx instead of MSN5xxx
-
-**Status:** open, change requested (John, 2026-10-01).
-
-**Now:** Blue flights are `MSN2001+` (scrambles `MSN2901+`), Red flights `MSN5001+` (scrambles `MSN5901+`).
-
-**Change:** Red flights `MSN7001+`, Red scrambles `MSN7901+`; Blue unchanged. Packages follow their mission's number (`PKG7023`).
-
-**Where:**
-- `stages/plan_air_tasking.lua`: `FIRST_NUMBER = { blue = 2001, red = 5001 }` → `red = 7001` (scrambles are `first_number + 900`, so 7901 follows), and the comment above it (line ~119).
-- Comments and examples naming 5xxx flights: `consumers/control_air_flights/scramble_fighters.lua` (header: "Blue 2901+, Red 5901+"), `consumers/control_air_flights/control_air_flights.lua`, `consumers/write_event_log.lua`, `data/air_tasking.lua`.
-- `plan.md` *Naming and ids* (Flight row: "Red 5001+ (scrambles … 5901+)") and the event-log examples.
-- Old event logs and the docs' run notes keep their 5xxx numbers (history).
-
----
-
 ## 22. The low SEAD way out climbs through short-range SAMs the routing doesn't see
 
 **Status:** open (found 2026-10-01, 22:23 run).
@@ -233,18 +217,6 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ---
 
-## 28. Attack tasks carried no altitude: the AI flew its attack low
-
-**Status:** fixed 2026-10-02, not flown.
-
-**Seen:** `event_logs\2026-10-02_005718.log`; grep `MSN2027_STRIKE`. 2× F/A-18C from Kittilä on `TGT_SODA_airfield_fuel_storage_1`, every waypoint planned at 7,000–7,500 m, flew the whole way at 2,400–3,600 ft and dropped GBU-31s from 3,585 ft; the Sodankylä SA-8 shot both down. MSN5024_SEAD fired from ~3,400 ft (pop-up planned at 3,000 m). MSN2026_SEAD_AGAIN reached its launch point at 2,600 ft (planned 3,000 m).
-
-**Cause:** two DCS AI behaviours. (1) Every `Bombing` / `AttackGroup` task was sent with `altitudeEnabled = false`, so once the attack starts the AI picks its own altitude. (2) The lead holds low and slow until its wingman has taken off and joined (MSN2027's wingman took off 2.5 min after the lead; MSN2024's 4 min, its lead circled at ~2,000 ft for 8 min). On a short route the attack starts before the climb ever happens.
-
-**Fix:** `consumers/spawn_aircraft_groups.lua`: `Bombing`, `AttackGroup` and the SEAD salvo carry the route's target-waypoint altitude (`altitudeEnabled = true`), so the AI attacks from the planned altitude. Watch `SHOT … from <ft>` on bombs and anti-radiation missiles. The wingman delay is DCS's (John: taxi times are DCS).
-
----
-
 ## 29. The AI retry of a player's SEAD tasking against a Tor went home without firing
 
 **Status:** open (found 2026-10-02).
@@ -254,13 +226,3 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 **Suspects:** a HARM shot from 40 km at 2,600 ft at a point-defense Tor (12 km reach) may be out of the AI's launch range, and the Tor's radar may not have been on at that distance. The launch distance is set for long-range sites. After the attack waypoint the next one is the landing, so the AI just went home.
 
 **Proposed fix (decide with John):** a launch distance by target (short-range and point-defense targets much closer, e.g. ~25 km, or a DEAD instead of a SEAD for them); and a flight that reaches its launch point and fires nothing within a few minutes is logged (`CONTROL … no shot`).
-
----
-
-## 30. The bandit call dropped a fighter that had just fired, because the picture didn't hold it
-
-**Status:** fixed 2026-10-02, not flown.
-
-**Seen:** `event_logs\2026-10-02_005718.log`; grep `MSN5024_SEAD`. At 04:12:35 MSN5024 called `defend` on the F-15C patrol MSN2009_CAP that had just fired at it (24 km); 4 s later "back on way home: MSN2009_CAP lost from the radar picture": Red's picture never held the F-15C, only the shot gave it away. It engaged again only at 9 km, 30 s later (the re-engage hold). The surviving Su-34 still killed the F-15C with an R-77 as it died.
-
-**Fix:** `directives_per_flight.lua` (`self_defence`): a bandit that fired at the flight within `shot_memory_s` (30 s) stays the fight whether the picture holds it or not.

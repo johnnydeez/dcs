@@ -40,15 +40,15 @@
 -- Event log lines: one word, CONTROL, for every controller decision, the decision first
 -- (John, 2026-10-01: grep CONTROL to see what this layer is doing):
 --   BLUE MSN2023_STRIKE  "watching: self_defence"
---   RED  MSN5901_SCRAM   "leash home: MSN2014_DEAD back over its own airspace, heading away (…)"
---   RED  MSN5901_SCRAM   "leash stand down: MSN2014_DEAD destroyed"
+--   RED  MSN7901_SCRAM   "leash home: MSN2014_DEAD back over its own airspace, heading away (…)"
+--   RED  MSN7901_SCRAM   "leash stand down: MSN2014_DEAD destroyed"
 --   BLUE MSN2024_SEAD    "go cold: every anti-radiation missile fired (…)"
---   BLUE MSN2023_STRIKE  "defend: engaging MSN5009_CAP (MiG-31), 95 km, hot, closing 980 kt; 4 radar missiles
+--   BLUE MSN2023_STRIKE  "defend: engaging MSN7009_CAP (MiG-31), 95 km, hot, closing 980 kt; 4 radar missiles
 --                         aboard, longest AIM-120C (F-16C_50 at 24,000 ft, contested airspace)"
---   BLUE MSN2023_STRIKE  "back on mission: MSN5009_CAP destroyed (1 min 40 s)"
---   RED  MSN5028_OCA     "leave: bandit MSN2002_CAP (F-15C), 92 km, hot, closing 950 kt; no air-to-air
+--   BLUE MSN2023_STRIKE  "back on mission: MSN7009_CAP destroyed (1 min 40 s)"
+--   RED  MSN7028_OCA     "leave: bandit MSN2002_CAP (F-15C), 92 km, hot, closing 950 kt; no air-to-air
 --                         missiles aboard (Su-24M at 25,000 ft, contested airspace)"
---   BLUE MSN2027_OCA     "leave threat: MSN5009_CAP to MSN2023_STRIKE"
+--   BLUE MSN2027_OCA     "leave threat: MSN7009_CAP to MSN2023_STRIKE"
 -- plus the launch decisions (decide_launches.lua), scrambles (scramble_fighters.lua) and
 -- alert jets (track_alert_jets.lua).
 -- Reads the plan; writes nothing back to it. Which flights are watched is runtime state.

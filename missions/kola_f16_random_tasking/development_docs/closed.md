@@ -296,6 +296,151 @@ Syria caps its AI aircraft at 12 alive and has far fewer ground units (count the
 
 ---
 
+### 4a and 4b. AI behaviour logic: the controller, attack flights defending themselves, the bandit call
+
+**Closed 2026-10-02** (parts of roadmap item 4, which stays open in `roadmap.md` for 4c and the controller's further directives). Built 2026-10-01; the bandit call first worked in the 22:23 run and again in the 2026-10-02 00:57 run. As built: `plan.md`, *The controller*.
+
+What item 4's *Where it stands* said about them when they moved:
+- **4a and 4b built 2026-10-01, not flown yet:** the controller, `consumers/control_air_flights/` (`plan.md`, *The controller*). Design agreed with John: DCS AI is the pilot; the script is the controller that watches the whole picture and gives directives (no separate pilot rules). Situation per flight → directives → one intent (priority, threat assignment across flights) → orders only when the intent changes. Directives so far: the leash and go-cold (moved over unchanged) and self-defence (4b).
+- **Built 2026-10-01 (after the 20:31 run), not flown yet: the bandit call** (`plan.md`, *The controller*). It replaces self-defence's wait-for-our-missile-range trigger and covers the abort item below: when the picture shows a fighter hot on an attack flight within 100 km (two checks in a row), or one fires at it from any range, the controller decides at once: radar missiles aboard → engage now; none (infrared only counts as none) → go home (John: "the CAP is just going to stay there and circle"). With it, every Su-34 loadout carries 2× R-77 (John: every Red flight carries its best long-range air-to-air missiles). The original request, kept for reference:
+- **Abort a defenceless flight** (John, 2026-10-01, 16:21 run: MSN5023_OCA, 2× Su-24M with only RBK-250s, heading for Kuusamo where the F-16 patrol MSN2016_CAP works): if the coalition's radar picture shows an enemy fighter that threatens an attack flight that can't fight it (no air-to-air missiles, or only short-range infrared ones against a fighter beyond their reach), the controller sends the flight home. Its own directive, next to self-defence: self-defence for flights that can fight, abort for those that can't. To settle when building: what counts as "threatens" (the same hot-and-closing test, at what range: the fighter's missile range rather than ours), and whether the package's mission is then retried later or cancelled. John (same day): infrared missiles alone are effectively useless against a fighter, so no R-60s added to the Su-24M's airfield-strike loadout; and **self-defence should count only radar-guided missiles** when deciding whether a flight can fight (today any air-to-air missile counts, and an infrared-only flight would turn toward a fighter at the 10 km minimum engage range). Change it together with the abort directive.
+
+#### 4a. The logic layer: conditional orders
+
+**Built 2026-10-01** as the controller (`plan.md`, *The controller*). The proposal as it stood:
+
+**Approach (to design with John):**
+- Every AI flight is watched, not only scrambles, each with the rules for its mission type.
+- **The orders DCS offers a script:**
+  - `Controller:setTask`: a new mission, e.g. go home;
+  - `pushTask` / `popTask`: a task on top of the current one, then back to the mission (for "deal with this, then get back on task");
+  - `setOption`: rules of engagement, reaction to threat, radar use, afterburner.
+- Each rule is a check (from the radar picture, the flight's position, its package) plus an order, in one module, as the leash is.
+
+#### 4b. Attack flights defend themselves, then get back on task
+
+**Built 2026-10-01** as the controller's `self_defence` directive (`plan.md`, *The controller*). John's calls: stay on the mission until a threat threatens the mission (pointed at the flight and closing, or firing at it); after the fight, always carry on with the mission. Engage range from the missiles aboard; one threat per flight across the coalition; `AttackGroup` pushed on top of the mission and ended by a user flag (never `popTask`). The proposal as it stood:
+
+**Goal:** strike, SEAD and DEAD flights that see a fighter coming for them fight back early, with the air-to-air missiles they carry, then carry on to the target. Today (John): "if a CAP goes after them they just keep flying to their target and wait to get shot at. They have AMRAAMs, so should self protect much earlier and then get back on task."
+
+**Where it stands:**
+- Attack flights fly `open_fire` with a single attack task, so they only react once fired upon (reaction to threat: evade fire).
+- Many attack loadouts already carry air-to-air missiles. In the first run the DEAD F-16s had AIM-120C ×2 + AIM-9X ×2, and the Su-34s had R-73 ×2 + R-27R ×2.
+
+**Approach (proposed):**
+- **Trigger:** an enemy fighter in the coalition's radar picture that is closing on the flight within some range; or DCS's own detection by the flight (`getDetectedTargets` on the flight itself).
+- **Order:** push an `EngageGroup` on that fighter (or open fire on air targets within a range) on top of the mission. When the fighter is dead, gone or turned away, pop it, so the flight resumes its route and attack.
+- **Limits:** only flights whose loadout carries air-to-air missiles; don't chase past the leash; decide whether a flight that fought and lost its attack time still presses on or goes home.
+
+---
+
+### 5. AWACS calls to the player (text)
+
+**Closed 2026-10-02:** flown in the 00:57 run; the calls came every 2 min and looked right, and DCS's magvar works in the game (+12.4° at Rovaniemi against the table's +11.9°). John: 7 s on screen was too short, now 14 s. The open questions left below went to the `plan.md` backlog (*Air picture follow-ups*). As built: `plan.md`, *Air picture calls*.
+
+**Built 2026-10-02, not flown yet** (`plan.md`, *Air picture calls*): every 2 min, for 14 s, each player gets every contact in their own coalition's radar picture as a short BRAA list from their own position, highest threat first (range weighted by aspect): `MiG-29S - 110/120nm, 10k, hot, 5s` (magnetic bearing / range, altitude, aspect, age of the position). John's calls: no bullseye ("kind of a pain"), all bearings from the player, no "bogey dope" to ask for, only what Blue's radars see. Moves to `closed.md` once a run confirms it.
+
+**Goal:** the AWACS tells the player what it sees: enemy aircraft with bearing, distance, altitude and type, like a real controller's picture calls.
+
+**Decided:** text messages to the player's group (`outTextForGroup`) for now. Long-term goal (John): AWACS calls become LLM / cloud audio like the AI pilots' calls (item 7), and the text version is the step before that. The facts per group (`describe`) are worked out apart from the text, so the delivery can be swapped.
+
+**Still open, after a run:**
+- Is 14 s enough to read up to 10 lines? (raised from 7 on 2026-10-02)
+- Does DCS's `magvar` module work in the game (`dcs.log`, grep `air picture`), or does the approximate table stay?
+- A separate automatic THREAT call (a hot group inside ~35 nm, at once rather than at the next list)?
+- When the AWACS is shot down: carry on from the ground radars (now: yes, the list is the whole picture), or say "picture degraded"?
+- Group size ("2 contacts", "heavy"): the picture keeps one contact per DCS group and doesn't count the aircraft its radars see.
+- AWACS callsign and frequency in the brief.
+
+---
+
+### 10. SEAD ingress doctrine: high transit, low ingress, pop up, fire, low and fast out
+
+**Closed 2026-10-02:** built 2026-10-01, flown in the 22:23 run (Blue's low SEAD killed the Kuusamo SA-11's radar; it never fired) and the 2026-10-02 00:57 run (every SEAD jet that got there died to sites firing back at the pop-up). Retuned the same day (launch 55 km, pop-up 15 km before it, go cold on the last missile, attack altitude held): `bugs.md` 27, `closed.md` bug 28. The reach model behind it goes with roadmap item 12. As built: `plan.md`, *Packages*.
+
+**Built 2026-10-01, not flown yet** (`plan.md`, *Packages*, "The SEAD profile: under the radar"). John's calls on the open questions: 900 ft above the ground; one pop-up altitude, 10,000 ft (3,000 m, where the kill-zone model's low reach ends); every SEAD target (they are all medium / long range); strike and DEAD flights stay high; bug 20 fixed with it (the go-cold clock starts on arrival at the launch point); rolling back outside-in is its own step, after a run. Not tested in a DCS test mission first (John flies the full mission instead): watch whether the AI holds 900 ft over the Khibiny and the fells, and whether it pops up and fires at the launch point. Moves to `closed.md` once a run confirms it.
+
+**Goal:** SEAD flights that beat long-range SAMs the way a real pilot does: under the radar, then a short pop-up to fire, then gone. John (2026-10-01): "going in low and popping up to launch radiation missiles at a long range SAM is a really good defeat tactic … my instinct to go high was wrong, I forgot that SA-10s struggle to target when you are low."
+
+**Why now:** the 14:14 run (`event_logs\2026-10-01_141412.log`, `plan.md` *Last DCS runs*). Every SEAD flight ran in low by accident (~2,500–3,000 ft; the planned 30,000 ft run-in was never reached), and the result showed the tactic:
+- MSN2024_SEAD_AGAIN (2× F-16) ingressed at ~2,700 ft, popped up to 16–18k ft, fired 8 HARMs from 35–41 km and killed both Sodankylä SA-10 search radars. The SA-10 never fired.
+- The first MSN2024 flew the same profile and died before firing: the SA-10 saw the pop-up and fired at 43–49 km. The pop-up has to be short and the shots must come at once.
+- MSN5025 (2× Su-34) stayed at 3,000 ft and never fired at the Alakurtti IRIS-T (most likely no line of sight or no range at that altitude), then went cold.
+
+**Where it stood before the build** (`plan.md`, *Packages*): one SAM site per SEAD 2-ship; `suppressionRoute` flies around other threats to a launch point `launch_km` (40) from the site, the last `run_in_km` at 9,000 m and Mach 0.9; an `AttackGroup` with every anti-radiation missile at the launch point; the go-cold rule (`suppression`) turns it home. The launch point must be outside every other site's full ring.
+
+**The profile (John's, 2026-10-01):**
+1. **Takeoff and climb** to cruise, 16,000–25,000 ft (~5,000–7,500 m), in own airspace.
+2. **Descend to the low ingress** at the edge of the SAM ring: before the route enters the first enemy ring on the way in (+ a margin, so it is down before the radar can see it).
+3. **Low ingress** at ~900 ft above ground (John's default from flying it), fast.
+4. **Pop up to 8,000–12,000 ft** short of the launch point and **fire at ~40 km** (today's launch distance: it worked, and the AI doesn't dodge SAMs well, so not closer). All missiles in one salvo.
+5. **Back down low, afterburner, out cold**, the way it came, until out of the ring; then climb and cruise home.
+
+**How low the DCS AI can fly (advice; to verify in DCS before building):**
+- **Altitude above ground:** waypoints take `alt_type = "RADIO"` (above ground) instead of `"BARO"`. Today every waypoint is `BARO`, so a low leg at a fixed sea-level altitude would fly into rising ground.
+- **900 ft (~275 m) above ground is a sound default.** From community experience the AI flies 150–300 m above ground over flat and rolling terrain without trouble; lower than ~100 m it starts to hit trees, hills and power lines, and it doesn't really terrain-follow between waypoints, it flies toward the next one. Kola is mostly flat to rolling (lakes, tundra, taiga), with real high ground in the Khibiny (Apatity / Monchegorsk), the Lapland fells and the Norwegian coast. Not measured by us yet.
+- **Waypoints on the low leg every ~10–20 km**, so the AI re-reads the ground often. The planner can check ground height along the leg (`land.getHeight`) and keep the leg out of the high ground, or raise it there.
+- **Climbs and descents take distance:** the AI changes altitude gradually toward the next waypoint (the 14:14 run: ~2,700 ft reached ~28 km after takeoff, against a planned 9,000 m). So the descent waypoint goes well before the ring edge, and the pop-up point ~10–15 km before the launch point. The AI also starts its attack ~12 km before the attack waypoint, which goes with the pop-up.
+- **Afterburner out:** the option that allows it (`option 16 false`, as scrambles use) on the egress, and a dash speed on the egress waypoints.
+- **Reaction to threat:** today `evade fire`. Whether `bypass and escape` (the AI's own terrain masking) helps on the low leg is something to test.
+- **Fuel:** a long low leg at high speed burns much more; the planner's reach (`combat_radius_km`) should count the low part at a higher burn.
+
+**What it changes elsewhere:**
+- **Launch points:** a jet coming in low is only threatened by each other site's low-altitude reach (`lib/sam_reach.lua`: SA-10 40 km, Patriot 30, SA-11 25, NASAMS 14 …) rather than its full ring. The launch-point clearance test can use that reach for the low leg, and the pop-up zone needs only a short clear window. Many sites that today have no clear launch point (most of the "no suppression flight in reach" missions in the 14:14 run) would become attackable. Goes with rolling the defenses back outside-in (`plan.md` backlog, *SEAD follow-ups*).
+- **The go-cold rule:** "inside another site's kill zone" should use the flight's altitude (it already does, through `SamReach`); the timer starts when the flight reaches its launch point (bug 20).
+- **Human SEAD frags:** the same profile in the steerpoints (descent point, pop-up point, launch point) and the frag text.
+- **Red's SEAD** (Su-34 with Kh-31P) flies the same profile.
+
+**Testing:** in the luae harness first (the route: altitudes, `RADIO` legs, waypoint spacing, ground height on the low leg); then a DCS test of one F-16 2-ship and one Su-34 2-ship at 900 ft over flat ground and over the Khibiny, before a full run.
+
+**Open:**
+- 900 ft, or lower over flat ground if the test shows the AI holds it?
+- Pop-up altitude: one number (e.g. 10,000 ft), or by system (higher against a Patriot, lower against an SA-10)?
+- Does the low ingress apply to every SEAD target, or only medium and long-range SAMs (short-range SAMs are deadly down low)?
+- Do strike and DEAD flights behind the SEAD also come in low near the front, or stay high once the threat is down?
+
+---
+
+### 11. One controller: every run-time decision about what flights do, in one place
+
+**Closed 2026-10-02:** built 2026-10-01; ran cleanly in the 16:21, 20:31, 21:30 and 2026-10-02 00:57 runs (the first `retry` came in the 00:57 run). As built: `plan.md`, *The controller*.
+
+**Built 2026-10-01; ran cleanly in the 16:21, 20:31 and 21:30 runs** (`watching`, `no scramble`, `cancel: not needed`, the first `defend`), though `wait`, `retry` and `launch late` haven't come up in a run yet (`plan.md`, *The controller*): `decide_launches.lua` (launches in sequence, waits, retries, cancels, late launches, the airborne cap), `scramble_fighters.lua` and `track_alert_jets.lua` in `consumers/control_air_flights/`; the scheduler keeps the clock and the record and asks the controller (`ControlAirFlights.due`); `consumers/run_scrambles.lua` is gone; every decision is a `CONTROL` line. Same decisions as before on the same inputs (harness), plus the new `watching`, `leave threat` and `launch late` lines. Moves to `closed.md` once a run confirms it.
+
+**Goal:** all the logic that decides at run time what AI flights do, and which directives they get, lives under the controller (`consumers/control_air_flights/`), so it isn't spread over several modules that each do part of a controller's job. John (2026-10-01, 16:21 run, after the `NO_SCRAMBLE … covered by patrol MSN2016_CAP` decision turned out to live in the scramble module): "we should move all of the logic about what flights are supposed to do and what directives they receive under the controller now … so we don't have code all over the place that serves that function."
+
+**The line to draw:**
+- **Planning** (stages, before anything spawns) stays where it is: which missions, targets, routes, packages, patrol stations and alert bases are planned (`stages/plan_air_tasking.lua`, `planAlertPosture` included). The plan is what the controller works from.
+- **Sensing** stays where it is: the radar picture (`consumers/track_radar_picture.lua`) is what the controller knows.
+- **Execution** stays where it is: spawning a group (`consumers/spawn_aircraft_groups.lua`), the mission clock and the record of each flight (spawned, landed, lost, target progress, `statusOf`) in the scheduler, the event log.
+- **Every run-time decision about flights moves to the controller:** whether a flight launches now, waits, flies again or is cancelled; whether to scramble, from where, at what; what a flight in the air is told to do.
+
+**What did a controller's job outside the controller (before the move, 2026-10-01):**
+| Decision | Where it is now | Event words |
+|---|---|---|
+| Scramble or not (trigger: inbound for two rounds, time to threat), refusals (covered by a patrol, under enemy SAM cover, no way there), the raid, the base pick (in time, in reach, facing region), the intercept point | `consumers/run_scrambles.lua` (`check`, `scramble`, `pickBase`, `raidOf`, `coveringPatrol`, `interceptPoint`, `refuse`) | `SCRAMBLE`, `NO_SCRAMBLE` |
+| Stood down before launch (the raid is gone during the reaction delay) | `consumers/run_scrambles.lua` (`launch`) | `STOOD_DOWN` |
+| Alert jets: ready, cooldown, back on alert after landing or a ramp stand-down | `consumers/run_scrambles.lua` (`readyJets`, landing handler, `stoodDown`) | `ALERT` |
+| A mission launches only once its threats are out of the fight; waits for its suppression flight; the suppression flight flies again; cancelled; a suppression flight not needed; launched late when there is room under the cap | `consumers/schedule_air_tasking_orders.lua` (`launch`, `threatCleared`, `openThreats`, `roomFor`, `later`) | `DELAYED`, `RETRY`, `CANCELLED` |
+| The airborne cap at run time (AI aircraft in the air per coalition) | `consumers/run_scrambles.lua` (`airborneAircraft`), the scheduler's `roomFor` | — |
+
+**Approach (proposed, to settle with John):**
+- **The scheduler keeps the clock, asks the controller.** When a flight is due, the scheduler asks the controller "launch, wait (until when), fly again, or cancel?" and does what it says (spawn, reschedule, record). The packages-in-sequence rules move into the controller as a launch decision (e.g. `control_air_flights/decide_launches.lua`).
+- **Scrambles become a controller job** (e.g. `control_air_flights/scramble_fighters.lua`): the trigger, refusals, raid, base pick and intercept point, in the same pattern as the rest, with the scramble's leash already there. "Scramble, or leave it to the patrol" sits next to the patrols' own directives once those come.
+- **Alert jets** (ready / cooldown / turnaround, the reserved spots) are the state of an asset the controller spends, like the airborne cap: kept in one small state module the controller reads and updates, not decided in it.
+- **One cap check** for planned launches and scrambles alike.
+- **Behaviour stays the same:** a move, not a redesign. The event words and lines stay as they are, so runs before and after compare one for one; the harness checks the same decisions come out on the same inputs.
+- **Then** new controller jobs from item 4 (abort a defenceless flight, landing order, patrol handover and merge break-off, hunting an enemy patrol) all land in one place.
+
+**Decided (John, 2026-10-01):**
+- **One event word, `CONTROL`,** for every controller decision, with the decision named at the start of the text, so `grep CONTROL` shows what that layer is doing, in order (e.g. `CONTROL MSN5023_OCA no scramble: covered by patrol MSN2016_CAP`, `CONTROL MSN2023_STRIKE defend: engaging …`, `CONTROL MSN2027_OCA retry: …`). Replaces `LEASH`, `SUPPRESSION`, `DEFEND`, `SCRAMBLE`, `NO_SCRAMBLE`, `STOOD_DOWN`, `ALERT`, `DELAYED`, `RETRY`, `CANCELLED`; update the grep table in `plan.md`. With it, from the event-log idea of the same day: a line when a flight is first watched (its directives), and a line when coordination leaves a threat to another flight.
+- **Later, the controller can send a patrol anywhere** (not only within its station's circles): after a raid instead of a scramble, to hunt an enemy patrol, to cover a package.
+
+- **Alert jets:** their state moves to `consumers/control_air_flights/track_alert_jets.lua`, bookkeeping only (jets ready per base, turnaround and cooldown, which scramble came from which base, held spots, back on alert after landing or a ramp stand-down), no decisions; the controller asks it which bases have a jet ready and tells it when a jet launches, lands or is stood down.
+- **`consumers/run_scrambles.lua` goes away** (John: in the new design it no longer runs scrambles): its decisions move into the controller, its alert-jet state into `track_alert_jets.lua`.
+
+---
+
 ## Bugs
 
 Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: what was built). Moved 2026-10-01; fixed in session 12 and not all confirmed in a DCS run yet.
@@ -544,6 +689,24 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 
 ---
 
+### Bug 21. Red flight numbers: MSN7xxx instead of MSN5xxx
+
+**Status:** done 2026-10-02. `stages/plan_air_tasking.lua`: `FIRST_NUMBER.red` 5001 → 7001 (scrambles follow at 7901); the example comments in the controller, scramble, alert-jet, sleep and event-log modules now use 7xxx; comments citing real flights from past runs keep their 5xxx numbers. A re-plan of the 2026-10-02 roll gave MSN7001_AEW, MSN7023_STRIKE … and scrambles from 7901. `plan.md` *Naming and ids* updated.
+
+**Was:** open, change requested (John, 2026-10-01).
+
+**Now:** Blue flights are `MSN2001+` (scrambles `MSN2901+`), Red flights `MSN5001+` (scrambles `MSN5901+`).
+
+**Change:** Red flights `MSN7001+`, Red scrambles `MSN7901+`; Blue unchanged. Packages follow their mission's number (`PKG7023`).
+
+**Where:**
+- `stages/plan_air_tasking.lua`: `FIRST_NUMBER = { blue = 2001, red = 5001 }` → `red = 7001` (scrambles are `first_number + 900`, so 7901 follows), and the comment above it (line ~119).
+- Comments and examples naming 5xxx flights: `consumers/control_air_flights/scramble_fighters.lua` (header: "Blue 2901+, Red 5901+"), `consumers/control_air_flights/control_air_flights.lua`, `consumers/write_event_log.lua`, `data/air_tasking.lua`.
+- `plan.md` *Naming and ids* (Flight row: "Red 5001+ (scrambles … 5901+)") and the event-log examples.
+- Old event logs and the docs' run notes keep their 5xxx numbers (history).
+
+---
+
 ### Bug 24. The player appears under two names in the event log
 
 **Status:** fixed 2026-10-02 by John in the Mission Editor (found 2026-10-01, 22:23 run).
@@ -579,3 +742,25 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 - `consumers/spawn_aircraft_groups.lua`: every AI unit gets its own STN (`AddPropAircraft.STN_L16`, octal from 01000; the player slots use 00201–00211), and every spawned flight gets `setCommand({ id = "EPLRS", value = true, groupId })` at once (scrambles and `_AGAIN` copies go through the same spawner).
 - `consumers/spawn_ground_groups.lua`: `run(entries, label, { show_on_mfd = set })` spawns those groups with `hiddenOnMFD = false`; `init.lua` passes every medium and long-range SAM site (not escorts, not short-range or early warning). A forum report (since the 12 May 2026 update) says the HSD shows about 16 threats at most; Red fields ~11 such sites per roll. Fits the fog-of-war rule's "confirmed" strategic SAMs.
 - Also found: the slot templates' unit names (bug 24).
+
+---
+
+### Bug 28. Attack tasks carried no altitude: the AI flew its attack low
+
+**Status:** fixed 2026-10-02, not flown.
+
+**Seen:** `event_logs\2026-10-02_005718.log`; grep `MSN2027_STRIKE`. 2× F/A-18C from Kittilä on `TGT_SODA_airfield_fuel_storage_1`, every waypoint planned at 7,000–7,500 m, flew the whole way at 2,400–3,600 ft and dropped GBU-31s from 3,585 ft; the Sodankylä SA-8 shot both down. MSN5024_SEAD fired from ~3,400 ft (pop-up planned at 3,000 m). MSN2026_SEAD_AGAIN reached its launch point at 2,600 ft (planned 3,000 m).
+
+**Cause:** two DCS AI behaviours. (1) Every `Bombing` / `AttackGroup` task was sent with `altitudeEnabled = false`, so once the attack starts the AI picks its own altitude. (2) The lead holds low and slow until its wingman has taken off and joined (MSN2027's wingman took off 2.5 min after the lead; MSN2024's 4 min, its lead circled at ~2,000 ft for 8 min). On a short route the attack starts before the climb ever happens.
+
+**Fix:** `consumers/spawn_aircraft_groups.lua`: `Bombing`, `AttackGroup` and the SEAD salvo carry the route's target-waypoint altitude (`altitudeEnabled = true`), so the AI attacks from the planned altitude. Watch `SHOT … from <ft>` on bombs and anti-radiation missiles. The wingman delay is DCS's (John: taxi times are DCS).
+
+---
+
+### Bug 30. The bandit call dropped a fighter that had just fired, because the picture didn't hold it
+
+**Status:** fixed 2026-10-02, not flown.
+
+**Seen:** `event_logs\2026-10-02_005718.log`; grep `MSN5024_SEAD`. At 04:12:35 MSN5024 called `defend` on the F-15C patrol MSN2009_CAP that had just fired at it (24 km); 4 s later "back on way home: MSN2009_CAP lost from the radar picture": Red's picture never held the F-15C, only the shot gave it away. It engaged again only at 9 km, 30 s later (the re-engage hold). The surviving Su-34 still killed the F-15C with an R-77 as it died.
+
+**Fix:** `directives_per_flight.lua` (`self_defence`): a bandit that fired at the flight within `shot_memory_s` (30 s) stays the fight whether the picture holds it or not.

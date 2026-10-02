@@ -116,14 +116,14 @@
 --   the attack tasks go on the waypoint with carries_attack_tasks
 --   times are mission time in seconds (timer.getTime())
 -- Ids: MSN<number>_<mission type's group_name_tag> (MSN2002_CAP), the DCS group name; Blue
--- numbers from 2001, Red from 5001 (plan.md "Naming and ids"); scrambles, spawned at run
--- time, from 2901 / 5901 (MSN2901_SCRAM). Units are <id>_<n>. A package
+-- numbers from 2001, Red from 7001 (plan.md "Naming and ids"; Red was 5001 until 2026-10-02, bug 21); scrambles, spawned at run
+-- time, from 2901 / 7901 (MSN2901_SCRAM). Units are <id>_<n>. A package
 -- is PKG<number of the mission it escorts>; a station CAP_<CODE>_<kind>_<n> / AEW_<CODE>_1.
 
 PlanAirTasking = {}
 
 local COALITIONS     = { "red", "blue" }
-local FIRST_NUMBER   = { blue = 2001, red = 5001 }
+local FIRST_NUMBER   = { blue = 2001, red = 7001 }
 local ATTACKS        = { bomb_critical_objects = true, attack_group = true, engage_group = true, engage_in_zone = true,
                          harm_salvo = true,
                          engage_aircraft_on_station = true, early_warning_on_station = true, intercept = true }

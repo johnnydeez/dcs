@@ -1,0 +1,13 @@
+# Line endings: LF in the repository and in the working tree, on every machine,
+# whatever core.autocrlf says (Git for Windows defaults it to true, which converted
+# files to CRLF on checkout while tools and editors wrote LF: a mixed tree and an
+# "LF will be replaced by CRLF" warning on every add). DCS Lua, Python and Markdown
+# are all fine with LF.
+* text=auto eol=lf
+
+# Windows batch files stay CRLF (cmd.exe can misread labels and lines in LF files)
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Mission files are zip archives
+*.miz binary
