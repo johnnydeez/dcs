@@ -91,6 +91,7 @@ if not load("consumers\\sleep_ground_units.lua")  then return end
 if not load("consumers\\draw_air_tasking_orders.lua") then return end
 if not load("consumers\\brief_air_tasking.lua")   then return end
 if not load("consumers\\call_air_picture.lua")    then return end
+if not load("consumers\\create_airfields_brief.lua") then return end
 if CONFIG.SURVEY_FOOTPRINTS and not load("survey\\survey_airbase_footprints.lua") then return end
 if CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN and not load("survey\\probe_parked_aircraft_spawn.lua") then return end
 
@@ -182,10 +183,14 @@ local function run()
     -- keeps every unit awake
     SleepGroundUnits.start(plan)
     DrawAirTaskingOrders.apply(plan)
-    BriefAirTasking.start(plan)   -- F10: the human taskings and the air tasking order
-    -- every 60 s each player gets their coalition's radar picture as a BRAA list from
-    -- their own position, highest threat first (event log: PICTURE_CALL)
+    -- every 2 min each player gets their coalition's radar picture as a BRAA list from
+    -- their own position, highest threat first (event log: PICTURE_CALL). Before the
+    -- airfield brief, which reads the magnetic variation it loads.
     CallAirPicture.start(plan)
+    -- comms menu, top first: Airfield info (every Blue base: wind, runway in use, next
+    -- flights, alert jets), then the human taskings and the air tasking order
+    CreateAirfieldsBrief.start(plan)
+    BriefAirTasking.start(plan)
     -- the build summary goes to dcs.log; the screen shows only the weather and the human
     -- taskings (John, session 10)
     local text = Territory.summaryText(plan) .. "\n" .. DrawAirspace.summaryText(plan)

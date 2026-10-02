@@ -71,6 +71,16 @@ function TrackAlertJets.jetsText(c, base, now)
     return text
 end
 
+-- Alert base `base` now: jets ready, jets turning around, and seconds until the first of
+-- those is back on alert (nil when none is). nil when it isn't an alert base.
+function TrackAlertJets.ready(c, base, now)
+    local s = jets(c, base)
+    if not s then return nil end
+    local soonest
+    for _, t in ipairs(s.returning) do soonest = math.min(soonest or t, t) end
+    return readyJets(s, now), #s.returning, soonest and soonest - now
+end
+
 -- A free ramp spot for an alert jet at alert base b (a posture entry): one of the spots
 -- the plan holds for its alert jets (b.spots, nearest the runway first) that DCS reports
 -- free now and no other scramble is spawning on. { terminal_index, x, z } or nil.

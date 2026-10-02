@@ -94,7 +94,7 @@
 - **2026-10-02, 10:38 run** (`event_logs\2026-10-02_103843.log`, ~9 min, John at Rovaniemi; an HSD check, with the SEAD retune in but no SEAD flown yet): **threat rings and friendly datalink contacts showed on the HSD** (bug 25 fixed: the editor's EPLRS-on-waypoint-1 recipe, Red SAMs as Russia, slots as CJTF Blue; `closed.md`). The player still logs under two names: unit `f16_human_1_3` (`PLAYER_IN`, `TAKEOFF`, `POSITION`) and group `f16_rovaniemi` (`PICTURE_CALL`, and in longer runs the radar picture and `CONTROL` lines). John is renaming each slot's pilot to start with its group name (`f16_rovaniemi_1`), so grepping the group name finds both; check it in the next log, then note it under bug 24 in `closed.md`. "New callsign" in `PLAYER_IN` is John's DCS Logbook pilot name, not the mission's.
 
 **Next (2026-10-02 evening, for the next session):** SEAD changes are done for today (John). Built after the 17:48 run, not flown: the first-ping attack from the pop-up top (Red's Kh-31Ps from altitude) and bug 41 (airfield Tors / Pantsirs in the controller's kill zones).
-1. **John flies Kola again.** Check: Red's `SHOT` lines from the pop-up top at ~8,000 ft, and whether any Kh-31P gets through; `CONTROL.*press on`, `salvo over`, `no shot`; `RADAR_WARNING` (a snapshot: "not seen" at the launch point is normal before the site's radar is on the flight); `breaking off`, `go cold` or `leash home` naming a `DEF_` group (bug 41); a SEAD flight against a base Tor or Pantsir firing at all (none has yet: bug 29's retry fired nothing from 40 km); fewer SEAD jets lost in fights.
+1. **John flies Kola again.** Also new since (2026-10-02, session 17, not flown): **Airfield info** in the comms menu (roadmap item 13; *Brief*): check the runway in use against ATC and the AI's takeoffs, the runway numbers against the charts, and the next out / next in lines against the air tasking order. Check: Red's `SHOT` lines from the pop-up top at ~8,000 ft, and whether any Kh-31P gets through; `CONTROL.*press on`, `salvo over`, `no shot`; `RADAR_WARNING` (a snapshot: "not seen" at the launch point is normal before the site's radar is on the flight); `breaking off`, `go cold` or `leash home` naming a `DEF_` group (bug 41); a SEAD flight against a base Tor or Pantsir firing at all (none has yet: bug 29's retry fired nothing from 40 km); fewer SEAD jets lost in fights.
 2. **Docs, John's call:** bugs 38 (AWACS from takeoff, confirmed) and 40 (pop-up top, salvo, confirmed) to `closed.md`; roadmap item 12 to `closed.md` (the rotation, the site table and the outside-in order have flown in five runs).
 3. **Open SEAD bugs:** 35 (an immediate retry into the site that just shot the first flight down; parked by John), 39's second half (a flight that fought past its launch point isn't sent back for its shot), 36's open question (the 17:15 run suggests the AI does see SA-10s on its warning receivers; close it if the next run agrees).
 4. Then the rest of roadmap item 4 (AI behaviour logic).
@@ -896,6 +896,19 @@ Built 2026-10-01 (the performance-in-VR item, now in `closed.md`); run once in 2
   Every frag and steerpoint list also goes to `dcs.log` (`HUMAN TASKING`).
 - **Steerpoints** (2026-10-01, bugs 10 and 11): the route out to `TGT` (or `CAP B`), then `LAND`; no egress or way home. `TGT` and each aim point (`AIM 1`, `AIM 2`, …) give the spot on the ground with its elevation, for fire-and-forget weapons; route points give the flight altitude.
 - **Static kills** (2026-10-01, bug 9): a player who destroys a static object the mission spawned gets a 15 s popup (DCS's kill list doesn't show static objects), with the human tasking's critical progress and "target destroyed: success" when its target is reached. Credited through the weapon if the player is gone by impact.
+- **Airfield info** (`consumers/create_airfields_brief.lua`, roadmap item 13, built 2026-10-02, not flown): `Airfield info > <base>` for every Blue base, alphabetical by DCS name, paged by name range ("Alta–Evenes"); at the top of the comms menu, above `Human taskings`. Each text is built when it's opened:
+  ```
+  BANAK (BANA): Blue, mid, dispersal field, elevation 394 ft
+  Wind 020° 11 kt → runway 34 in use (headwind 9 kt, crosswind 7 kt from the right)
+  Runway 16/34, 2,462 m (8,077 ft)
+  Next out: 04:12 MSN2016 CAP, 1x F-16C_50 (planned)
+  Next in:  10:36 MSN2001 AWACS, 1x E-3A (airborne)
+  Alert: 2 of 3 jets ready, 1 turning around (next in 12 min)
+  ```
+  - **Wind:** `atmosphere.getWind` 10 m above the field (the start text's ground wind if that fails), magnetic, the direction it blows from. Under 3 kt: "calm → either runway".
+  - **Runway in use:** the runway end with the most headwind (the longer runway on a tie). DCS has no call that says which runway its ATC uses, so this is our pick from the wind. Runway numbers come from the runway's grid heading (`gather.lua`), turned to true (grid convergence from `coord.LOtoLL`) and then magnetic with the air picture's variation (`CallAirPicture.magneticVariation`, so `CallAirPicture.start` runs before the menus).
+  - **Next out:** the AI flight from this base with the earliest takeoff that hasn't taken off (planned, delayed, or spawned with no jet in the air: "on the ramp"); its time is its takeoff time. **Next in:** the AI flight in the air whose planned landing here is soonest; its time is that planned landing. `_AGAIN` copies count ("MSN2025 again"); cancelled, not needed, stood down and down flights don't; human flights and scrambles aren't listed. The state is the air tasking order's (`statusOf`).
+  - **Alert:** `TrackAlertJets.ready`: jets ready of the base's `alert_aircraft`, and jets turning around; "not an alert base" otherwise.
 - **Not built yet:** tanker and AWACS frequencies and callsigns, threat fidelity (every SAM ring is listed as known; see *Design*), fuel, ROE, in-flight updates.
 - **Warnings stay off screen** (`CONFIG.WARNINGS_ON_SCREEN = false`); errors still show.
 
@@ -1125,6 +1138,7 @@ kola_f16\
       track_alert_jets.lua       --   the alert jets: ready, cooldown, back on alert (bookkeeping only)
     sleep_ground_units.lua       -- short-reach base defenses asleep (AI off) until an enemy aircraft is near
     brief_air_tasking.lua        -- start text + comms menu
+    create_airfields_brief.lua   -- comms menu Airfield info: every Blue base's wind, runway in use, next flights, alert jets
     call_air_picture.lua         -- every 2 min the radar picture to each player: BRAA from them, highest threat first
     draw_airspace.lua  draw_base_defenses.lua  draw_sam_sites.lua  draw_fixed_ground_targets.lua
     draw_convoys.lua  draw_air_tasking_orders.lua    -- F10 map marks (all ToAll(-1) until fog of war)

@@ -6,7 +6,7 @@ What's coming after session 10 (2026-09-30), when the mission became playable by
 
 Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means Red unless it says otherwise.
 
-**Order (John, 2026-09-30; items 10–12 added 2026-10-01; item 5 pulled forward and built 2026-10-02):** ~~radar functions → scrambles → event log~~ → ~~performance in VR~~ (done for now, 2026-10-01) (all in `closed.md`) → ~~every run-time flight decision under the controller (item 11)~~ → ~~SEAD ingress doctrine (item 10)~~ (both in `closed.md`) → **SEAD against the air defenses: a standing rotation, rolling them back outside-in (item 12, top priority; designed 2026-10-01, reworked with John and built 2026-10-02, to fly)** → AI behaviour logic (item 4, the controller's further directives) → ~~AWACS calls (text)~~ (item 5, in `closed.md`) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war. CAP visibility (making patrol routes and times easy to see) was cut on 2026-09-30: John can see the dotted station lines on the map fine for now. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Four optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, and the threat picture on the map for players (after fog of war).
+**Order (John, 2026-09-30; items 10–12 added 2026-10-01; item 5 pulled forward and built 2026-10-02; item 13, airfield info, added and built 2026-10-02 outside the order):** ~~radar functions → scrambles → event log~~ → ~~performance in VR~~ (done for now, 2026-10-01) (all in `closed.md`) → ~~every run-time flight decision under the controller (item 11)~~ → ~~SEAD ingress doctrine (item 10)~~ (both in `closed.md`) → **SEAD against the air defenses: a standing rotation, rolling them back outside-in (item 12, top priority; designed 2026-10-01, reworked with John and built 2026-10-02, to fly)** → AI behaviour logic (item 4, the controller's further directives) → ~~AWACS calls (text)~~ (item 5, in `closed.md`) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war. CAP visibility (making patrol routes and times easy to see) was cut on 2026-09-30: John can see the dotted station lines on the map fine for now. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Four optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, and the threat picture on the map for players (after fog of war).
 
 ---
 
@@ -69,6 +69,25 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 - `plan.md` *Packages* gets the as-built notes; the summary line counts SEAD flights (rotation and extra), how deep the order went, and sites not attacked.
 
 **Testing:** the luae harness on the 21:30, 22:23 and 00:57 plans (`kola_last_plan.lua` replays), six seeds each: SEAD flights per coalition, how deep the order reached, which Kola-core sites stay unattacked and why; the rotation's coverage (minutes with no SEAD flight up); peaks under the cap. The controller harness: a flight behind an inner site waiting, its blocker retried as `_AGAIN`, a cancel chaining down, a cancelled rotation flight pulling the next one forward. Then a DCS run.
+
+---
+
+## 13. Airfield info in the comms menu (John, 2026-10-02)
+
+**Status:** built 2026-10-02 (session 17), harness-tested on the last plan dump, copied to DCS, not flown. As-built notes: `plan.md`, *Brief*. Moves to `closed.md` once a run confirms it.
+
+**Goal:** a player can land and turn around at any Blue base, not only the one they spawned at, so each Blue base gets a short brief: `Airfield info > <base>`.
+
+**Decided with John:**
+- every Blue base, alphabetical by DCS name; Blue only;
+- one text per base: header (code, echelon, class, elevation), wind and the runway in use (headwind and crosswind), each runway's numbers and length, the next AI takeoff and the next AI landing (one each, with the flight's live state, a line left out if none), one alert line ("2 of 3 jets ready");
+- no TACAN, ILS or frequencies for now (they'd need a data file from the Kola terrain's beacon and radio files);
+- the file is `consumers/create_airfields_brief.lua`.
+
+**To check in the first run:**
+- whether our runway in use matches DCS ATC's and the AI's takeoffs;
+- whether the runway numbers match the airfield charts / F-16's;
+- whether the wind matches the start text and ATC.
 
 ---
 
