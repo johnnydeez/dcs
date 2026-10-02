@@ -53,7 +53,8 @@ if not load("data\\aircraft_loadouts.lua")        then return end
 if not load("data\\air_tasking.lua")              then return end
 if not load("data\\airspace.lua")                 then return end
 if not load("data\\radar_picture.lua")            then return end
-if not load("data\\air_behaviour_rules.lua")      then return end
+if not load("data\\air_picture_calls.lua")        then return end
+if not load("data\\air_control.lua")              then return end
 if not load("data\\event_log.lua")                then return end
 if not load("data\\ground_unit_sleep.lua")        then return end
 if not load("gather.lua")                  then return end
@@ -78,11 +79,18 @@ if not load("consumers\\spawn_aircraft_groups.lua") then return end
 if not load("consumers\\preload_aircraft_types.lua") then return end
 if not load("consumers\\schedule_air_tasking_orders.lua") then return end
 if not load("consumers\\track_radar_picture.lua") then return end
-if not load("consumers\\enforce_air_behaviour_rules.lua") then return end
-if not load("consumers\\run_scrambles.lua")      then return end
+if not load("consumers\\control_air_flights\\assess_flight_situations.lua") then return end
+if not load("consumers\\control_air_flights\\directives_per_flight.lua")    then return end
+if not load("consumers\\control_air_flights\\coordinate_flights.lua")       then return end
+if not load("consumers\\control_air_flights\\give_orders.lua")              then return end
+if not load("consumers\\control_air_flights\\track_alert_jets.lua")         then return end
+if not load("consumers\\control_air_flights\\decide_launches.lua")          then return end
+if not load("consumers\\control_air_flights\\scramble_fighters.lua")        then return end
+if not load("consumers\\control_air_flights\\control_air_flights.lua")      then return end
 if not load("consumers\\sleep_ground_units.lua")  then return end
 if not load("consumers\\draw_air_tasking_orders.lua") then return end
 if not load("consumers\\brief_air_tasking.lua")   then return end
+if not load("consumers\\call_air_picture.lua")    then return end
 if CONFIG.SURVEY_FOOTPRINTS and not load("survey\\survey_airbase_footprints.lua") then return end
 if CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN and not load("survey\\probe_parked_aircraft_spawn.lua") then return end
 
@@ -133,7 +141,19 @@ local function run()
     -- (2026-09-24). New stages that spawn static objects add them here, above the groups.
     SpawnStaticObjects.run(plan.fixed_ground_targets.static_objects, "fixed ground target objects")
     SpawnGroundGroups.run(plan.base_defenses.groups, "base defenses")
-    SpawnGroundGroups.run(plan.sam_sites.groups, "SAM sites")
+    -- medium and long-range SAM sites (not their escorts) show their threat ring on the
+    -- F-16's HSD; the HSD takes ~16 threats, Red fields ~11 such sites (2026-10-02)
+    -- Red's SAM sites (every group, escorts too) spawn as Russia, not CJTF Red: the
+    -- Caucasus test SA-11 whose ring showed was Russia (bug 25, 2026-10-02; every Red
+    -- system is Russian-made)
+    local samsOnMfd, samCountry = {}, {}
+    for _, s in ipairs(plan.sam_sites.sites or {}) do
+        if s.layer == "medium_range" or s.layer == "long_range" then samsOnMfd[s.id] = true end
+        if s.side == "red" then
+            for _, gid in ipairs(s.group_ids or { s.id }) do samCountry[gid] = "RUSSIA" end
+        end
+    end
+    SpawnGroundGroups.run(plan.sam_sites.groups, "SAM sites", { show_on_mfd = samsOnMfd, country = samCountry })
     SpawnGroundGroups.run(plan.fixed_ground_targets.groups, "fixed ground target units")
     SpawnGroundGroups.run(plan.convoys.groups, "convoys")
     DrawBaseDefenses.apply(plan)
@@ -147,22 +167,25 @@ local function run()
     -- DCS events to the event log from here on: after the preload (its spawns aren't part
     -- of the story), before the first flight spawns
     WriteEventLog.start()
-    -- aircraft spawn later, each at its planned start time
+    -- the mission clock: each planned flight is due at its start time, and the controller
+    -- decides then whether it launches
     ScheduleAirTaskingOrders.start(plan)
     -- each coalition's radar picture: what its radars report, kept as the mission runs
-    -- (event log: CONTACT, PICTURE). Before the behaviour rules and scrambles, which run on it.
+    -- (event log: CONTACT, PICTURE). Before the controller, which runs on it.
     TrackRadarPicture.start(plan)
-    -- the rules enforced on AI flights after launch: the scramble leash (event log: LEASH)
-    EnforceAirBehaviourRules.start(plan)
-    -- scrambles at raids the radar picture shows (event log: SCRAMBLE); nothing launches
-    -- unless AIR_DEFENSE.alert_posture_planned planned alert bases
-    RunScrambles.start(plan)
+    -- the controller: every run-time decision about AI flights — launches in sequence,
+    -- scrambles (nothing scrambles unless AIR_DEFENSE.alert_posture_planned planned alert
+    -- bases), the leash, SEAD going cold, attack flights defending themselves (event log: CONTROL)
+    ControlAirFlights.start(plan)
     -- base defenses that reach under ~10 km sleep (AI off) until an enemy aircraft is near
     -- their base (event log: UNIT_AWAKE, UNIT_ASLEEP); CONFIG.SLEEP_GROUND_UNITS = false
     -- keeps every unit awake
     SleepGroundUnits.start(plan)
     DrawAirTaskingOrders.apply(plan)
     BriefAirTasking.start(plan)   -- F10: the human taskings and the air tasking order
+    -- every 60 s each player gets their coalition's radar picture as a BRAA list from
+    -- their own position, highest threat first (event log: PICTURE_CALL)
+    CallAirPicture.start(plan)
     -- the build summary goes to dcs.log; the screen shows only the weather and the human
     -- taskings (John, session 10)
     local text = Territory.summaryText(plan) .. "\n" .. DrawAirspace.summaryText(plan)

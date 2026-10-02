@@ -1,25 +1,16 @@
--- Consumer: runs the air tasking orders on the mission clock. Each planned flight is
--- spawned by SpawnAircraftGroups at its start_s (mission time); a start already past is
--- spawned a second from now. Aircraft of planned flights are removed a few minutes after
--- they land, freeing their parking spots and the alive-aircraft budget (the Syria
--- S_EVENT_LAND pattern).
--- AI packages fly in sequence (plan: requires_cleared, cleared_by; John, 2026-10-01): a
--- mission that needs its route's threats out of the fight launches only once they are
--- (a SAM site's radars destroyed to its success fraction, a base-defense group with no
--- live unit). If they aren't when it's due: while one of its suppression flights is still
--- in the air it waits for it; otherwise those suppression flights fly once more (a copy,
--- id <id>_AGAIN; a player's SEAD tasking is flown again by two AI jets) and the mission
--- waits for them to land; if that fails too, it is cancelled. A suppression flight whose threats are already out of the fight isn't sent.
--- A mission launched late waits for room under the airborne cap.
+-- Consumer: runs the air tasking orders on the mission clock, and keeps the record of each
+-- flight. When a planned flight is due (at its start_s, mission time; a start already past
+-- is due a second from now) the scheduler asks the controller (ControlAirFlights.due,
+-- consumers/control_air_flights/decide_launches.lua) and carries out what it decides:
+-- launch now, look again later, fly a suppression flight again, or nothing (cancelled).
+-- The decisions are the controller's (roadmap.md item 11); this keeps the clock, spawns,
+-- and records (John, 2026-10-01).
+-- Aircraft of planned flights are removed a few minutes after they land, freeing their
+-- parking spots and the alive-aircraft budget (the Syria S_EVENT_LAND pattern).
 -- What the flights did (shots, kills, losses, landings, positions) goes to the event
 -- log (consumers/write_event_log.lua), which catches the DCS events for every unit; this
--- adds each mission's target progress and its launch decisions:
+-- adds each mission's target progress:
 --   "TARGET     MSN2001_STRIKE  TGT_IVAL_command_post_1_static_2 destroyed: 3 of 6 critical"
---   "DELAYED    MSN2031_STRIKE  waiting for MSN2030_SEAD, still in the air; looking again at 10:42"
---   "RETRY      MSN2031_STRIKE  SAM_KOSH_SA10_1 still in the fight: MSN2030_SEAD flies again as
---                               MSN2030_SEAD_AGAIN; the strike waits until 11:25"
---   "CANCELLED  MSN2031_STRIKE  SAM_KOSH_SA10_1 still in the fight after a second suppression flight"
---   "CANCELLED  MSN2030_SEAD    not needed: SAM_KOSH_SA10_1 is already out of the fight"
 -- Reads the plan; writes nothing back to it. What has launched, landed and been
 -- destroyed is runtime state, kept here under the plan's mission ids.
 
@@ -28,9 +19,8 @@ ScheduleAirTaskingOrders = {}
 local REMOVE_AFTER_LANDING_S = 180
 
 local _plan
-local _catalog = {}   -- catalog target id → target
 local _byId = {}      -- mission id → planned mission
-local _flights = {}   -- mission id → { mission, spawned, destroyed = n }
+local _flights = {}   -- mission id → { mission, spawned, destroyed = n, lost, landed, again, note, stood_down }
 local _targets = {}   -- critical object name → mission id
 local _gone    = {}   -- names already counted destroyed or lost
 
@@ -96,66 +86,7 @@ function handler:onEvent(e)
     end
 end
 
--- ── launching in sequence ───────────────────────────────────────
-
-local SIDE = { red = 1, blue = 2 }
-
-local function liveUnit(name)
-    local o = Unit.getByName(name) or StaticObject.getByName(name)
-    local ok, live = pcall(function() return o and o:isExist() and o:getLife() >= 1 end)
-    return ok and live == true
-end
-
-local function liveGroup(name)
-    local g = Group.getByName(name)
-    local ok, live = pcall(function()
-        if not (g and g:isExist()) then return false end
-        for _, u in ipairs(g:getUnits() or {}) do
-            if u:isExist() and u:getLife() > 0 then return true end
-        end
-        return false
-    end)
-    return ok and live == true
-end
-
--- Whether a threat is out of the fight: a SAM site (a catalog target) whose critical
--- objects (its radars) are destroyed to its success fraction; a group (a base-defense
--- radar missile launcher) with no live unit.
-local function threatCleared(id)
-    local t = _catalog[id]
-    if t and t.critical_names and #t.critical_names > 0 then
-        local dead = 0
-        for _, name in ipairs(t.critical_names) do
-            if _gone[name] or not liveUnit(name) then dead = dead + 1 end
-        end
-        local frac = t.success and t.success.critical_fraction or 1
-        return dead >= math.max(1, math.ceil(frac * #t.critical_names - 1e-9))
-    end
-    return not liveGroup(id)
-end
-
-local function openThreats(ids)
-    local open = {}
-    for _, id in ipairs(ids or {}) do
-        if not threatCleared(id) then open[#open + 1] = id end
-    end
-    return open
-end
-
--- The coalition's AI aircraft in the air (players don't count), against what planned
--- flights may fill of the cap (the rest is the scrambles').
-local function roomFor(m)
-    local n = 0
-    for _, g in ipairs(coalition.getGroups(SIDE[m.coalition], Group.Category.AIRPLANE) or {}) do
-        for _, u in ipairs(g:getUnits() or {}) do
-            local ok, air = pcall(function() return u:inAir() and not u:getPlayerName() end)
-            if ok and air then n = n + 1 end
-        end
-    end
-    local cap = AIR_TASKING_PER_COALITION[m.coalition].max_airborne_aircraft
-    if AIR_DEFENSE.planned and AIR_DEFENSE.alert_posture_planned then cap = cap - AIR_DEFENSE.scramble_reserve_aircraft end
-    return n + m.count <= cap
-end
+-- ── launching ───────────────────────────────────────────────────
 
 -- Parking for a flight launched later than planned: free spots of its types now, its
 -- own planned spots first, never a player slot, a parked-aircraft static or an alert
@@ -222,111 +153,64 @@ local function later(m, delay, id)
     return c
 end
 
-local function clockText(t) return Weather.hhmm(_plan.world.time.start_local + t) end
-
-local function spawnNow(m, f)
-    local grp = SpawnAircraftGroups.spawn(m)
-    f.spawned = grp ~= nil
-    -- a SEAD flight goes cold after its salvo (consumers/enforce_air_behaviour_rules.lua)
-    if grp and m.attack and m.attack.kind == "harm_salvo" then EnforceAirBehaviourRules.watch(m, "suppression") end
-    return grp
+local function due(id)
+    local ok, err = pcall(ControlAirFlights.due, id)
+    if not ok then Log.error(string.format("%s: launch decision failed: %s", id, tostring(err))) end
 end
 
-local launch
+-- ── calls for the controller ────────────────────────────────────
 
--- Launches a planned mission (or its late copy `m`) when it's due: in sequence, only
--- once its threats are out of the fight.
-launch = function(id, m)
-    local f = _flights[id]
-    local plan = _byId[id]
-    m = m or plan
-    local now = timer.getTime()
-    -- a suppression flight whose threats are already out of the fight isn't sent
-    if plan.escorts and #(plan.suppresses or {}) > 0 and #openThreats(plan.suppresses) == 0 then
-        f.note = "not needed"
-        WriteEventLog.add(m.coalition, "CANCELLED", id, string.format("not needed: %s already out of the fight",
-            table.concat(plan.suppresses, ", ")))
-        return
-    end
-    local open = openThreats(plan.requires_cleared)
-    if #open > 0 then
-        -- per suppression flight still owed: in the air (wait for it), flown once more
-        -- already (its second try is spent), or to fly again now. A suppression flight
-        -- flies again at most once, whichever missions rely on it (one may clear the way
-        -- for several), and they all wait for that one
-        local flying, send, spent = nil, {}, {}
-        for _, t in ipairs(open) do
-            local by = plan.cleared_by and plan.cleared_by[t]
-            local sf = by and _flights[by]
-            if sf then
-                if sf.again then
-                    if liveGroup(sf.again) then flying = sf.again else spent[#spent + 1] = t end
-                elseif sf.spawned and liveGroup(by) then
-                    flying = by
-                else
-                    -- a player's SEAD tasking (flown or not) is flown again by the AI
-                    send[by] = true
-                end
-            else
-                spent[#spent + 1] = t
-            end
-        end
-        -- at most an hour of waiting: a flight still up by then is no longer coming back
-        -- with the job done
-        f.waits = (f.waits or 0) + 1
-        if flying and f.waits <= 6 then
-            local at = now + AIR_PACKAGE.strike_after_suppression_s
-            f.note = "delayed"
-            WriteEventLog.add(m.coalition, "DELAYED", id, string.format("waiting for %s, still in the air; looking again at %s",
-                flying, clockText(at)))
-            timer.scheduleFunction(function() launch(id) end, nil, at)
-            return
-        end
-        local names, back = {}, now
-        for by in pairs(send) do
-            local s = aiVersion(_byId[by])
-            local copy = later(s, now + 1 - s.start_s, s.id .. "_AGAIN")
-            if copy and spawnNow(copy, {}) then
-                _flights[copy.id] = { mission = copy, spawned = true, destroyed = 0, lost = 0, landed = 0 }
-                _flights[by].again = copy.id
-                names[#names + 1] = copy.id
-                back = math.max(back, copy.end_s)
-            end
-        end
-        table.sort(names)
-        if #names == 0 then
-            f.note = "cancelled"
-            WriteEventLog.add(m.coalition, "CANCELLED", id, string.format("%s still in the fight after a second suppression flight",
-                table.concat(open, ", ")))
-            return
-        end
-        local at = back + AIR_PACKAGE.strike_after_suppression_s
-        f.note, f.waits = "delayed", 0
-        WriteEventLog.add(m.coalition, "RETRY", id, string.format("%s still in the fight: suppression flies again as %s; the mission waits until %s",
-            table.concat(open, ", "), table.concat(names, ", "), clockText(at)))
-        timer.scheduleFunction(function() launch(id) end, nil, at)
-        return
-    end
-    -- late (it waited, or the clock passed its start): a copy on spots free now, once
-    -- there's room under the cap, while the window lasts
-    local delay = now - plan.start_s
-    if delay > 60 then
-        if plan.end_s + delay > AIR_TASKING_TIMING.window_s + 1800 then
-            f.note = "cancelled"
-            WriteEventLog.add(m.coalition, "CANCELLED", id, "too late: it would not be back before the mission window ends")
-            return
-        end
-        local copy = roomFor(plan) and later(plan, delay)
-        if not copy then
-            f.note = "delayed"
-            timer.scheduleFunction(function() launch(id) end, nil, now + AIR_PACKAGE.wait_for_room_s)
-            return
-        end
-        m = copy
-        f.mission_flown = copy
+-- The planned mission `id` (never changed).
+function ScheduleAirTaskingOrders.planned(id)
+    return _byId[id]
+end
+
+-- The record of flight `id`: { mission, spawned, destroyed, lost, landed, again (the id
+-- of its second try), note, stood_down }, or nil. Read it, never change it.
+function ScheduleAirTaskingOrders.record(id)
+    return _flights[id]
+end
+
+-- True once the object `name` has been counted destroyed or lost.
+function ScheduleAirTaskingOrders.isGone(name)
+    return _gone[name] == true
+end
+
+-- Ask the controller about flight `id` again at mission time `t`.
+function ScheduleAirTaskingOrders.lookAgainAt(id, t)
+    timer.scheduleFunction(function() due(id) end, nil, t)
+end
+
+-- What the brief and the end summary say of a flight not flying (yet): "delayed",
+-- "cancelled", "not needed".
+function ScheduleAirTaskingOrders.note(id, note)
+    if _flights[id] then _flights[id].note = note end
+end
+
+-- Spawn planned flight `id` now; `delay` > 0: a copy `delay` s later than planned, on
+-- spots free now. Returns the mission flown, or nil (no spots free, or the spawn failed).
+function ScheduleAirTaskingOrders.launchNow(id, delay)
+    local f, m = _flights[id], _byId[id]
+    if delay > 0 then
+        m = later(m, delay)
+        if not m then return nil end
+        f.mission_flown = m
     end
     f.note = nil
-    spawnNow(m, f)
+    local grp = SpawnAircraftGroups.spawn(m)
+    f.spawned = grp ~= nil
+    return grp and m or nil
+end
+
+-- Fly suppression flight `by` once more now (a player's SEAD tasking by two AI jets), as
+-- `<by>_AGAIN` on spots free now. Returns the copy, or nil.
+function ScheduleAirTaskingOrders.flyAgain(by)
+    local s = aiVersion(_byId[by])
+    local copy = later(s, timer.getTime() + 1 - s.start_s, s.id .. "_AGAIN")
+    if not copy or not SpawnAircraftGroups.spawn(copy) then return nil end
+    _flights[copy.id] = { mission = copy, spawned = true, destroyed = 0, lost = 0, landed = 0 }
+    _flights[by].again = copy.id
+    return copy
 end
 
 -- A flight spawned at run time (a scramble), tracked like a planned one: its losses
@@ -380,7 +264,6 @@ function ScheduleAirTaskingOrders.start(plan)
     local ato = plan.air_tasking_orders
     if not ato or ato.problems then return end
     _plan = plan
-    _catalog = plan.target_catalog and plan.target_catalog.targets or {}
     local now, count, first = timer.getTime(), 0, nil
     local human = 0
     for _, coalition in ipairs({ "red", "blue" }) do
@@ -396,10 +279,7 @@ function ScheduleAirTaskingOrders.start(plan)
                 human = human + 1
             else
                 local at = math.max(m.start_s, now + 1)
-                timer.scheduleFunction(function()
-                    local ok, err = pcall(launch, m.id)
-                    if not ok then Log.error(string.format("%s: launch failed: %s", m.id, tostring(err))) end
-                end, nil, at)
+                ScheduleAirTaskingOrders.lookAgainAt(m.id, at)
                 count = count + 1
                 if not first or at < first then first = at end
             end

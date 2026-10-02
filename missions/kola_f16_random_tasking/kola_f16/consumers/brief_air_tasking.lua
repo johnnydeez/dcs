@@ -41,6 +41,7 @@ local MISSION_NAME = {
 local STEERPOINT_NAME = {
     takeoff = "BASE", departure = "DEP", transit = "NAV", descent = "DESC", ingress = "IP",
     target = "TGT", egress = "EGR", landing = "LAND", station = "CAP A", station_end = "CAP B",
+    low = "LOW", popup = "POP",   -- a SEAD run-in: low legs, then the pop-up to the launch point
 }
 
 local _plan
@@ -56,7 +57,13 @@ local function at(t) return Weather.hhmm(_plan.world.time.start_local + t) end
 
 local function feet(m)
     local ft = round(m * FEET_PER_METRE / 100) * 100
+    if ft < 1000 then return string.format("%d ft", ft) end
     return string.format("%d,%03d ft", math.floor(ft / 1000), ft % 1000)
+end
+
+-- A route point's altitude: above sea level, or above the ground on a low leg.
+local function altitudeText(r)
+    return feet(r.alt_m) .. (r.alt_type == "RADIO" and " AGL" or "")
 end
 
 -- Degrees and decimal minutes, as the F-16 takes them: "N68°36.123' E027°24.567'".
@@ -304,9 +311,9 @@ end
 
 -- The points a player types in: the route out to the target or the station's far end,
 -- then the landing base; no egress or way home (a player follows the way out back;
--- closed_issues.md, bug 11). The target is its exact spot on the ground with its elevation,
+-- closed.md, bug 11). The target is its exact spot on the ground with its elevation,
 -- not the attack altitude, then each aim point the same way, so fire-and-forget weapons
--- (JDAM, JSOW) can be given them (closed_issues.md, bug 10).
+-- (JDAM, JSOW) can be given them (closed.md, bug 10).
 local function steerpointText(m)
     local lines = { string.format("%s STEERPOINTS (from %s; times at %d kt)", m.id, m.launch_base,
         round(m.route[2] and m.route[2].speed_mps * 1.94384 or 0)) }
@@ -324,14 +331,15 @@ local function steerpointText(m)
     for i = 1, last do
         local r = m.route[i]
         if i > 1 then t = t + Util.dist(m.route[i - 1], r) / math.max(r.speed_mps or 1, 1) end
-        if r.kind == "target" then
-            local p = (not m.escorts and m.target_pos) or r
+        if r.kind == "target" and m.escorts then
+            -- a SEAD flight's target point is its launch point, at the pop-up altitude
+            add("LAUNCH", r, altitudeText(r), at(m.tot_s))
+        elseif r.kind == "target" then
+            local p = m.target_pos or r
             add("TGT", p, elevation(p), at(m.tot_s))
-            if not m.escorts then
-                for k, a in ipairs(m.attack and m.attack.points or {}) do add("AIM " .. k, a, elevation(a)) end
-            end
+            for k, a in ipairs(m.attack and m.attack.points or {}) do add("AIM " .. k, a, elevation(a)) end
         else
-            add(STEERPOINT_NAME[r.kind] or r.kind, r, r.kind == "takeoff" and "" or feet(r.alt_m), at(t))
+            add(STEERPOINT_NAME[r.kind] or r.kind, r, r.kind == "takeoff" and "" or altitudeText(r), at(t))
         end
     end
     local home = m.route[#m.route]
@@ -389,7 +397,7 @@ end
 
 -- DCS's kill list doesn't show static objects (parked aircraft, buildings), so a player
 -- who destroys one the mission spawned gets a popup naming it, plus the tasking's
--- progress when it is part of a human tasking's target (closed_issues.md, bug 9). Map
+-- progress when it is part of a human tasking's target (closed.md, bug 9). Map
 -- scenery and units get none (DCS shows units). A kill whose shooter is gone (shot down
 -- or ejected before the bomb landed) is credited through the weapon, remembered at launch.
 local function watchStaticKills(plan)

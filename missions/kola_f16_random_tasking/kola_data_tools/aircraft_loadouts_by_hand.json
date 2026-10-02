@@ -1,5 +1,5 @@
 {
-  "_comment": "Loadouts proven in our own missions, pylons exactly as flown. From the Syria mission's scripts/modules/blue_air_support.lua (CAS flights, verified in DCS). Read by aircraft_loadouts.py as source 'hand'. 'SEAD 4 HARM' (2026-10-01, John): one 2-ship takes up to 4 SAM groups at 2 HARMs each; F-16: 4 HARMs, centerline tank, an AMRAAM on each wingtip; F/A-18: 4 HARMs, Sidewinders on the wingtips, AMRAAMs on the fuselage, no tanks (it has the fuel).",
+  "_comment": "Loadouts proven in our own missions, pylons exactly as flown. From the Syria mission's scripts/modules/blue_air_support.lua (CAS flights, verified in DCS). Read by aircraft_loadouts.py as source 'hand'. 'SEAD 4 HARM' (2026-10-01, John): one 2-ship takes up to 4 SAM groups at 2 HARMs each; F-16: 4 HARMs, centerline tank, an AMRAAM on each wingtip; F/A-18: 4 HARMs, Sidewinders on the wingtips, AMRAAMs on the fuselage, no tanks (it has the fuel). Su-34 '... R-77' loadouts (2026-10-01, John: every Red flight carries its best long-range air-to-air missiles to protect itself): R-77s in place of the R-27Rs (SEAD, DEAD, interdiction: pylons 5 and 8) or of the R-73s (strike, airfield strike: pylons 2 and 11, the only R-77 pylons the bombs leave free).",
   "F-16C_50": {
     "Syria CAS": {
       "pylons": [
@@ -186,6 +186,244 @@
   "E-3A": {
     "Clean": {
       "pylons": []
+    }
+  },
+  "Su-34": {
+    "Strike R-77": {
+      "pylons": [
+        {
+          "num": 1,
+          "CLSID": "{44EE8698-89F9-48EE-AF36-5FD31896A82F}"
+        },
+        {
+          "num": 2,
+          "CLSID": "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}"
+        },
+        {
+          "num": 3,
+          "CLSID": "{37DCC01E-9E02-432F-B61D-10C166CA2798}"
+        },
+        {
+          "num": 4,
+          "CLSID": "{37DCC01E-9E02-432F-B61D-10C166CA2798}"
+        },
+        {
+          "num": 5,
+          "CLSID": "{37DCC01E-9E02-432F-B61D-10C166CA2798}"
+        },
+        {
+          "num": 6,
+          "CLSID": "{37DCC01E-9E02-432F-B61D-10C166CA2798}"
+        },
+        {
+          "num": 7,
+          "CLSID": "{37DCC01E-9E02-432F-B61D-10C166CA2798}"
+        },
+        {
+          "num": 8,
+          "CLSID": "{37DCC01E-9E02-432F-B61D-10C166CA2798}"
+        },
+        {
+          "num": 9,
+          "CLSID": "{37DCC01E-9E02-432F-B61D-10C166CA2798}"
+        },
+        {
+          "num": 10,
+          "CLSID": "{37DCC01E-9E02-432F-B61D-10C166CA2798}"
+        },
+        {
+          "num": 11,
+          "CLSID": "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}"
+        },
+        {
+          "num": 12,
+          "CLSID": "{44EE8698-89F9-48EE-AF36-5FD31896A82A}"
+        }
+      ]
+    },
+    "Airfield strike R-77": {
+      "pylons": [
+        {
+          "num": 1,
+          "CLSID": "{ECM_POD_L_175V}"
+        },
+        {
+          "num": 2,
+          "CLSID": "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}"
+        },
+        {
+          "num": 3,
+          "CLSID": "{D5435F26-F120-4FA3-9867-34ACE562EF1B}"
+        },
+        {
+          "num": 4,
+          "CLSID": "{D5435F26-F120-4FA3-9867-34ACE562EF1B}"
+        },
+        {
+          "num": 5,
+          "CLSID": "{D5435F26-F120-4FA3-9867-34ACE562EF1B}"
+        },
+        {
+          "num": 6,
+          "CLSID": "{D5435F26-F120-4FA3-9867-34ACE562EF1B}"
+        },
+        {
+          "num": 7,
+          "CLSID": "{D5435F26-F120-4FA3-9867-34ACE562EF1B}"
+        },
+        {
+          "num": 8,
+          "CLSID": "{D5435F26-F120-4FA3-9867-34ACE562EF1B}"
+        },
+        {
+          "num": 9,
+          "CLSID": "{D5435F26-F120-4FA3-9867-34ACE562EF1B}"
+        },
+        {
+          "num": 10,
+          "CLSID": "{D5435F26-F120-4FA3-9867-34ACE562EF1B}"
+        },
+        {
+          "num": 11,
+          "CLSID": "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}"
+        },
+        {
+          "num": 12,
+          "CLSID": "{ECM_POD_L_175V}"
+        }
+      ]
+    },
+    "SEAD R-77": {
+      "pylons": [
+        {
+          "num": 1,
+          "CLSID": "{ECM_POD_L_175V}"
+        },
+        {
+          "num": 2,
+          "CLSID": "{FBC29BFE-3D24-4C64-B81D-941239D12249}"
+        },
+        {
+          "num": 3,
+          "CLSID": "{X-31P}"
+        },
+        {
+          "num": 4,
+          "CLSID": "{X-31P}"
+        },
+        {
+          "num": 5,
+          "CLSID": "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}"
+        },
+        {
+          "num": 8,
+          "CLSID": "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}"
+        },
+        {
+          "num": 9,
+          "CLSID": "{X-31P}"
+        },
+        {
+          "num": 10,
+          "CLSID": "{X-31P}"
+        },
+        {
+          "num": 11,
+          "CLSID": "{FBC29BFE-3D24-4C64-B81D-941239D12249}"
+        },
+        {
+          "num": 12,
+          "CLSID": "{ECM_POD_L_175V}"
+        }
+      ]
+    },
+    "DEAD R-77": {
+      "pylons": [
+        {
+          "num": 1,
+          "CLSID": "{44EE8698-89F9-48EE-AF36-5FD31896A82F}"
+        },
+        {
+          "num": 2,
+          "CLSID": "{FBC29BFE-3D24-4C64-B81D-941239D12249}"
+        },
+        {
+          "num": 3,
+          "CLSID": "{X-29T}"
+        },
+        {
+          "num": 4,
+          "CLSID": "{X-29T}"
+        },
+        {
+          "num": 5,
+          "CLSID": "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}"
+        },
+        {
+          "num": 8,
+          "CLSID": "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}"
+        },
+        {
+          "num": 9,
+          "CLSID": "{X-29T}"
+        },
+        {
+          "num": 10,
+          "CLSID": "{X-29T}"
+        },
+        {
+          "num": 11,
+          "CLSID": "{FBC29BFE-3D24-4C64-B81D-941239D12249}"
+        },
+        {
+          "num": 12,
+          "CLSID": "{44EE8698-89F9-48EE-AF36-5FD31896A82A}"
+        }
+      ]
+    },
+    "Interdiction R-77": {
+      "pylons": [
+        {
+          "num": 1,
+          "CLSID": "{ECM_POD_L_175V}"
+        },
+        {
+          "num": 2,
+          "CLSID": "{FBC29BFE-3D24-4C64-B81D-941239D12249}"
+        },
+        {
+          "num": 3,
+          "CLSID": "{X-29L}"
+        },
+        {
+          "num": 4,
+          "CLSID": "{X-29L}"
+        },
+        {
+          "num": 5,
+          "CLSID": "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}"
+        },
+        {
+          "num": 8,
+          "CLSID": "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}"
+        },
+        {
+          "num": 9,
+          "CLSID": "{X-29L}"
+        },
+        {
+          "num": 10,
+          "CLSID": "{X-29L}"
+        },
+        {
+          "num": 11,
+          "CLSID": "{FBC29BFE-3D24-4C64-B81D-941239D12249}"
+        },
+        {
+          "num": 12,
+          "CLSID": "{ECM_POD_L_175V}"
+        }
+      ]
     }
   }
 }

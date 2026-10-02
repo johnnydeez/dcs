@@ -13,7 +13,7 @@
 --              if the mission says so, and afterburner allowed if it says afterburner
 --              (scrambles)
 --   the waypoint with carries_attack_tasks (the ingress; for suppression flights the
---              waypoint before their first ring; for patrols and the AWACS the station):
+--              launch point; for patrols and the AWACS the station):
 --              the attack tasks, in pydcs's parameter shape — Bombing per attack point,
 --              AttackGroup / EngageGroup per group (a scramble's EngageGroup goes on the
 --              takeoff waypoint: its route marks takeoff carries_attack_tasks), a race-track Orbit held until the time
@@ -22,9 +22,18 @@
 --              task + that Orbit.
 --              Group tasks need DCS group ids, looked up by name now; a group that no
 --              longer exists is skipped
+--   every other waypoint at its planned altitude, above sea level or, where the route
+--              says alt_type "RADIO" (a SEAD flight's low run-in), above the ground; one
+--              with `afterburner` set switches the afterburner option there
 --   landing    at the landing base
 --   every waypoint between takeoff and landing starts with a script command that writes
 --              the event log's WAYPOINT line when the flight gets there
+-- Datalink: every unit gets its own Link 16 STN and the editor's Link 16 settings block,
+-- and the group an explicit group id and the EPLRS command (datalink on) as the first
+-- task of its first waypoint, as the mission editor gives every AI flight (and the
+-- Caucasus test pair that showed on the HSD had; the 2026-10-02 Kola run, with only STNs
+-- and EPLRS by setCommand right after a ramp spawn, showed nothing: bug 25). setCommand
+-- right after the spawn is kept too.
 -- After the spawn, every unit's type is compared with the plan (DCS swaps unknown types),
 -- the flight goes to the event log (SPAWNED), each unit's ammo is logged there a few
 -- seconds later (LOADOUT, logAmmo), and a slow addGroup is a warning in dcs.log (a type's first spawn froze the sim; see
@@ -38,6 +47,22 @@ local COUNTRY = { red = "CJTF_RED", blue = "CJTF_BLUE" }
 local SLOW_SPAWN_S = 1
 -- Seconds after the spawn that each unit's ammo is logged (logAmmo).
 local AMMO_CHECK_DELAY_S = 5
+-- Link 16 STNs (five octal digits) for AI aircraft, one per unit, counted up from here;
+-- the player slots' own STNs are 00201–00211 (the .miz)
+local FIRST_AI_STN = 8 ^ 3   -- 01000
+local _nextStn = FIRST_AI_STN
+
+-- Explicit DCS group ids for AI flights (the EPLRS task names its group), counted up from
+-- here, far above the editor's and DCS's own
+local FIRST_AI_GROUP_ID = 700000
+local _nextGroupId = FIRST_AI_GROUP_ID
+
+local function nextStn()
+    local stn = string.format("%05o", _nextStn)
+    _nextStn = _nextStn + 1
+    if _nextStn >= 8 ^ 5 then _nextStn = FIRST_AI_STN end
+    return stn
+end
 
 -- DCS option ids and values (pydcs dcs/task.py: OptROE, OptReactOnThreat, ...).
 local OPTION_ROE                                  = 0
@@ -71,18 +96,32 @@ local function groupIds(m, names)
     return ids
 end
 
+-- The planned altitude of the route's target waypoint (the attack altitude; a SEAD
+-- flight's pop-up altitude), or nil.
+local function attackAltitude(m)
+    for _, r in ipairs(m.route or {}) do
+        if r.kind == "target" and r.alt_m and r.alt_m > 0 then return r.alt_m end
+    end
+    return nil
+end
+
 -- The attack tasks, numbered from `first`. Only the built attack kinds exist so far.
+-- Bombing and AttackGroup carry the planned attack altitude: without it the DCS AI picks
+-- its own once the attack starts, and flew it low (2026-10-02 run: MSN2027_STRIKE dropped
+-- GBU-31s from 3,585 ft, planned 7,000 m, and died to an SA-8; MSN5024_SEAD fired its
+-- Kh-31Ps from 3,400 ft, its pop-up planned at 3,000 m).
 local function attackTasks(m, first)
     local tasks, a = {}, m.attack
     local function add(id, params)
         tasks[#tasks + 1] = { number = first + #tasks, auto = false, id = id, enabled = true, params = params }
     end
+    local alt = attackAltitude(m)
     if a.kind == "bomb_critical_objects" then
         for _, p in ipairs(a.points) do
             add("Bombing", {
                 x = p.x, y = p.z, weaponType = a.weapon_type, expend = a.expend,
                 attackQtyLimit = false, attackQty = 1, directionEnabled = false, direction = 0,
-                altitudeEnabled = false, altitude = 0, groupAttack = true,
+                altitudeEnabled = alt ~= nil, altitude = alt or 0, groupAttack = true,
             })
         end
     elseif a.kind == "attack_group" then
@@ -90,7 +129,7 @@ local function attackTasks(m, first)
             add("AttackGroup", {
                 groupId = id, weaponType = a.weapon_type, expend = a.expend, groupAttack = true,
                 attackQtyLimit = false, attackQty = 1, directionEnabled = false, direction = 0,
-                altitudeEnabled = false, altitude = 0,
+                altitudeEnabled = alt ~= nil, altitude = alt or 0,
             })
         end
     elseif a.kind == "harm_salvo" then
@@ -99,7 +138,7 @@ local function attackTasks(m, first)
             add("AttackGroup", {
                 groupId = id, weaponType = a.weapon_type, expend = "All", groupAttack = true,
                 attackQtyLimit = true, attackQty = 1, directionEnabled = false, direction = 0,
-                altitudeEnabled = false, altitude = 0,
+                altitudeEnabled = alt ~= nil, altitude = alt or 0,
             })
         end
     elseif a.kind == "engage_group" then
@@ -169,7 +208,7 @@ end
 
 local function waypoint(r, extra)
     local wp = {
-        x = r.x, y = r.z, alt = r.alt_m, alt_type = "BARO", speed = r.speed_mps, speed_locked = true,
+        x = r.x, y = r.z, alt = r.alt_m, alt_type = r.alt_type or "BARO", speed = r.speed_mps, speed_locked = true,
         ETA = 0, ETA_locked = false, type = "Turning Point", action = "Turning Point", task = combo({}),
     }
     for k, v in pairs(extra or {}) do wp[k] = v end
@@ -191,17 +230,27 @@ local function buildGroup(m, launchId, landingId)
             heading = 0, speed = 0, parking = spot.terminal_index,
             payload = { pylons = pylons, fuel = lo.fuel, chaff = lo.chaff, flare = lo.flare,
                         gun = m.keeps_gun and 100 or 0 },
+            AddPropAircraft = { STN_L16 = nextStn() },
+            datalinks = { Link16 = {
+                settings = { flightLead = i == 1, transmitPower = 3, specialChannel = 1, fighterChannel = 1,
+                             missionChannel = 1 },
+                network = { teamMembers = {}, donors = {} },
+            } },
         }
     end
+    local groupId = _nextGroupId
+    _nextGroupId = _nextGroupId + 1
     local rules = m.rules_of_engagement or "open_fire"
 
     local points = {}
     for index, r in ipairs(m.route) do
         if r.kind == "takeoff" then
             local tasks = {
-                option(1, OPTION_ROE, ROE[rules]),
-                option(2, OPTION_REACTION_ON_THREAT, EVADE_FIRE),
-                option(3, OPTION_RETURN_AT_BINGO_FUEL, true),
+                { number = 1, auto = false, id = "WrappedAction", enabled = true,
+                  params = { action = { id = "EPLRS", params = { value = true, groupId = groupId } } } },
+                option(2, OPTION_ROE, ROE[rules]),
+                option(3, OPTION_REACTION_ON_THREAT, EVADE_FIRE),
+                option(4, OPTION_RETURN_AT_BINGO_FUEL, true),
             }
             if not m.may_jettison then   -- attack flights keep their stores; fighters may drop tanks
                 tasks[#tasks + 1] = option(#tasks + 1, OPTION_PROHIBIT_JETTISON, true)
@@ -229,12 +278,16 @@ local function buildGroup(m, launchId, landingId)
             points[#points + 1] = waypoint(r, { type = "Land", action = "Landing", airdromeId = landingId,
                 alt = land.getHeight({ x = r.x, y = r.z }) })
         else
-            points[#points + 1] = waypoint(r, { task = combo({ reachedCommand(m, index) }) })
+            local tasks = { reachedCommand(m, index) }
+            if r.afterburner ~= nil then   -- SEAD egress: allowed down low and out; off again at the climb
+                tasks[2] = option(2, OPTION_PROHIBIT_AFTERBURNER, not r.afterburner)
+            end
+            points[#points + 1] = waypoint(r, { task = combo(tasks) })
         end
     end
 
     return {
-        name = m.id, task = m.group_task, uncontrolled = false, start_time = 0,
+        name = m.id, groupId = groupId, task = m.group_task, uncontrolled = false, start_time = 0,
         x = units[1].x, y = units[1].y, units = units, route = { points = points },
     }
 end
@@ -255,6 +308,16 @@ function SpawnAircraftGroups.spawn(m)
         Log.warn(string.format("%s: coalition.addGroup failed (%s)", m.id, tostring(grp)))
         return nil
     end
+    -- the EPLRS task on the first waypoint names the group id we asked for (bug 25)
+    if grp:getID() ~= data.groupId then
+        Log.warn(string.format("%s: asked for group id %d, DCS gave %s: its EPLRS task names the wrong group",
+            m.id, data.groupId, tostring(grp:getID())))
+    end
+    -- datalink on, so the flight shows on the players' HSD (as the mission editor does)
+    local okLink, linkErr = pcall(function()
+        grp:getController():setCommand({ id = "EPLRS", params = { value = true, groupId = grp:getID() } })
+    end)
+    if not okLink then Log.warn(string.format("%s: EPLRS command failed (%s)", m.id, tostring(linkErr))) end
     for i, u in ipairs(grp:getUnits() or {}) do
         if u:getTypeName() ~= m.aircraft_type then
             Log.warn(string.format("%s unit %d: asked for '%s', DCS spawned '%s'", m.id, i, m.aircraft_type, u:getTypeName()))

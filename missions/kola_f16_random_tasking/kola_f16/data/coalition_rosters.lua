@@ -94,7 +94,7 @@ COALITION_AIRCRAFT = {
         strike                      = { { "Su-34", 3 }, { "Su-24M", 2 }, { "Tu-22M3", 1 } },
         airfield_strike             = { { "Su-34", 2 }, { "Su-24M", 2 }, { "Tu-22M3", 2 } },
         -- Su-24M out of SEAD for now: its SEAD loadout spawns with no weapons (DCS drops the
-        -- whole payload; 2026-09-30, bugs_and_fixes.md 6). Back in once a loadout it accepts is found
+        -- whole payload; 2026-09-30, bugs.md 6). Back in once a loadout it accepts is found
         suppression_of_air_defenses = { { "Su-34", 1 } },
         destruction_of_air_defenses = { { "Su-34", 1 } },
         interdiction                = { { "Su-34", 1 } },

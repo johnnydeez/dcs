@@ -32,7 +32,7 @@
 --                mission_types, against a catalog target), "escort" (only in another
 --                mission's package), "station" (defensive air: a racetrack held over the
 --                window, AIR_DEFENSE), "response" (never planned: scrambled at run time
---                by consumers/run_scrambles.lua)
+--                by the controller, consumers/control_air_flights/scramble_fighters.lua)
 --   flight_size  { min, max }: overrides the aircraft profile's for this mission type
 --   rules_of_engagement  "open_fire" (default) | "weapons_free" (engage anything
 --                found: patrols) | "weapons_hold" (never fire: AWACS)
@@ -75,24 +75,43 @@ AIR_MISSION_TYPE = {
         group_name_tag = "OCA", built = true, group_task = "Ground Attack", attack = "bomb_critical_objects",
         weapon_type = "auto", max_attack_points = 4, ingress_km = 25, egress_km = 20,
     },
-    -- One SAM site per flight, saturated (John, 2026-10-01: "fly high and fast and dump
-    -- the HARMs at it at distance and then go cold"): the flight flies around other
-    -- threats to a launch point launch_km from the site, the last run_in_km of it at the
-    -- profile's suppression altitude and run_in_speed_mps; at the launch point it attacks
-    -- the site's group with every anti-radiation missile it carries (AttackGroup, expend
-    -- All, one attack), then flies straight back the way it came. A second site gets a
+    -- One SAM site per flight, saturated, under the radar (roadmap item 10; John,
+    -- 2026-10-01, after the 14:14 run: "going in low and popping up to launch radiation
+    -- missiles at a long range SAM is a really good defeat tactic … my instinct to go high
+    -- was wrong"). The flight cruises in own airspace; descends before its route enters
+    -- the first enemy SAM ring (low_entry_margin_km short of it), runs in at
+    -- low_altitude_m above the ground (RADIO) and low_speed_mps, a waypoint every
+    -- low_waypoint_km, routed outside every other site's low-altitude reach; pops up
+    -- popup_km before a launch point launch_km from the site, to popup_altitude_m; at the
+    -- launch point it attacks the site's group with every anti-radiation missile it
+    -- carries (AttackGroup, expend All, one attack); then straight back down and out the
+    -- way it came, low and fast with afterburner allowed, and climbs back to cruise once
+    -- clear of the rings. A low km burns low_fuel_factor km of reach. A second site gets a
     -- flight of its own. The site's point-defense escort gets no missiles of its own: the
-    -- salvo is meant to saturate it. The behaviour rule `suppression`
-    -- (data/air_behaviour_rules.lua) sends it home if it presses on.
+    -- salvo is meant to saturate it. The controller's directive `suppression`
+    -- (data/air_control.lua) sends it home if it presses on.
     -- No return_when_out_of: DCS then flies straight home, over whatever SAMs lie on the
     -- line (first package run, 2026-09-25)
     suppression_of_air_defenses = {
         group_name_tag = "SEAD", built = true, planned_as = "escort", group_task = "SEAD", attack = "harm_salvo",
         weapon_type = "arm", ingress_km = 40, egress_km = 30,   -- (not used: see suppressionRoute)
-        -- launch_km 40 (was 80): from 89-92 km every HARM was coasting by the end and the
-        -- Sodankyla SA-10 shot all 8 down (John's run, 2026-10-01). The AI starts the attack
-        -- ~12 km before the waypoint at this speed, so the real shots come from ~50 km
-        launch_km = 40, run_in_km = 40, run_in_speed_mps = 270,
+        -- launch_km 55 (2026-10-02; was 40, and 80 before that): from 89-92 km every HARM
+        -- was coasting by the end and the Sodankyla SA-10 shot all 8 down (2026-10-01).
+        -- From 35-41 km, after a low run-in and a pop-up, 8 HARMs killed both of its
+        -- search radars (14:14 run); but in the 2026-10-02 run the sites fired back at
+        -- the pop-up from 39-50 km (SA-11 39 km at 10,500 ft, Patriot 50 km at 8,300 ft,
+        -- SA-10 46 km at ~3,000 ft) and 6 of 6 SEAD jets that got there died. John: pop
+        -- up and fire earlier
+        launch_km = 55,
+        low_altitude_m = 275,          -- ~900 ft above the ground (John's figure from flying it)
+        low_speed_mps = 270,           -- ~525 kt
+        low_entry_margin_km = 10,      -- down this far before the first ring
+        low_waypoint_km = 15,          -- so the AI re-reads the ground often
+        popup_km = 15,                 -- the climb to the shot starts this far before the launch point
+                                       -- (was 12: MSN5024's 52 s pop-up leg never got above 3,400 ft)
+        popup_altitude_m = 3000,       -- ~10,000 ft (John: one number); up to here a site reaches only
+                                       -- as far as its low-altitude figure (AIR_DEFENSE.killzone_low_altitude_m)
+        low_fuel_factor = 1.5,
     },
     -- AttackGroup on each of the SAM or early-warning site's groups, from the ingress point
     destruction_of_air_defenses = {
@@ -295,8 +314,8 @@ HUMAN_TASKING = {
 --                              zone by early_warning_clearance_km
 --   early_warning_leg_km       length of its race-track
 --
--- Scrambles (roadmap.md item 2; the plan holds the alert posture, consumers/run_scrambles.lua
--- reacts to the radar picture every round, consumers/enforce_air_behaviour_rules.lua
+-- Scrambles (roadmap.md item 2; the plan holds the alert posture, consumers/control_air_flights/scramble_fighters.lua
+-- reacts to the radar picture every round, the controller (consumers/control_air_flights/)
 -- brings them home):
 --   alert_posture_planned  false: no alert bases are planned, so nothing scrambles
 --   alert_bases           alert bases per coalition: held bases whose runway and parking

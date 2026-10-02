@@ -6,11 +6,11 @@
     "suppression_of_air_defenses": "liberation:SEAD"
   },
   "Su-34": {
-    "strike":                      "dcs:FAB-500*8,R-73*2,ECM",
-    "airfield_strike":             "liberation:Liberation Strike",
-    "suppression_of_air_defenses": "liberation:Liberation SEAD",
-    "destruction_of_air_defenses": "dcs:Kh-29T*4,R-73*2,R-27R*2,ECM",
-    "interdiction":                "liberation:Liberation CAS"
+    "strike":                      "hand:Strike R-77",
+    "airfield_strike":             "hand:Airfield strike R-77",
+    "suppression_of_air_defenses": "hand:SEAD R-77",
+    "destruction_of_air_defenses": "hand:DEAD R-77",
+    "interdiction":                "hand:Interdiction R-77"
   },
   "Tu-22M3": {
     "strike":                      "dcs:FAB-500*33",
