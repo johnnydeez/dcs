@@ -99,6 +99,12 @@ local function variation(lat, lon)
     return fallbackAt(lon)
 end
 
+-- Magnetic variation at lat/lon, degrees east, for other consumers (the airfield brief's
+-- wind and runway numbers). DCS's magvar once CallAirPicture.start has loaded it.
+function CallAirPicture.magneticVariation(lat, lon)
+    return variation(lat, lon)
+end
+
 local function loadMagvar(plan)
     local ok, mod = pcall(require, "magvar")
     if not ok or type(mod) ~= "table" or type(mod.get_mag_decl) ~= "function" then

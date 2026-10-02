@@ -56,6 +56,7 @@ local _plan
 local function round(v) return math.floor(v + 0.5) end
 
 local function missionName(t) return MISSION_NAME[t] or t:upper() end
+BriefAirTasking.missionName = missionName   -- "SEAD", "CAP", …: the airfield brief uses it too
 
 -- Mission time (s) → local clock time "08:41".
 local function at(t) return Weather.hhmm(_plan.world.time.start_local + t) end
