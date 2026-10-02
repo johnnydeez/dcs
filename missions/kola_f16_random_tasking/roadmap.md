@@ -2,15 +2,90 @@
 
 What's coming after session 10 (2026-09-30), when the mission became playable by humans. Each item says what it's for, what already exists, a proposed approach and the questions to settle before building. Details are decided with John as each item comes up, step by step, like the rest of the project.
 
-`plan.md` stays the spec and the build log; this file is the list of where the mission is headed. When an item is built and run, its "as built" notes go into `plan.md`, and the item moves to `closed_issues.md` (so this file doesn't grow forever). Item numbers stay as they are, so references elsewhere keep working: items 1–3 and the performance item are in `closed_issues.md`.
+`plan.md` stays the spec and the build log; this file is the list of where the mission is headed. When an item is built and run, its "as built" notes go into `plan.md`, and the item moves to `closed.md` (so this file doesn't grow forever). Item numbers stay as they are, so references elsewhere keep working: items 1–3 and the performance item are in `closed.md`.
 
 Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means Red unless it says otherwise.
 
-**Order (John, 2026-09-30; item 10 added 2026-10-01):** ~~radar functions → scrambles → event log~~ → ~~performance in VR~~ (done for now, 2026-10-01) (all in `closed_issues.md`) → SEAD ingress doctrine (item 10, numbered last because it was added last) → AI behaviour logic → AWACS calls (text) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war. CAP visibility (making patrol routes and times easy to see) was cut on 2026-09-30: John can see the dotted station lines on the map fine for now. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Four optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, and the threat picture on the map for players (after fog of war).
+**Order (John, 2026-09-30; items 10–12 added 2026-10-01; item 5 pulled forward and built 2026-10-02):** ~~radar functions → scrambles → event log~~ → ~~performance in VR~~ (done for now, 2026-10-01) (all in `closed.md`) → every run-time flight decision under the controller (item 11, built) → SEAD ingress doctrine (item 10, built) → **the SEAD campaign: suppression planned first, rolling the air defenses back outside-in (item 12, top priority, next; designed 2026-10-01, build 2026-10-02)** → AI behaviour logic (item 4, the controller's further directives) → ~~AWACS calls (text)~~ (item 5, built 2026-10-02) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war. CAP visibility (making patrol routes and times easy to see) was cut on 2026-09-30: John can see the dotted station lines on the map fine for now. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Four optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, and the threat picture on the map for players (after fog of war).
+
+---
+
+## 12. The SEAD campaign: suppression planned first, rolling the air defenses back outside-in (top priority, next)
+
+**Goal:** SEAD is the primary mission that opens everything else (John, 2026-10-01, after the 22:23 run: "every run has almost no SEAD flights and SEAD flights are the primary mission to open up everything else"). Each coalition plans a suppression campaign against the enemy's air defenses first, the way a real air force does, taking a dense, nested network like Kola's core apart from the outside in; strikes and DEAD then fill in behind it.
+
+**Why:** today a SEAD flight exists only as an escort of a strike or DEAD mission (`planMission`, `stages/plan_air_tasking.lua`): pick a target, route to it, plan one SEAD flight per ring the route crosses, all of them or the mission is dropped. That gives almost no SEAD in two ways, and recent rolls hit both:
+- **No clear launch point** (the 21:30 run, `event_logs\2026-10-01_213052.log`): Blue planned 1 of 6 AI attack missions and no SEAD flight; every other mission "no suppression flight in reach". Red's sites cover each other: each SA-11 beside its SA-10 (`SAM_KOSH_SA11_1` under `SAM_KOSH_SA10_1`, `SAM_MONC_SA11_1` under `SAM_OLEN_SA10_1`) and the SA-11s in the Kola Bay cluster have no clear launch point even with item 10's low run-in. Re-planning that roll with item 10 over six seeds still gave Blue 0 SEAD flights.
+- **No target to escort** (the 22:23 run, `event_logs\2026-10-01_222355.log`; `dcs.log`): nearly every failure was "no target near the front in reach" (8 of 8 tries). Red planned 1 of 6 missions (1 SEAD flight), Blue 3 of 8 (SEAD against 3 sites), while the front was full of SAM sites nobody went after.
+
+**Where it stands:** the pieces exist. Packages fly in sequence (SEAD first, the mission only once its SAMs are out of the fight, `requires_cleared`); a later package reuses an earlier SEAD flight's work (`ctx.cleared`); the run-time gate in `decide_launches.lua` is generic on `requires_cleared` (wait, retry once as `<id>_AGAIN`, cancel; `cancel: not needed` when the site is already dead). The low SEAD profile (item 10) works: the 22:23 run's MSN2025 knocked out the Kuusamo SA-11 without it firing once.
+
+**Design** (John, 2026-10-01: "choose the most realistic options"; decided on that basis, to build 2026-10-02):
+1. **The campaign is planned first.** After defensive air and the human flights, before any strike, DEAD or airfield strike, each coalition plans SEAD flights as missions of their own (`suppression_of_air_defenses` with `planned_as = "mission"` for the campaign, still `escort` for a package's own SEAD).
+2. **Which sites:** every enemy medium and long-range SAM site whose ring reaches the contested airspace or own ground (the sites that deny the air over the front), plus any deeper site that blocks one of those (it has to go first). Early-warning radars and short-range sites aren't campaign targets (short-range ones are DEAD targets, as now). Real rollback goes after the threat to the area you have to operate in, not only what guards one target.
+3. **Outside in, by layers:**
+   - **Layer 1:** sites with a launch point clear of every other site's low-altitude reach (today's `launchPoint`).
+   - **Layer n:** sites whose launch point is clear once the sites of earlier layers are taken out; its launch point and low route ignore those (the low-threat map without them) and the flight carries `requires_cleared` = its blockers.
+   - **Depth cap 3 layers.** Within a layer, the site whose ring covers the most own and contested airspace goes first.
+   - Sites still blocked after 3 layers aren't attacked; strikes behind them aren't planned (as now).
+4. **Timing: the next layer waits for its blockers to be out of the fight, not for the flights to land.** Real forces keep up the tempo once battle damage assessment says the site is down. Planned start `strike_after_suppression_s` (10 min, for the assessment) after the blocker's flight is planned to fire, not land; at run time the gate holds it (`wait`) until the blocker is out of the fight.
+5. **A site that survives:** its flight flies once more (`_AGAIN`, as now). If it survives that too, every later layer that needs it, and every strike behind it, is cancelled (`CONTROL … cancel`). The plan is fixed once built, so no re-planning at run time; the rest of the campaign (sites not behind it) carries on.
+6. **Strikes and DEAD fill in behind:** planned after the campaign, using what it clears (`ctx.cleared`): a route crossing only cleared rings needs no SEAD of its own and waits for them. A ring the campaign doesn't cover still gets its own escort SEAD (today's package), or the mission isn't planned.
+7. **Deeper targets where the campaign has cleared the way:** a target may lie up to `max_km_past_contested` (40 km) past the contested airspace as now, or deeper (up to ~100 km, a new setting) when every ring its route crosses is cleared by the campaign. This also answers many "no target near the front in reach" failures.
+8. **The cap:** the campaign gets first call on the airborne cap, but at most 2 SEAD flights of it airborne at once per coalition (a new setting), so strikes always have room. Campaign flights start from `first_start_s`; the window decides how many layers fit (a flight that can't fire and land inside the window isn't planned).
+9. **Human taskings:** a player's SEAD tasking can take a campaign site (layer 1 only, since a player's flight never counts as clearing for the AI; *Packages*).
+
+**Goes with it** (same work, or right after):
+- **Bug 27, the low-altitude reach** (found in the 2026-10-02 00:57 run; do this first): `lib/sam_reach.lua` lets a site reach only its low-altitude figure up to 3,000 m, but at the pop-up the SA-11 fired at 39 km (model: 25), the Patriot at 50 km (model: 30), the SA-10 at 46 km (model: 40). The low figure should hold only close to the ground. The campaign's launch points, low routes and layers all rest on it, so a layer worked out with today's model could send flights into reach. The SEAD numbers were retuned the same day (launch 55 km, pop-up 15 km before it, go cold on the last missile); see that run's results before building.
+- **Bug 22:** route the low legs and the climb-out around short-range SAM sites; with many more low SEAD flights this matters at once.
+- **Two flights at once against an SA-10 / Patriot / IRIS-T** (backlog, *SEAD follow-ups*): Red's Kh-31P salvoes went 0 for 16 against the Rovaniemi Patriot (14:14 run) and the Banak IRIS-T (22:23 run). Watch the campaign's first run before deciding.
+- `plan.md` *Packages* gets the as-built notes; the summary line counts campaign flights and layers; the planning log names each site's layer and blockers, and every site not attacked and why.
+
+**Testing:** the luae harness on the 21:30 and 22:23 plans (`kola_last_plan.lua` replays): SEAD flights per coalition, layers reached, which Kola-core sites stay unattacked and why; peaks under the cap; a strike behind a layer-2 site waiting at run time (the controller harness). Then a DCS run.
+
+---
+
+## 11. One controller: every run-time decision about what flights do, in one place
+
+**Built 2026-10-01; ran cleanly in the 16:21, 20:31 and 21:30 runs** (`watching`, `no scramble`, `cancel: not needed`, the first `defend`), though `wait`, `retry` and `launch late` haven't come up in a run yet (`plan.md`, *The controller*): `decide_launches.lua` (launches in sequence, waits, retries, cancels, late launches, the airborne cap), `scramble_fighters.lua` and `track_alert_jets.lua` in `consumers/control_air_flights/`; the scheduler keeps the clock and the record and asks the controller (`ControlAirFlights.due`); `consumers/run_scrambles.lua` is gone; every decision is a `CONTROL` line. Same decisions as before on the same inputs (harness), plus the new `watching`, `leave threat` and `launch late` lines. Moves to `closed.md` once a run confirms it.
+
+**Goal:** all the logic that decides at run time what AI flights do, and which directives they get, lives under the controller (`consumers/control_air_flights/`), so it isn't spread over several modules that each do part of a controller's job. John (2026-10-01, 16:21 run, after the `NO_SCRAMBLE … covered by patrol MSN2016_CAP` decision turned out to live in the scramble module): "we should move all of the logic about what flights are supposed to do and what directives they receive under the controller now … so we don't have code all over the place that serves that function."
+
+**The line to draw:**
+- **Planning** (stages, before anything spawns) stays where it is: which missions, targets, routes, packages, patrol stations and alert bases are planned (`stages/plan_air_tasking.lua`, `planAlertPosture` included). The plan is what the controller works from.
+- **Sensing** stays where it is: the radar picture (`consumers/track_radar_picture.lua`) is what the controller knows.
+- **Execution** stays where it is: spawning a group (`consumers/spawn_aircraft_groups.lua`), the mission clock and the record of each flight (spawned, landed, lost, target progress, `statusOf`) in the scheduler, the event log.
+- **Every run-time decision about flights moves to the controller:** whether a flight launches now, waits, flies again or is cancelled; whether to scramble, from where, at what; what a flight in the air is told to do.
+
+**What did a controller's job outside the controller (before the move, 2026-10-01):**
+| Decision | Where it is now | Event words |
+|---|---|---|
+| Scramble or not (trigger: inbound for two rounds, time to threat), refusals (covered by a patrol, under enemy SAM cover, no way there), the raid, the base pick (in time, in reach, facing region), the intercept point | `consumers/run_scrambles.lua` (`check`, `scramble`, `pickBase`, `raidOf`, `coveringPatrol`, `interceptPoint`, `refuse`) | `SCRAMBLE`, `NO_SCRAMBLE` |
+| Stood down before launch (the raid is gone during the reaction delay) | `consumers/run_scrambles.lua` (`launch`) | `STOOD_DOWN` |
+| Alert jets: ready, cooldown, back on alert after landing or a ramp stand-down | `consumers/run_scrambles.lua` (`readyJets`, landing handler, `stoodDown`) | `ALERT` |
+| A mission launches only once its threats are out of the fight; waits for its suppression flight; the suppression flight flies again; cancelled; a suppression flight not needed; launched late when there is room under the cap | `consumers/schedule_air_tasking_orders.lua` (`launch`, `threatCleared`, `openThreats`, `roomFor`, `later`) | `DELAYED`, `RETRY`, `CANCELLED` |
+| The airborne cap at run time (AI aircraft in the air per coalition) | `consumers/run_scrambles.lua` (`airborneAircraft`), the scheduler's `roomFor` | — |
+
+**Approach (proposed, to settle with John):**
+- **The scheduler keeps the clock, asks the controller.** When a flight is due, the scheduler asks the controller "launch, wait (until when), fly again, or cancel?" and does what it says (spawn, reschedule, record). The packages-in-sequence rules move into the controller as a launch decision (e.g. `control_air_flights/decide_launches.lua`).
+- **Scrambles become a controller job** (e.g. `control_air_flights/scramble_fighters.lua`): the trigger, refusals, raid, base pick and intercept point, in the same pattern as the rest, with the scramble's leash already there. "Scramble, or leave it to the patrol" sits next to the patrols' own directives once those come.
+- **Alert jets** (ready / cooldown / turnaround, the reserved spots) are the state of an asset the controller spends, like the airborne cap: kept in one small state module the controller reads and updates, not decided in it.
+- **One cap check** for planned launches and scrambles alike.
+- **Behaviour stays the same:** a move, not a redesign. The event words and lines stay as they are, so runs before and after compare one for one; the harness checks the same decisions come out on the same inputs.
+- **Then** new controller jobs from item 4 (abort a defenceless flight, landing order, patrol handover and merge break-off, hunting an enemy patrol) all land in one place.
+
+**Decided (John, 2026-10-01):**
+- **One event word, `CONTROL`,** for every controller decision, with the decision named at the start of the text, so `grep CONTROL` shows what that layer is doing, in order (e.g. `CONTROL MSN5023_OCA no scramble: covered by patrol MSN2016_CAP`, `CONTROL MSN2023_STRIKE defend: engaging …`, `CONTROL MSN2027_OCA retry: …`). Replaces `LEASH`, `SUPPRESSION`, `DEFEND`, `SCRAMBLE`, `NO_SCRAMBLE`, `STOOD_DOWN`, `ALERT`, `DELAYED`, `RETRY`, `CANCELLED`; update the grep table in `plan.md`. With it, from the event-log idea of the same day: a line when a flight is first watched (its directives), and a line when coordination leaves a threat to another flight.
+- **Later, the controller can send a patrol anywhere** (not only within its station's circles): after a raid instead of a scramble, to hunt an enemy patrol, to cover a package.
+
+- **Alert jets:** their state moves to `consumers/control_air_flights/track_alert_jets.lua`, bookkeeping only (jets ready per base, turnaround and cooldown, which scramble came from which base, held spots, back on alert after landing or a ramp stand-down), no decisions; the controller asks it which bases have a jet ready and tells it when a jet launches, lands or is stood down.
+- **`consumers/run_scrambles.lua` goes away** (John: in the new design it no longer runs scrambles): its decisions move into the controller, its alert-jet state into `track_alert_jets.lua`.
 
 ---
 
 ## 10. SEAD ingress doctrine: high transit, low ingress, pop up, fire, low and fast out
+
+**Built 2026-10-01, not flown yet** (`plan.md`, *Packages*, "The SEAD profile: under the radar"). John's calls on the open questions: 900 ft above the ground; one pop-up altitude, 10,000 ft (3,000 m, where the kill-zone model's low reach ends); every SEAD target (they are all medium / long range); strike and DEAD flights stay high; bug 20 fixed with it (the go-cold clock starts on arrival at the launch point); rolling back outside-in is its own step, after a run. Not tested in a DCS test mission first (John flies the full mission instead): watch whether the AI holds 900 ft over the Khibiny and the fells, and whether it pops up and fires at the launch point. Moves to `closed.md` once a run confirms it.
 
 **Goal:** SEAD flights that beat long-range SAMs the way a real pilot does: under the radar, then a short pop-up to fire, then gone. John (2026-10-01): "going in low and popping up to launch radiation missiles at a long range SAM is a really good defeat tactic … my instinct to go high was wrong, I forgot that SA-10s struggle to target when you are low."
 
@@ -19,7 +94,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 - The first MSN2024 flew the same profile and died before firing: the SA-10 saw the pop-up and fired at 43–49 km. The pop-up has to be short and the shots must come at once.
 - MSN5025 (2× Su-34) stayed at 3,000 ft and never fired at the Alakurtti IRIS-T (most likely no line of sight or no range at that altitude), then went cold.
 
-**Where it stands** (`plan.md`, *Packages*): one SAM site per SEAD 2-ship; `suppressionRoute` flies around other threats to a launch point `launch_km` (40) from the site, the last `run_in_km` at 9,000 m and Mach 0.9; an `AttackGroup` with every anti-radiation missile at the launch point; the go-cold rule (`suppression`) turns it home. The launch point must be outside every other site's full ring.
+**Where it stood before the build** (`plan.md`, *Packages*): one SAM site per SEAD 2-ship; `suppressionRoute` flies around other threats to a launch point `launch_km` (40) from the site, the last `run_in_km` at 9,000 m and Mach 0.9; an `AttackGroup` with every anti-radiation missile at the launch point; the go-cold rule (`suppression`) turns it home. The launch point must be outside every other site's full ring.
 
 **The profile (John's, 2026-10-01):**
 1. **Takeoff and climb** to cruise, 16,000–25,000 ft (~5,000–7,500 m), in own airspace.
@@ -60,11 +135,16 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 **Why now:** the first scramble run (2026-09-30) lost 12 aircraft in 48 minutes (Blue 4, Red 8). Both Blue packages were caught by Red fighters and both Red packages were destroyed, mostly by aircraft that kept flying their route while being engaged.
 
 **Where it stands:**
-- `consumers/enforce_air_behaviour_rules.lua` exists, with one rule (the scramble leash). Every radar-picture round (30 s) it checks each watched flight and can send it home (`Controller:setTask`) or change its options (`setOption`).
+- **4a and 4b built 2026-10-01, not flown yet:** the controller, `consumers/control_air_flights/` (`plan.md`, *The controller*). Design agreed with John: DCS AI is the pilot; the script is the controller that watches the whole picture and gives directives (no separate pilot rules). Situation per flight → directives → one intent (priority, threat assignment across flights) → orders only when the intent changes. Directives so far: the leash and go-cold (moved over unchanged) and self-defence (4b).
+- Left in this item: the rest of 4c below (8b out of weapons, 9 the slow leash, 11 the patrol merge, 6 targets already destroyed), and new directives from the 14:14 run: a landing order for a lost flight (bug 19), patrol handover (bug 18), a pop shot from the edge of a ring.
+- **Built 2026-10-01 (after the 20:31 run), not flown yet: the bandit call** (`plan.md`, *The controller*). It replaces self-defence's wait-for-our-missile-range trigger and covers the abort item below: when the picture shows a fighter hot on an attack flight within 100 km (two checks in a row), or one fires at it from any range, the controller decides at once: radar missiles aboard → engage now; none (infrared only counts as none) → go home (John: "the CAP is just going to stay there and circle"). With it, every Su-34 loadout carries 2× R-77 (John: every Red flight carries its best long-range air-to-air missiles). The original request, kept for reference:
+- **Abort a defenceless flight** (John, 2026-10-01, 16:21 run: MSN5023_OCA, 2× Su-24M with only RBK-250s, heading for Kuusamo where the F-16 patrol MSN2016_CAP works): if the coalition's radar picture shows an enemy fighter that threatens an attack flight that can't fight it (no air-to-air missiles, or only short-range infrared ones against a fighter beyond their reach), the controller sends the flight home. Its own directive, next to self-defence: self-defence for flights that can fight, abort for those that can't. To settle when building: what counts as "threatens" (the same hot-and-closing test, at what range: the fighter's missile range rather than ours), and whether the package's mission is then retried later or cancelled. John (same day): infrared missiles alone are effectively useless against a fighter, so no R-60s added to the Su-24M's airfield-strike loadout; and **self-defence should count only radar-guided missiles** when deciding whether a flight can fight (today any air-to-air missile counts, and an infrared-only flight would turn toward a fighter at the 10 km minimum engage range). Change it together with the abort directive.
 - Each coalition's radar picture (item 1) says which enemy aircraft its radars see, where they are, and where they're heading.
 - The rules collected so far (from the `plan.md` backlog, "AI behaviour rules, one place"): patrols leashed to own and contested airspace; strikes go home if their SEAD fails; no second wave into what killed the first (doctrine idea).
 
 ### 4a. The logic layer: conditional orders
+
+**Built 2026-10-01** as the controller (`plan.md`, *The controller*). The proposal as it stood:
 
 **Approach (to design with John):**
 - Every AI flight is watched, not only scrambles, each with the rules for its mission type.
@@ -75,6 +155,8 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 - Each rule is a check (from the radar picture, the flight's position, its package) plus an order, in one module, as the leash is.
 
 ### 4b. Attack flights defend themselves, then get back on task
+
+**Built 2026-10-01** as the controller's `self_defence` directive (`plan.md`, *The controller*). John's calls: stay on the mission until a threat threatens the mission (pointed at the flight and closing, or firing at it); after the fight, always carry on with the mission. Engage range from the missiles aboard; one threat per flight across the coalition; `AttackGroup` pushed on top of the mission and ended by a user flag (never `popTask`). The proposal as it stood:
 
 **Goal:** strike, SEAD and DEAD flights that see a fighter coming for them fight back early, with the air-to-air missiles they carry, then carry on to the target. Today (John): "if a CAP goes after them they just keep flying to their target and wait to get shot at. They have AMRAAMs, so should self protect much earlier and then get back on task."
 
@@ -89,7 +171,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 ### 4c. Found in the first event-log run (2026-09-30)
 
-John asked for these to go into this item. The run's log is `event_logs\2026-09-30_201105.log`; grep `MSN2025_SEAD` and `MSN2026_SEAD` for issues 1–3. Bugs from the same run that aren't AI-logic work are in `bugs_and_fixes.md`.
+John asked for these to go into this item. The run's log is `event_logs\2026-09-30_201105.log`; grep `MSN2025_SEAD` and `MSN2026_SEAD` for issues 1–3. Bugs from the same run that aren't AI-logic work are in `bugs.md`.
 
 **What happened:** PKG2023 was a human strike on `TGT_KOSH_communications_site_1`, escorted by three AI SEAD flights of 2× F-16C from Rovaniemi:
 - MSN2024 → `SAM_KOSH_SA11_2`;
@@ -128,7 +210,7 @@ MSN2025 lost both jets:
    - The same goes for a SEAD flight whose threat is already dead.
 7. **Related, already in the `plan.md` backlog** ("Unflown taskings' AI flights"): MSN2028 flew and died escorting a human tasking nobody took. Once the logic layer can cancel flights, cancel a human package's AI flights when no player takes the tasking.
 
-**From the second event-log run, John flying** (`event_logs\2026-09-30_213757.log`, 65 min; losses Blue 5, Red 11). Bugs from it that aren't AI-logic work are in `bugs_and_fixes.md` (6–8, and the additions to 1–3 and 5).
+**From the second event-log run, John flying** (`event_logs\2026-09-30_213757.log`, 65 min; losses Blue 5, Red 11). Bugs from it that aren't AI-logic work are in `bugs.md` (6–8, and the additions to 1–3 and 5).
 
 8. *(2026-10-01: `EngageGroup` now carries `expend = "One"` per aircraft per group, one attack; to be seen in DCS whether the AI keeps HARMs for its later groups.)* **Issue 1 again, then a SEAD flight flying on with nothing left** (grep `MSN2026_SEAD`):
    - MSN2026 (2× F-16C from Rovaniemi) escorted MSN2025_STRIKE, the human tasking John didn't take (issue 7 again: 2 jets lost for a tasking nobody flew).
@@ -141,7 +223,7 @@ MSN2025 lost both jets:
     - The F-16 patrol MSN2016 killed four Su-34s of PKG5027 with AIM-120s. It then followed the last one down to 8,500 ft and died to its R-73 at 2 km.
     - The F-15C patrol MSN2002 killed four of PKG5023's jets, including a Su-24M from 5 km at 1,571 ft.
     - Blue's patrols are doing what they should. The merge at the end is where they die. A patrol leash rule could cover it: break off below an altitude, or when out of long-range missiles.
-12. **Red's attacks on Rovaniemi fly into a full SAM umbrella:** PKG5023 (8 jets) was planned 44–90 km inside the Rovaniemi SA-10's ring, which is also covered by IRIS-T, NASAMS and a Tunguska. All 8 jets were lost; their Kh-31Ps killed the NASAMS radar and the IRIS-T search radar. With the suppression flight unarmed (`bugs_and_fixes.md` 6), the package had no chance. This is also a planning question: should a target deep under a long-range SAM be picked at all, and should a package go when one of its suppression flights is missing?
+12. **Red's attacks on Rovaniemi fly into a full SAM umbrella:** PKG5023 (8 jets) was planned 44–90 km inside the Rovaniemi SA-10's ring, which is also covered by IRIS-T, NASAMS and a Tunguska. All 8 jets were lost; their Kh-31Ps killed the NASAMS radar and the IRIS-T search radar. With the suppression flight unarmed (`bugs.md` 6), the package had no chance. This is also a planning question: should a target deep under a long-range SAM be picked at all, and should a package go when one of its suppression flights is missing?
 
 **Open (4a, 4b and 4c):**
 - Which rules first, and in what order: attack-flight self-defence, strikes going home when their SEAD fails, the patrol leash?
@@ -152,25 +234,19 @@ MSN2025 lost both jets:
 
 ## 5. AWACS calls to the player (text)
 
+**Built 2026-10-02, not flown yet** (`plan.md`, *Air picture calls*): every 2 min, for 14 s, each player gets every contact in their own coalition's radar picture as a short BRAA list from their own position, highest threat first (range weighted by aspect): `MiG-29S - 110/120nm, 10k, hot, 5s` (magnetic bearing / range, altitude, aspect, age of the position). John's calls: no bullseye ("kind of a pain"), all bearings from the player, no "bogey dope" to ask for, only what Blue's radars see. Moves to `closed.md` once a run confirms it.
+
 **Goal:** the AWACS tells the player what it sees: enemy aircraft with bearing, distance, altitude and type, like a real controller's picture calls.
 
-**Decided:** text messages to the player's group (`outTextForGroup`) for now. Long-term goal (John): AWACS calls become LLM / cloud audio like the AI pilots' calls (item 7), and the text version is the step before that. Build the calls so the delivery can be swapped: the facts (who, BRAA, type) are worked out in one place, and text is only one way of sending them.
+**Decided:** text messages to the player's group (`outTextForGroup`) for now. Long-term goal (John): AWACS calls become LLM / cloud audio like the AI pilots' calls (item 7), and the text version is the step before that. The facts per group (`describe`) are worked out apart from the text, so the delivery can be swapped.
 
-**Where it stands:**
-- One AWACS per coalition flies (session 8).
-- Nothing reports to players. The brief still lacks AWACS frequency and callsign (`plan.md` backlog, playability follow-ups), and bullseye is 0,0.
-
-**Approach (proposed):**
-- **Source:** reads the radar picture (item 1). Only contacts own radars see; no calls once the AWACS is shot down, or say "picture degraded" and use ground radars only.
-- **Picture on request:** comms menu `AWACS > Picture`, the nearest N contacts to the player.
-- **Threat warning:** automatic, when a contact comes within N km of the player or points at them.
-- **Format:** bearing / range / altitude / aspect from the player (BRAA), or from bullseye; plus type when the radar picture has it identified, else "unknown". For example: `DARKSTAR: group BRAA 045/32, 25 thousand, hot, Su-30`.
-- AWACS callsign and frequency in the brief at the same time.
-
-**Open:**
-- BRAA from the player, or bullseye (which needs a real bullseye first)?
-- Automatic threat warnings, or only on request?
-- How often may it call unprompted, so it doesn't flood the screen?
+**Still open, after a run:**
+- Is 14 s enough to read up to 10 lines? (raised from 7 on 2026-10-02)
+- Does DCS's `magvar` module work in the game (`dcs.log`, grep `air picture`), or does the approximate table stay?
+- A separate automatic THREAT call (a hot group inside ~35 nm, at once rather than at the next list)?
+- When the AWACS is shot down: carry on from the ground radars (now: yes, the list is the whole picture), or say "picture degraded"?
+- Group size ("2 contacts", "heavy"): the picture keeps one contact per DCS group and doesn't count the aircraft its radars see.
+- AWACS callsign and frequency in the brief.
 
 ---
 

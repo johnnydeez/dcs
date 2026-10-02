@@ -1,6 +1,6 @@
 # Kola F-16 Random Tasking — Closed issues
 
-Roadmap items and fixed bugs that are done, moved here from `roadmap.md` and `bugs_and_fixes.md` so those files only hold open work. Each keeps its original number and text, as it stood when it was closed, with the discussion that led to it. What was actually built, and how it behaves, is in `plan.md` (*As built*).
+Roadmap items and fixed bugs that are done, moved here from `roadmap.md` and `bugs.md` so those files only hold open work. Each keeps its original number and text, as it stood when it was closed, with the discussion that led to it. What was actually built, and how it behaves, is in `plan.md` (*As built*).
 
 ---
 
@@ -187,7 +187,7 @@ Roadmap items and fixed bugs that are done, moved here from `roadmap.md` and `bu
 
 ### 3. Event log: a readable file to watch during the mission
 
-**Status: done (2026-09-30).** Built and run in DCS twice the same day (the second flown by John), then in every run since; its small fixes are bug 5 in `bugs_and_fixes.md`. As built, and how to watch it: `plan.md`, *Event log*.
+**Status: done (2026-09-30).** Built and run in DCS twice the same day (the second flown by John), then in every run since; its small fixes are bug 5 in `bugs.md`. As built, and how to watch it: `plan.md`, *Event log*.
 
 What John decided (2026-09-30):
 - **Scope:** a catalogue of every event from the run, so one can comb through it and see how the mission unfolded unit by unit, step by step, without affecting game performance.
@@ -298,7 +298,7 @@ Syria caps its AI aircraft at 12 alive and has far fewer ground units (count the
 
 ## Bugs
 
-Fixed bugs from `bugs_and_fixes.md`, each as it stood when it was closed (status line: what was built). Moved 2026-10-01; fixed in session 12 and not all confirmed in a DCS run yet.
+Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: what was built). Moved 2026-10-01; fixed in session 12 and not all confirmed in a DCS run yet.
 
 ### Bug 1. Scrambles accept intercepts they can never make in time
 
@@ -527,3 +527,55 @@ Fixed bugs from `bugs_and_fixes.md`, each as it stood when it was closed (status
 - **DEAD only against a blind site:** a DEAD mission always gets a SEAD flight on its own target site first, and (like any AI mission in sequence) launches only once that site's radars are out of the fight; its glide bombs then finish the launchers and command post. Its route's other threats as before.
 - **An AI mission behind a player's SEAD** waits for the player: it launches only once its threats are out of the fight (the same check as in sequence), waiting while the tasking could still be flown, else cancelled. Or the planner never puts an AI mission behind a player SEAD: the player's SEAD tasking escorts an AI package that has its own AI SEAD as well.
 - Longer term: standoff DEAD weapons released outside the ring (the *Standoff attacks* backlog item, bug 4).
+
+---
+
+### Bug 20. The SEAD go-cold timer counts from the planned time, so a late flight is sent home before it attacks
+
+**Status:** fixed 2026-10-01 with roadmap item 10, not flown yet (found 2026-10-01). Late takeoffs are DCS AI taxiing and aren't a bug (John: a flight 6 min late or early is fine; the goal is that every mission gets flown and things go smoothly). This one is a bug because the lateness makes the mission fail.
+
+**Seen:** `event_logs\2026-10-01_141412.log`, grep `MSN5026_SEAD`. Six Su-34s of three SEAD flights spawned at Vuojärvi at 06:02 with the same planned takeoff (06:12); they left between 06:06 and 06:30. MSN5026's lead took off at 06:24 and its wingman at 06:30. At 06:31:34 the go-cold rule sent it home, "still on the attack 10 min after its time at the launch point", while it was at its departure waypoint (06:30:12), nowhere near the site. It never attacked; the Kuusamo IRIS-T it was meant for stayed untouched.
+
+**Cause:** `attack_time_s` (10 min) in the `suppression` rule is measured from the flight's *planned* time at the launch point.
+
+**Proposed fix:** start the clock when the flight reaches its launch point (its `target` waypoint), or from the planned time shifted by how late the flight took off. Optional, with it: some limited planning for taxi time, e.g. stagger flights spawning at the same field by a few minutes per 2-ship.
+
+**Fix:** the clock starts when the flight comes within `AIR_CONTROL.suppression.arrival_km` (15) of its launch point, however late it took off (`directives_per_flight.lua`, `suppression`); the line now reads "still on the attack 10 min after it reached its launch point". No taxi-time planning added.
+
+---
+
+### Bug 24. The player appears under two names in the event log
+
+**Status:** fixed 2026-10-02 by John in the Mission Editor (found 2026-10-01, 22:23 run).
+
+**Seen:** `event_logs\2026-10-01_222355.log`: `PLAYER_IN`, `TAKEOFF`, `SHOT`, `POSITION`, `HIT`, `DESTROYED` say `f16_kallax-1-5` (the unit, spawned at Rovaniemi), while the radar picture's `CONTACT`, `TRACKING` and `CONTROL` lines say `f16_rovaniemi` (the group). Grepping one name misses half the player's story.
+
+**Cause (found 2026-10-02, in the `.miz`):** the slot templates were copied from Kallax, so their units kept Kallax names: group `f16_rovaniemi` holds unit `f16_kallax-1-5`, `f16_kiruna` holds `f16_kallax-1-1`, `f16_banak` `f16_kallax-1-3`, `f16_tromso` `f16_kallax-1-4` (only `f16_rovaniemi-1-1` in `f16_kemi_tornio` is different, and also wrong). Unit events log the unit name, the radar picture the group name.
+
+**Proposed fix:** rename each template's unit in the Mission Editor to match its group (`f16_rovaniemi-1-1`, …), then re-run `kola_data_tools/miz_player_slots.py`. Optionally also log the group name on player lines.
+
+**Fix:** John renamed each slot template's unit to match its group (2026-10-02). `miz_player_slots.py` needed no re-run: `data/player_slots.lua` keeps group names only.
+
+---
+
+### Bug 25. No friendly datalink tracks and no SAM threat rings on the player's HSD
+
+**Status:** fixed and confirmed in Kola 2026-10-02 (the second fix; the first, below under *Fix*, wasn't enough). Found 2026-10-02 (John: both used to work; first flight after a few months of DCS updates). The AWACS's enemy tracks: bug 26.
+
+**What works (confirmed in Kola, 2026-10-02, John: threat rings and datalink contacts on the HSD):** several suspects were changed in one run, so it isn't known which one mattered. **Keep all of them together:**
+- **AI aircraft** (`consumers/spawn_aircraft_groups.lua`): an explicit group id (700000+); the EPLRS command (`WrappedAction` `EPLRS`, `value = true`, that `groupId`) as the **first task of the first waypoint**, as the mission editor does it (the `setCommand` EPLRS right after the spawn is kept too); per unit its own Link 16 STN (`AddPropAircraft.STN_L16`, octal from 01000) and the editor's `datalinks.Link16` block (`settings` flight lead / channels / power, `network` with empty `teamMembers` and `donors`). `dcs.log` warns if DCS doesn't take the group id.
+- **SAM sites** (`consumers/spawn_ground_groups.lua`, `init.lua`): medium and long-range site groups spawn with `hiddenOnMFD = false`; every Red SAM group spawns as country **Russia**, not CJTF Red.
+- **Player slots:** John's F-16 templates are country CJTF Blue (the AI's country; was USA), each with its own STN (00201–00211), a team of itself only, no donors, empty DTC.
+- **Not enough on its own** (the 00:57 run): STN + `setCommand` EPLRS right after a ramp spawn, CJTF Red SAMs with `hiddenOnMFD = false`, player slots as USA: nothing showed. Country alone (slots to CJTF Blue): nothing.
+
+**Seen:** in Kola, no datalink contacts and no threat rings on the F-16's HSD. A Caucasus test mission (`Saved Games\DCS\Missions\datalink_hsd_test.miz`, built by script; John flew it the same day) split it up:
+- AI aircraft placed in the mission editor, and a script-spawned F-16 pair with the EPLRS command and STNs: all shown on the HSD (the editor team as his flight, the rest as datalink contacts).
+- A script-spawned F-16 pair spawned the way Kola spawns its AI (no EPLRS, no STN): **not shown**.
+- A script-spawned SA-11 with `hiddenOnMFD = false`: ring shown. An SA-11 placed in the editor (its F-16 had an empty DTC): no ring. Kola's SAMs, script-spawned without the field: no rings.
+
+**Cause:** the mission editor gives every AI flight an EPLRS command (datalink on) on its first waypoint and each Link 16 aircraft an STN; Kola's spawner gave neither. Kola's ground spawner never set `hiddenOnMFD`, and DCS's default hides the group from the HSD.
+
+**First fix (not enough on its own, 00:57 run):**
+- `consumers/spawn_aircraft_groups.lua`: every AI unit gets its own STN (`AddPropAircraft.STN_L16`, octal from 01000; the player slots use 00201–00211), and every spawned flight gets `setCommand({ id = "EPLRS", value = true, groupId })` at once (scrambles and `_AGAIN` copies go through the same spawner).
+- `consumers/spawn_ground_groups.lua`: `run(entries, label, { show_on_mfd = set })` spawns those groups with `hiddenOnMFD = false`; `init.lua` passes every medium and long-range SAM site (not escorts, not short-range or early warning). A forum report (since the 12 May 2026 update) says the HSD shows about 16 threats at most; Red fields ~11 such sites per roll. Fits the fog-of-war rule's "confirmed" strategic SAMs.
+- Also found: the slot templates' unit names (bug 24).

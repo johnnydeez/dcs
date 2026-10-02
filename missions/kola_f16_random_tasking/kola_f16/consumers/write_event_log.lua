@@ -17,7 +17,7 @@
 -- DESTROYED CRASHED EJECTED PILOT_DEAD PARACHUTE ABORTED TARGET CONTACT TRACKING PICTURE
 -- SCRAMBLE NO_SCRAMBLE STOOD_DOWN ALERT LEASH UNIT_AWAKE UNIT_ASLEEP LATE_WAKE AWAKE_COUNT
 -- DELAYED RETRY CANCELLED
--- PLAYER_IN PLAYER_OUT
+-- PLAYER_IN PLAYER_OUT PICTURE_CALL
 --
 -- The DCS events (shots, hits, kills, takeoffs, landings, …) are caught here for every
 -- unit. The other modules hand their own events over with WriteEventLog.add: the flight
@@ -48,6 +48,7 @@ local WAYPOINT_LABEL = {
     departure = "departure", transit = "transit", descent = "descent",
     ingress = "ingress, pushing: attack tasks active", target = "target", egress = "egress, off target",
     station = "on station", station_end = "off station", intercept = "intercept point",
+    low = "low level", popup = "pop-up, climbing to the shot", climb = "climb out, clear of the rings",
 }
 
 local _plan

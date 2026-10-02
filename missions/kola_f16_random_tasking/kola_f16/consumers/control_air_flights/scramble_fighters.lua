@@ -1,8 +1,8 @@
--- Consumer: scrambles — each coalition's quick-reaction fighters, launched at raids its
--- own radars actually see (roadmap.md item 2). The plan holds only the alert posture
--- (plan.air_tasking_orders[coalition].alert: the alert bases and their aircraft); this
--- runs on the radar picture (consumers/track_radar_picture.lua) at the end of every
--- round (picture_updated, every 30 s).
+-- Consumer part of the controller (control_air_flights.lua): scrambles — each coalition's
+-- quick-reaction fighters, launched at raids its own radars actually see (roadmap.md items
+-- 2 and 11; moved here from consumers/run_scrambles.lua, unchanged in what it decides).
+-- The plan holds only the alert posture; the alert jets' state is track_alert_jets.lua;
+-- this decides, on the radar picture's round (picture_updated, every 30 s).
 --
 -- Per coalition, each round:
 --   1. trigger: a tracked contact (range known, not a helicopter) that is over own
@@ -24,56 +24,31 @@
 --      over the airborne cap (the planner keeps AIR_DEFENSE.scramble_reserve_aircraft of
 --      it free for scrambles; players don't count)
 --   5. after scramble_reaction_s (cockpit alert) a one-ship spawns hot on one of the ramp
---      spots the plan holds for its base's alert jets (never on the runway: John), with EngageGroup on each raid group from
---      takeoff, open fire, dash speed with afterburner allowed. The scheduler logs its
---      shots, kills and losses; its radar joins the picture; the leash
---      (consumers/enforce_air_behaviour_rules.lua) brings it home
+--      spots the plan holds for its base's alert jets (never on the runway: John), with
+--      EngageGroup on each raid group from takeoff, open fire, dash speed with afterburner
+--      allowed. The scheduler records it; its radar joins the picture; the controller
+--      watches it with the leash, which brings it home
 --
--- Event log lines (consumers/write_event_log.lua):
---   SCRAMBLE     RED  MSN5901_SCRAM   "MiG-31 from Monchegorsk after MSN2014_STRIKE (F-16C_50), own airspace,
---                     9 min from Olenya; intercept 85 km out; launching in 95 s; Monchegorsk has 2 alert jet(s) ready"
---   ALERT        RED  MSN5901_SCRAM   "landed; its jet is back on alert at Monchegorsk in 30 min; …"
---   NO_SCRAMBLE  RED  MSN2014_STRIKE  "F-16C_50: covered by patrol MSN5003_CAP"   once per reason
---   STOOD_DOWN   RED  MSN5901_SCRAM   "before launch: MSN2014_STRIKE destroyed"
--- The alert bases at start go to dcs.log (grep "Scrambles").
+-- Event log lines (word CONTROL):
+--   RED  MSN5901_SCRAM   "scramble: MiG-31 from Monchegorsk after MSN2014_STRIKE (F-16C_50), own airspace,
+--                         9 min from Olenya; intercept 85 km out; launching in 95 s; Monchegorsk has 2 alert jet(s) ready"
+--   RED  MSN2014_STRIKE  "no scramble: F-16C_50: covered by patrol MSN5003_CAP"   once per reason
+--   RED  MSN5901_SCRAM   "stand down before launch: MSN2014_STRIKE destroyed"
 -- Scramble ids are MSN<first_number + n>_SCRAM (Blue 2901+, Red 5901+), the DCS group name.
--- Reads the plan; writes nothing back to it. Launches, cooldowns and who was answered are
--- runtime state kept here.
+-- Reads the plan; writes nothing back to it.
 
-RunScrambles = {}
+ScrambleFighters = {}
 
-local SIDE = { red = 1, blue = 2 }             -- coalition.side
 local FRONT_SEARCH_M = 300000                  -- how far to look for the own region facing a raid
 local INTERCEPT_STEP_M = 5000                  -- the intercept point is pulled back in steps this long
 
 local _plan
-local _state = {}   -- coalition → state (RunScrambles.start)
+local _state = {}   -- coalition → { coalition, posture, answered, pending, refused, inbound, next_number, patrols }
 
 -- ── small helpers ───────────────────────────────────────────────
 
--- AI aircraft of the coalition in the air: players don't count against the cap (John,
--- 2026-10-01: the cap is for AI aircraft)
-local function airborneAircraft(coalitionName)
-    local n = 0
-    for _, g in ipairs(coalition.getGroups(SIDE[coalitionName], Group.Category.AIRPLANE) or {}) do
-        for _, u in ipairs(g:getUnits() or {}) do
-            local ok, air = pcall(function() return u:inAir() and not u:getPlayerName() end)
-            if ok and air then n = n + 1 end
-        end
-    end
-    return n
-end
-
 local function liveGroup(name)
-    local g = name and Group.getByName(name)
-    local ok, live = pcall(function()
-        if not (g and g:isExist()) then return false end
-        for _, u in ipairs(g:getUnits() or {}) do
-            if u:isExist() and u:getLife() > 0 then return true end
-        end
-        return false
-    end)
-    return ok and live
+    return name ~= nil and AssessFlightSituations.liveGroup(name) ~= nil
 end
 
 local function inAir(name)
@@ -107,28 +82,10 @@ local function threatText(minutes, asset)
     return string.format("%.0f min from %s", minutes, asset)
 end
 
--- ── alert jets ──────────────────────────────────────────────────
-
--- Jets back from a scramble return to alert once their turnaround is over.
-local function readyJets(s, now)
-    for i = #s.returning, 1, -1 do
-        if s.returning[i] <= now then
-            s.ready = s.ready + 1
-            table.remove(s.returning, i)
-        end
-    end
-    return s.ready
-end
-
-local function jetsText(s, now)
-    local text = string.format("%d alert jet(s) ready", readyJets(s, now))
-    if #s.returning > 0 then
-        local soonest = math.huge
-        for _, t in ipairs(s.returning) do soonest = math.min(soonest, t) end
-        text = text .. string.format(", %d turning around (next in %d min)", #s.returning,
-            math.ceil((soonest - now) / 60))
-    end
-    return text
+local function pendingCount(st)
+    local n = 0
+    for _ in pairs(st.pending) do n = n + 1 end
+    return n
 end
 
 -- ── trigger ─────────────────────────────────────────────────────
@@ -150,7 +107,7 @@ end
 
 local function answered(st, group)
     local id = st.answered[group]
-    return id and (st.pending[id] or EnforceAirBehaviourRules.watching(id))
+    return id and (st.pending[id] or ControlAirFlights.onTask(id))
 end
 
 -- ── where and from where ────────────────────────────────────────
@@ -193,33 +150,13 @@ local function interceptPoint(coalitionName, from, c, dash)
     return good
 end
 
--- A free ramp spot for an alert jet at alert base b: one of the spots the plan holds for
--- its alert jets (b.spots, nearest the runway first) that DCS reports free now and no
--- other scramble is spawning on. { terminal_index, x, z } or nil.
-local function freeSpot(st, b)
-    local ab = Airbase.getByName(b.base)
-    if not ab then return nil end
-    local held = st.held_spots[b.base] or {}
-    local ok, spots = pcall(function() return ab:getParking(true) end)
-    if not ok or type(spots) ~= "table" then return nil end
-    local free = {}
-    for _, s in ipairs(spots) do free[s.Term_Index] = true end
-    for _, s in ipairs(b.spots or {}) do
-        if free[s.terminal_index] and not held[s.terminal_index] then return s end
-    end
-    return nil
-end
-
 -- The alert base to answer from: { base (posture entry), aircraft_type, intercept, leg_m }
 -- or nil and why not.
 local function pickBase(st, c, now)
     local region = DivideAirspace.facingRegion(_plan.airspace, c.pos, st.coalition, FRONT_SEARCH_M)
     local best, why = nil, "no alert base with a jet ready"
     for _, b in ipairs(st.posture.bases) do
-        local s = st.bases[b.base]
-        local ab = Airbase.getByName(b.base)
-        if readyJets(s, now) > 0 and now >= s.ready_s and ab and ab:getCoalition() == SIDE[st.coalition]
-           and (not region or b.region == region) then
+        if TrackAlertJets.canLaunch(st.coalition, b.base, now) and (not region or b.region == region) then
             local aircraftType = Util.weightedPick(b.aircraft)
             local p = AIRCRAFT_PROFILE[aircraftType]
             local intercept = interceptPoint(st.coalition, b.pos, c, p.dash_speed_mps)
@@ -236,7 +173,7 @@ local function pickBase(st, c, now)
                 -- refuse a scramble that can't arrive in time)
                 why = string.format("can't reach the raid before it reaches %s (%.0f min, raid %.0f min)",
                     c.threat_asset or "its target", arrive_s / 60, c.threat_minutes)
-            elseif not freeSpot(st, b) then
+            elseif not TrackAlertJets.freeSpot(st.coalition, b) then
                 why = "no free ramp spot at " .. b.base
             elseif not best or leg < best.leg_m then
                 best = { base = b, aircraft_type = aircraftType, intercept = intercept, leg_m = leg }
@@ -281,24 +218,24 @@ local function raidGone(st, groups)
     return why
 end
 
-local function launch(st, pick, raid, groups, id, number, reserved)
+local function launch(st, pick, raid, groups, id, number, refundToken)
     local b, aircraftType = pick.base, pick.aircraft_type
-    local s = st.bases[b.base]
+    local c = st.coalition
     local function refund(why)
         st.pending[id] = nil
-        s.ready, s.ready_s = s.ready + 1, reserved.ready_s
-        WriteEventLog.add(st.coalition, "STOOD_DOWN", id, "before launch: " .. why)
+        TrackAlertJets.refund(c, b.base, refundToken)
+        ControlAirFlights.say(c, id, "stand down before launch", why)
     end
     local gone = raidGone(st, groups)
     if gone then return refund(gone) end
-    local spot = freeSpot(st, b)
+    local spot = TrackAlertJets.freeSpot(c, b)
     if not spot then return refund("no free ramp spot at " .. b.base) end
     local now = timer.getTime()
     local mt = AIR_MISSION_TYPE.interception
     local p = AIRCRAFT_PROFILE[aircraftType]
     local alt = p.attack_altitude_m.interception
     local m = {
-        id = id, number = number, coalition = st.coalition, mission_type = "interception",
+        id = id, number = number, coalition = c, mission_type = "interception",
         group_task = mt.group_task, target = groups[1], target_label = raid[1].type or "type unknown",
         target_pos = { x = raid[1].pos.x, z = raid[1].pos.z },
         aircraft_type = aircraftType, count = 1, skill = Util.pick(AIR_TASKING_SKILL),
@@ -315,16 +252,15 @@ local function launch(st, pick, raid, groups, id, number, reserved)
         rules_of_engagement = mt.rules_of_engagement, loadout = AIRCRAFT_LOADOUT[aircraftType].interception,
         keeps_gun = true, may_jettison = true, afterburner = true, critical_names = {}, suppression_threats = {},
     }
-    st.held_spots[b.base] = st.held_spots[b.base] or {}
-    st.held_spots[b.base][spot.terminal_index] = true
+    TrackAlertJets.hold(c, b.base, spot.terminal_index)
     local grp = SpawnAircraftGroups.spawn(m)
-    st.held_spots[b.base][spot.terminal_index] = nil
+    TrackAlertJets.release(c, b.base, spot.terminal_index)
     if not grp then return refund("spawn failed") end
     st.pending[id] = nil
-    st.flights[id] = b.base   -- its jet goes back on alert at this base after landing
+    TrackAlertJets.launched(c, b.base, id)   -- its jet goes back on alert at this base after landing
     ScheduleAirTaskingOrders.track(m)
-    TrackRadarPicture.addFlight(st.coalition, id, "scramble")
-    EnforceAirBehaviourRules.watch(m, "leash", { targets = groups })
+    TrackRadarPicture.addFlight(c, id, "scramble")
+    ControlAirFlights.watch(m, { targets = groups })
 end
 
 local function refuse(st, c, why)
@@ -332,14 +268,13 @@ local function refuse(st, c, why)
     local key = why:gsub("%d+", "#")
     if st.refused[c.group] == key then return end
     st.refused[c.group] = key
-    WriteEventLog.add(st.coalition, "NO_SCRAMBLE", c.group, string.format("%s: %s", c.type or "type unknown", why))
+    ControlAirFlights.say(st.coalition, c.group, "no scramble", string.format("%s: %s", c.type or "type unknown", why))
 end
 
 local function scramble(st, trigger, contacts, reason, now)
     local pick, why = pickBase(st, trigger, now)
     if not pick then return refuse(st, trigger, why) end
-    if airborneAircraft(st.coalition) + st.pending_count() + 1
-       > st.posture.max_airborne_aircraft then
+    if DecideLaunches.airborneAircraft(st.coalition) + pendingCount(st) + 1 > DecideLaunches.cap(st.coalition, true) then
         return refuse(st, trigger, "over the airborne cap")
     end
     local raid = raidOf(st, trigger, contacts)
@@ -351,9 +286,8 @@ local function scramble(st, trigger, contacts, reason, now)
     local number = st.next_number
     st.next_number = number + 1
     local id = string.format("MSN%d_%s", number, AIR_MISSION_TYPE.interception.group_name_tag)
-    local s = st.bases[pick.base.base]
-    local reserved = { ready_s = s.ready_s }
-    s.ready, s.ready_s = s.ready - 1, now + pick.base.cooldown_s
+    local base = pick.base.base
+    local refundToken = TrackAlertJets.commit(st.coalition, base, now, pick.base.cooldown_s)
     st.pending[id] = true
     for _, g in ipairs(groups) do
         st.answered[g] = id
@@ -361,11 +295,11 @@ local function scramble(st, trigger, contacts, reason, now)
     end
     local R = AIR_DEFENSE.scramble_reaction_s
     local delay = math.random(R[1], R[2])
-    WriteEventLog.add(st.coalition, "SCRAMBLE", id, string.format("%s from %s after %s, %s; intercept %.0f km out; launching in %d s; %s has %s",
-        pick.aircraft_type, pick.base.base, table.concat(names, " + "), reason,
-        pick.leg_m / 1000, delay, pick.base.base, jetsText(s, now)))
+    ControlAirFlights.say(st.coalition, id, "scramble", string.format("%s from %s after %s, %s; intercept %.0f km out; launching in %d s; %s has %s",
+        pick.aircraft_type, base, table.concat(names, " + "), reason,
+        pick.leg_m / 1000, delay, base, TrackAlertJets.jetsText(st.coalition, base, now)))
     timer.scheduleFunction(function()
-        local ok, err = pcall(launch, st, pick, raid, groups, id, number, reserved)
+        local ok, err = pcall(launch, st, pick, raid, groups, id, number, refundToken)
         if not ok then
             st.pending[id] = nil
             Log.error(string.format("%s scramble %s: launch failed: %s", st.coalition:upper(), id, tostring(err)))
@@ -413,70 +347,23 @@ local function check(st)
     end
 end
 
--- A scramble's jet that lands goes back on alert at its base after the turnaround; a jet
--- shot down never comes back.
-local landingHandler = {}
-function landingHandler:onEvent(e)
-    if e.id ~= world.event.S_EVENT_LAND or not e.initiator then return end
-    local ok, name = pcall(function() return e.initiator:getGroup():getName() end)
-    if not ok or not name then return end
-    for _, st in pairs(_state) do
-        local base = st.flights[name]
-        if base then
-            st.flights[name] = nil
-            local s = st.bases[base]
-            local now = timer.getTime()
-            table.insert(s.returning, now + AIR_DEFENSE.scramble_turnaround_s)
-            WriteEventLog.add(st.coalition, "ALERT", name, string.format("landed; its jet is back on alert at %s in %d min; %s has %s",
-                base, math.floor(AIR_DEFENSE.scramble_turnaround_s / 60), base, jetsText(s, now)))
-        end
-    end
-end
-
--- A scramble the leash stood down on the ramp (consumers/enforce_air_behaviour_rules.lua):
--- its jet never flew, so it is back on alert at once (closed_issues.md, bug 2).
-function RunScrambles.stoodDown(id)
-    for _, st in pairs(_state) do
-        local base = st.flights[id]
-        if base then
-            st.flights[id] = nil
-            local s = st.bases[base]
-            s.ready = s.ready + 1
-            WriteEventLog.add(st.coalition, "ALERT", id, string.format("stood down on the ramp; its jet is back on alert at %s; %s has %s",
-                base, base, jetsText(s, timer.getTime())))
-        end
-    end
-end
-
-function RunScrambles.start(plan)
+-- Starts scrambles for each coalition with alert bases; returns the dcs.log lines.
+function ScrambleFighters.start(plan)
     local ato = plan.air_tasking_orders
-    if not ato or ato.problems then return end
+    if not ato or ato.problems then return {} end
     _plan = plan
-    local started = {}
+    local started = TrackAlertJets.start(plan)
     for _, c in ipairs({ "red", "blue" }) do
-        local posture = ato[c] and ato[c].alert
-        if posture and #posture.bases > 0 then
-            local st = { coalition = c, posture = posture, bases = {}, answered = {}, pending = {}, refused = {},
-                         inbound = {}, held_spots = {}, flights = {}, next_number = posture.first_number, patrols = {} }
-            st.pending_count = function()
-                local n = 0
-                for _ in pairs(st.pending) do n = n + 1 end
-                return n
-            end
-            for _, b in ipairs(posture.bases) do
-                st.bases[b.base] = { ready = b.alert_aircraft, returning = {}, ready_s = 0 }
-            end
+        local posture = TrackAlertJets.posture(c)
+        if posture then
+            local st = { coalition = c, posture = posture, answered = {}, pending = {}, refused = {},
+                         inbound = {}, next_number = posture.first_number, patrols = {} }
             for _, m in ipairs(ato[c].missions or {}) do
                 if m.mission_type == "combat_air_patrol" and m.attack and m.attack.zone then st.patrols[#st.patrols + 1] = m end
             end
             _state[c] = st
             TrackRadarPicture.on(c, "picture_updated", function() check(st) end)
-            local names = {}
-            for _, b in ipairs(posture.bases) do names[#names + 1] = b.base end
-            started[#started + 1] = string.format("%s from %s", c:upper(), table.concat(names, ", "))
         end
     end
-    if #started == 0 then return end
-    world.addEventHandler(landingHandler)
-    Log.info(string.format("--- Scrambles: every radar-picture round; %s ---", table.concat(started, "; ")))
+    return started
 end

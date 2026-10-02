@@ -40,18 +40,18 @@ AIRCRAFT_PROFILE = {
         flight_size = { 2, 2 }, combat_radius_km = 550,
         -- FAB-500 level bombing from medium altitude, as in Syria; RBK cluster bombs lower
         cruise_speed_mps = 230, cruise_altitude_m = 7500,
-        attack_altitude_m = { strike = 5000, airfield_strike = 3000, suppression_of_air_defenses = 9000 },
+        attack_altitude_m = { strike = 5000, airfield_strike = 3000 },
         anti_radiation_missiles = 4,   -- 2 Kh-58U + 2 Kh-25MPU
     },
     ["Su-34"] = {
         -- open-air spots (104) only, for now: on Afrikanda's airplane-only spots (72) both jets
-        -- of two flights blew up seconds after spawning (2026-10-01, bugs_and_fixes.md 13),
+        -- of two flights blew up seconds after spawning (2026-10-01, bugs.md 13),
         -- most likely too small for it
         min_runway_m = 2000, parking = { 104 },
         flight_size = { 2, 2 }, combat_radius_km = 700,
         cruise_speed_mps = 230, cruise_altitude_m = 8000,
         -- Kh-29T TV-guided missiles against air-defense sites from medium altitude
-        attack_altitude_m = { strike = 5000, airfield_strike = 3000, suppression_of_air_defenses = 9000,
+        attack_altitude_m = { strike = 5000, airfield_strike = 3000,
                               destruction_of_air_defenses = 4000, interdiction = 4000 },
         anti_radiation_missiles = 4,   -- Kh-31P
     },
@@ -68,7 +68,7 @@ AIRCRAFT_PROFILE = {
         -- JDAMs from medium-high altitude; Mavericks and HARMs lower
         cruise_speed_mps = 230, cruise_altitude_m = 7500,
         dash_speed_mps = 325,
-        attack_altitude_m = { strike = 7000, airfield_strike = 7000, suppression_of_air_defenses = 9000,
+        attack_altitude_m = { strike = 7000, airfield_strike = 7000,
                               destruction_of_air_defenses = 7000, close_air_support = 4500,
                               combat_air_patrol = 8000, interception = 8500 },
         anti_radiation_missiles = 4,   -- AGM-88C (hand: SEAD 4 HARM, John 2026-10-01)
@@ -78,7 +78,7 @@ AIRCRAFT_PROFILE = {
         flight_size = { 2, 2 }, combat_radius_km = 550,
         cruise_speed_mps = 230, cruise_altitude_m = 7500,
         dash_speed_mps = 325,
-        attack_altitude_m = { strike = 7000, airfield_strike = 7000, suppression_of_air_defenses = 9000,
+        attack_altitude_m = { strike = 7000, airfield_strike = 7000,
                               destruction_of_air_defenses = 7000, close_air_support = 4500,
                               combat_air_patrol = 8000, interception = 8500 },
         anti_radiation_missiles = 4,   -- AGM-88C (hand: SEAD 4 HARM, John 2026-10-01)

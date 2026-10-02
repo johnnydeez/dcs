@@ -7,6 +7,12 @@
 --                                                  last, and stops at the last (convoys)
 -- A group without a route holds position. The entry id is the DCS group name; unit
 -- names are <id>_<n>.
+-- run's optional `options.show_on_mfd` (a set of entry ids) spawns those groups with
+-- hiddenOnMFD = false, so the F-16's HSD draws their threat ring (the Caucasus datalink
+-- test, 2026-10-02: a script-spawned SA-11 with it showed; Kola's SAMs without it didn't).
+-- run's optional `options.country` (entry id → a country.id name, e.g. "RUSSIA") spawns
+-- those groups as that country instead of their coalition's CJTF one (bug 25: the
+-- Caucasus SA-11 whose ring showed was Russia; Kola's CJTF Red SAMs showed none).
 --
 -- After each spawn, every unit's getTypeName() is compared with the type the plan asked
 -- for — DCS silently swaps an unknown type for a Leopard-2, and this catches it by name.
@@ -82,13 +88,17 @@ local function checkTypes(entry, grp)
     return mismatches
 end
 
-function SpawnGroundGroups.run(entries, label)
+function SpawnGroundGroups.run(entries, label, options)
     label = label or "ground groups"
     Log.info("--- Spawn: " .. label .. " ---")
+    local showOnMfd = options and options.show_on_mfd or {}
+    local countryOf = options and options.country or {}
     local groups, units, failed, mismatches = 0, 0, 0, 0
     for _, entry in ipairs(entries or {}) do
-        local countryId = country.id[COUNTRY[entry.side]]
-        local ok, grp = pcall(coalition.addGroup, countryId, Group.Category.GROUND, buildGroup(entry))
+        local countryId = country.id[countryOf[entry.id] or COUNTRY[entry.side]]
+        local data = buildGroup(entry)
+        if showOnMfd[entry.id] then data.hiddenOnMFD = false end
+        local ok, grp = pcall(coalition.addGroup, countryId, Group.Category.GROUND, data)
         if ok and grp then
             groups = groups + 1
             units  = units + #entry.units

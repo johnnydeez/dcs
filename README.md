@@ -15,7 +15,8 @@ missions/
   kola_f16_random_tasking/    F-16 tasking generator on Kola (air denial, human strike missions)
     plan.md                   status and design: start at "Where we are"
     roadmap.md                where the mission is headed next (features, open questions, order)
-    bugs_and_fixes.md         bugs found in runs, to come back to
+    bugs.md                   bugs found in runs, to come back to
+    closed.md                 finished roadmap items and fixed bugs, keeping their numbers
     event_logs/               one event log per mission run (git-ignored; see below)
     kola_f16_random_tasking.miz
     kola_f16/                 scripts → Saved Games\DCS\Scripts\kola_f16\
