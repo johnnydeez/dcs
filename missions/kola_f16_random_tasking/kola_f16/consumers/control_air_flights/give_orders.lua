@@ -59,15 +59,17 @@ function GiveOrders.home(w, g, pos)
     -- a SEAD flight turns around where it is and goes back the way it came (around the
     -- other SAMs, low where it came in low), not straight home: before its launch point,
     -- its route out flown backwards from the nearest point behind it; from the launch
-    -- point on, its planned way back
+    -- point on, its planned way back (never on toward the site: from the launch point or
+    -- the press-on leg it starts at the first point after the press-on point, bug 36)
     if m.attack and m.attack.kind == "harm_salvo" and m.route then
-        local route, launchAt, nearest = m.route, nil, nil
+        local route, launchAt, pressAt, nearest = m.route, nil, nil, nil
         for i, r in ipairs(route) do
             if r.kind == "target" then launchAt = i end
+            if r.kind == "press_on" then pressAt = i end
             if i > 1 and i < #route and (not nearest or Util.dist(pos, r) < Util.dist(pos, route[nearest])) then nearest = i end
         end
         if nearest and launchAt and nearest >= launchAt then
-            for i = nearest + 1, #route - 1 do
+            for i = math.max(nearest, pressAt or launchAt) + 1, #route - 1 do
                 local r = route[i]
                 points[#points + 1] = point(r.x, r.z, r.alt_m, r.speed_mps, r.alt_type)
             end

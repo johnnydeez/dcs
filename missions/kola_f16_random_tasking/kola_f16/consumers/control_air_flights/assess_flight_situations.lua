@@ -11,6 +11,7 @@
 --   velocity             { x, y, z } of the lead
 --   air_to_air           { count, radar_count, longest_radar } — missiles aboard the flight
 --   anti_radiation_missiles  count aboard the flight
+--   anti_radiation_missiles_by_jet  count aboard each live jet, by unit name
 --   threats              enemy airplanes the picture holds within the warning range (and
 --                        one that just fired at the flight, at any range), nearest first:
 --                        { group, type, range_m, aspect_deg, closing_mps, pos }
@@ -61,16 +62,26 @@ function AssessFlightSituations.enemyDepth(coalition, pos, searchM)
     return math.max(0, d - a.cell_m / 2)
 end
 
--- The enemy medium / long-range SAM site whose kill zone the aircraft at pos (y: its
--- altitude) is inside, or nil. The zone is `fraction` of how far the site reaches at
--- that altitude (lib/sam_reach.lua). Never one of `except` (a set of site ids).
+-- The enemy medium / long-range SAM site, or base-defense radar SAM (Tor, Pantsir, …;
+-- bug 41), whose kill zone the aircraft at pos (y: its altitude) is inside, or nil. The
+-- zone is `fraction` of how far it reaches at the aircraft's height above the ground
+-- (lib/sam_reach.lua; a base defense its full reach at any height). Never one of
+-- `except` (a set of site or group ids).
 function AssessFlightSituations.enemyKillZone(coalition, pos, fraction, except)
+    local height = SamReach.aboveGround(pos, pos.y)
+    local p = { x = pos.x, z = pos.z }
     for _, s in ipairs(_plan.sam_sites and _plan.sam_sites.sites or {}) do
         if s.side ~= coalition and not (except and except[s.id]) and AIR_ROUTING.threat_layers[s.layer]
            and (s.engage_m or 0) > 0
-           and Util.dist({ x = pos.x, z = pos.z }, s.pos) < SamReach.radius(s, pos.y) * fraction
+           and Util.dist(p, s.pos) < SamReach.radius(s, height) * fraction
            and AssessFlightSituations.liveGroup(s.id) then
             return s.id
+        end
+    end
+    for _, g in ipairs(SamReach.baseDefenses(_plan, coalition)) do
+        if not (except and except[g.id]) and Util.dist(p, g.pos) < g.reach_m * fraction
+           and AssessFlightSituations.liveGroup(g.id) then
+            return g.id
         end
     end
     return nil
@@ -140,6 +151,26 @@ FACTS.anti_radiation_missiles = function(s)
         end
     end)
     return n
+end
+
+-- Anti-radiation missiles aboard each live jet of the flight: { [unit name] = count }.
+FACTS.anti_radiation_missiles_by_jet = function(s)
+    local byJet = {}
+    pcall(function()
+        for _, u in ipairs(s.group:getUnits() or {}) do
+            if u:isExist() and u:getLife() > 0 then
+                local n = 0
+                for _, a in ipairs(u:getAmmo() or {}) do
+                    local d = a.desc
+                    if d and d.category == Weapon.Category.MISSILE and d.guidance == Weapon.GuidanceType.RADAR_PASSIVE then
+                        n = n + (a.count or 0)
+                    end
+                end
+                byJet[u:getName()] = n
+            end
+        end
+    end)
+    return byJet
 end
 
 local function headingDeg(v)

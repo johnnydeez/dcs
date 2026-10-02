@@ -21,8 +21,8 @@
 --   leash         scrambles: home when the raid is gone or back over its own airspace
 --                 heading away, or the scramble is too deep in enemy airspace or inside
 --                 an enemy kill zone; stood down on the ramp when the raid is gone first
---   suppression   SEAD flights: go cold after the salvo (see data/air_control.lua); a
---                 "no shot" line when it reached its launch point and fired nothing
+--   suppression   SEAD flights: go cold after the salvo (see data/air_control.lua); home
+--                 with "no shot" at its press-on point when it has fired nothing
 --   handover      patrols: home once the next patrol of its station is on station
 --   landing       every flight on its way home: a new landing order when a jet of it
 --                 gets lost (flies away from its base, or is long overdue)
@@ -98,26 +98,63 @@ DIRECTIVES.suppression = {
         if not mem.arms_at_start then mem.arms_at_start = arms end
         if mem.arms_at_start > 0 and arms == 0 then return { kind = "home", why = "every anti-radiation missile fired" } end
         local now = timer.getTime()
-        if a.site and a.launch then
-            local p = { x = s.pos.x, z = s.pos.z }
-            local pressed = Util.dist(a.launch, a.site) - Util.dist(p, a.site)
-            if pressed > R.press_km * 1000 then
-                return { kind = "home", why = string.format("%.0f km past its launch point toward %s", pressed / 1000,
-                    a.groups and a.groups[1] or "its site") }
+        -- the flight goes cold together: once one jet has fired its last, the others get
+        -- salvo_time_s to finish (bug 40, 2026-10-02: MSN2024_SEAD_2 fired one HARM at a
+        -- time for 76 s after its lead was empty, inside the SA-10's envelope, and died)
+        local byJet = s.anti_radiation_missiles_by_jet
+        mem.jet_arms_at_start = mem.jet_arms_at_start or byJet
+        if not mem.first_empty then
+            for name, n in pairs(byJet) do
+                if n == 0 and (mem.jet_arms_at_start[name] or 0) > 0 then
+                    mem.first_empty = { name = name, at = now }
+                    break
+                end
             end
-            -- the attack clock starts when it gets there, however late (bugs.md 20)
-            if not mem.arrived_s and Util.dist(p, a.launch) <= R.arrival_km * 1000 then mem.arrived_s = now end
         end
-        -- not its own site, nor a ring its planned route was routed through on purpose
+        if mem.first_empty and arms > 0 and now > mem.first_empty.at + R.salvo_time_s then
+            return { kind = "home", why = string.format("salvo over: %s fired its last %d s ago, %d anti-radiation missile%s left aboard",
+                mem.first_empty.name, math.floor(now - mem.first_empty.at), arms, arms == 1 and "" or "s") }
+        end
+        local p = { x = s.pos.x, z = s.pos.z }
+        if a.site and a.launch then
+            -- pressed on past where it may go: its press-on point (bug 36), or its launch
+            -- point on a plan without one
+            local limit = a.press_on or a.launch
+            local pressed = Util.dist(limit, a.site) - Util.dist(p, a.site)
+            if pressed > R.press_km * 1000 then
+                return { kind = "home", why = string.format("%.0f km past its %s toward %s", pressed / 1000,
+                    a.press_on and "press-on point" or "launch point", a.groups and a.groups[1] or "its site") }
+            end
+            -- at its press-on point and still no radar to shoot at: home as planned (bug 36)
+            if mem.pressed_on and arms > 0 and arms == mem.arms_at_start then
+                return { kind = "home", why = string.format(
+                    "no shot: pressed on to %.0f km from %s with no radar to shoot at, all %d anti-radiation missiles aboard",
+                    Util.dist(p, a.site) / 1000, a.groups and a.groups[1] or "its site", arms) }
+            end
+            -- the attack clock starts when it gets there, however late (bugs.md 20): at its
+            -- pop-up waypoint (ControlAirFlights.waypoint, bug 33), or within arrival_km of
+            -- the launch point once it is up at the pop-up altitude (a missed waypoint)
+            if not mem.arrived_s and Util.dist(p, a.launch) <= R.arrival_km * 1000
+               and s.pos.y >= AIR_MISSION_TYPE.suppression_of_air_defenses.popup_altitude_m * 0.8 then
+                mem.arrived_s = now
+            end
+        end
+        -- not its own site, nor a ring its planned route was routed through on purpose; and
+        -- not from the pop-up until the salvo is away: up there the other sites reach
+        -- farther than their low figure, and that short exposure is the plan's (the
+        -- launch point is cleared only of their low reach; roadmap item 12, bug 27), the
+        -- press-on leg included (bug 36)
         mem.accepted = mem.accepted or A.acceptedRings(m)
-        local other = A.enemyKillZone(m.coalition, s.pos, R.killzone_fraction, mem.accepted)
+        local popping = a.launch and arms > 0 and DirectivesPerFlight.inShotArea(m, p)
+        local other = not popping and A.enemyKillZone(m.coalition, s.pos, R.killzone_fraction, mem.accepted)
         if other then return { kind = "home", why = "inside the kill zone of " .. other } end
         if mem.arrived_s and now > mem.arrived_s + R.attack_time_s then
             return { kind = "home", why = string.format("still on the attack %d min after it reached its launch point",
                 math.floor(R.attack_time_s / 60)) }
         end
-        -- said once: at its launch point a while and not one missile away (bug 29)
-        if mem.arrived_s and not mem.no_shot and arms > 0 and arms == mem.arms_at_start
+        -- said once: at its launch point a while and not one missile away (bug 29); a flight
+        -- with a press-on point goes home from there instead (above)
+        if not a.press_on and mem.arrived_s and not mem.no_shot and arms > 0 and arms == mem.arms_at_start
            and now > mem.arrived_s + R.no_shot_after_s then
             mem.no_shot = true
             ControlAirFlights.say(m.coalition, m.id, "no shot", string.format(
@@ -211,6 +248,45 @@ local function closingText(t)
         Util.thousands(math.abs(t.closing_mps) * 1.94384))
 end
 
+-- The kill zone a fight has taken the flight into, or nil: the rings its route passes
+-- through on purpose don't count. A SEAD flight: no ring is accepted, its own target's
+-- neither, outside its shot area; the kill zone is by height, so a fight that keeps it
+-- low on its run-in goes on, one that climbs it into a ring is broken off (2026-10-02,
+-- 16:50 run: MSN7023's fight took both Su-34s up to 14,000 ft inside the Patriot it was
+-- sent against). Inside the shot area no ring breaks the fight off, as for the go cold
+-- (bug 39: MSN2025_SEAD_AGAIN's fight was broken off at its pop-up for the Olenya SA-10).
+local function fightKillZone(s, mem, R)
+    local m = s.mission
+    if m.attack and m.attack.kind == "harm_salvo" then
+        if DirectivesPerFlight.inShotArea(m, { x = s.pos.x, z = s.pos.z }) then return nil end
+        return A.enemyKillZone(s.coalition, s.pos, R.killzone_fraction)
+    end
+    mem.accepted = mem.accepted or A.acceptedRings(m)
+    return A.enemyKillZone(s.coalition, s.pos, R.killzone_fraction, mem.accepted)
+end
+
+-- Whether a flight commits to bandit t. Every flight does, but a SEAD flight with its
+-- anti-radiation missiles still aboard: it isn't the air-to-air asset; it stays low on its
+-- route and leaves the fighter to the patrols, and turns to fight only when fired upon,
+-- or (outside its shot area) when the bandit is inside sead_commit_km, too close to get
+-- away from; in its shot area it finishes the salvo unless fired upon (John, 2026-10-02,
+-- bug 39: in the 17:15 run fights cost 6 SEAD jets, sent one SEAD flight home 82 s after
+-- takeoff and broke a salvo off after 3 of 8 missiles). Said once per bandit.
+local function seadCommits(w, s, mem, R, t)
+    local m = s.mission
+    if not (m.attack and m.attack.kind == "harm_salvo") or s.anti_radiation_missiles == 0 or t.fired then return true end
+    local shooting = DirectivesPerFlight.inShotArea(m, { x = s.pos.x, z = s.pos.z })
+    if not shooting and t.range_m <= R.sead_commit_km * 1000 then return true end
+    mem.pressed_on = mem.pressed_on or {}
+    if not mem.pressed_on[t.group] then
+        mem.pressed_on[t.group] = true
+        ControlAirFlights.say(m.coalition, m.id, "press on", string.format("bandit %s, %s; %s, %d anti-radiation missiles aboard",
+            threatText(t), closingText(t), shooting and "finishing its salvo first" or "staying low on its route",
+            s.anti_radiation_missiles))
+    end
+    return false
+end
+
 DIRECTIVES.self_defence = {
     clock = "fast",
     on_task_only = false,   -- a flight going home still shoots back
@@ -242,13 +318,18 @@ DIRECTIVES.self_defence = {
             elseif now - d.since > R.max_engage_s then
                 why = string.format("%d min on %s, time is up", math.floor(R.max_engage_s / 60), d.group)
             else
-                mem.accepted = mem.accepted or A.acceptedRings(s.mission)
-                local site = A.enemyKillZone(s.coalition, s.pos, R.killzone_fraction, mem.accepted)
-                if site then why = "breaking off: inside the kill zone of " .. site end
+                local site = fightKillZone(s, mem, R)
+                if site then
+                    why = "breaking off: inside the kill zone of " .. site
+                    -- not that bandit again while the flight is still inside a kill zone
+                    -- (17:15 run: MSN2025_SEAD_AGAIN defend, break off 5 s later, defend again)
+                    mem.held_off = d.group
+                end
             end
             if why then return { kind = "resume", why = why } end
             return nil
         end
+        if mem.held_off and not fightKillZone(s, mem, R) then mem.held_off = nil end
         -- a bandit: hot on the flight (pointed at it and closing, within the warning
         -- range) for hot_checks_before_call checks in a row, or one that just fired at it
         local shooter = s.shot_at and s.shot_at.shooter_group
@@ -259,7 +340,7 @@ DIRECTIVES.self_defence = {
             end
             if t.group == shooter or (hot[t.group] or 0) >= R.hot_checks_before_call then
                 t.fired = t.group == shooter
-                bandits[#bandits + 1] = t
+                if t.group ~= mem.held_off and seadCommits(w, s, mem, R, t) then bandits[#bandits + 1] = t end
             end
         end
         mem.hot = hot
@@ -278,6 +359,17 @@ DIRECTIVES.self_defence = {
 }
 
 -- ── calls for the controller ────────────────────────────────────
+
+-- True when SEAD flight m at p is where its plan takes it up to shoot: from popup_km
+-- (+ 2 km) before its launch point through its press-on leg. The other sites' reach
+-- there is the plan's accepted exposure.
+function DirectivesPerFlight.inShotArea(m, p)
+    local a = m.attack or {}
+    if not a.launch then return false end
+    local margin = 2000
+    if Util.dist(p, a.launch) <= AIR_MISSION_TYPE.suppression_of_air_defenses.popup_km * 1000 + margin then return true end
+    return a.press_on ~= nil and Util.dist(p, a.press_on) <= Util.dist(a.launch, a.press_on) + margin
+end
 
 function DirectivesPerFlight.get(name)
     return DIRECTIVES[name]
