@@ -10,7 +10,8 @@
 -- mission that needs its route's threats out of the fight launches only once they are
 -- (a SAM site's radars destroyed to its success fraction, a base-defense group with no
 -- live unit). If they aren't when it's due: while one of its suppression flights is still
--- in the air it waits for it (at most an hour); otherwise those suppression flights fly
+-- in the air, on its attack or not yet past its planned landing, it waits for it (at most
+-- an hour; one overdue counts as landed, bug 19); otherwise those suppression flights fly
 -- once more (a copy, id <id>_AGAIN; a player's SEAD tasking is flown again by two AI jets)
 -- and the mission waits for them to land; if that fails too, it is cancelled. A
 -- suppression flight whose threats are already out of the fight isn't sent. A flight
@@ -90,6 +91,17 @@ local function threatCleared(id)
     return not liveGroup(id)
 end
 
+-- Whether suppression flight `id` (its record `rec`) is still worth waiting for: in the
+-- air and either still on its attack, or on its way home and not yet past its planned
+-- landing (bug 19: a wingman lost after its landing held MSN5023_OCA up; past its
+-- landing it counts as done, and its threats decide).
+local function stillComing(id, rec)
+    if not liveGroup(id) then return false end
+    if ControlAirFlights.onTask(id) then return true end
+    local m = rec.mission_flown or rec.mission
+    return timer.getTime() <= m.end_s
+end
+
 local function openThreats(ids)
     local open = {}
     for _, id in ipairs(ids or {}) do
@@ -125,9 +137,12 @@ function DecideLaunches.due(id)
             local sf = by and S.record(by)
             if sf then
                 if sf.again then
-                    if liveGroup(sf.again) then flying = sf.again end
+                    local again = S.record(sf.again)
+                    if again and stillComing(sf.again, again) then flying = sf.again end
                 elseif sf.spawned and liveGroup(by) then
-                    flying = by
+                    -- in the air: wait for it while it's still coming; overdue, it counts
+                    -- as landed and flies again like one that did
+                    if stillComing(by, sf) then flying = by else send[by] = true end
                 else
                     -- a player's SEAD tasking (flown or not) is flown again by the AI
                     send[by] = true

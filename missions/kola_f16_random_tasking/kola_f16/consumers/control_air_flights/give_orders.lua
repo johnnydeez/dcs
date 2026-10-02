@@ -7,6 +7,8 @@
 --               its base (a SEAD flight turns around and goes back the way it came), and
 --               rules of engagement AIR_CONTROL.going_home_rules_of_engagement. Replaces
 --               whatever it was doing, a fight included.
+--   land        Controller:setTask, straight from where the flight is to a landing at its
+--               base (a flight lost on its way home), and return fire
 --   stand_down  the group removed (still on the ramp)
 --   defend      Controller:pushTask: AttackGroup on the threat, on top of the mission,
 --               inside a ControlledTask that stops after self_defence.max_engage_s or when
@@ -89,6 +91,42 @@ function GiveOrders.home(w, g, pos)
         return false
     end
     setRules(ctl, AIR_CONTROL.going_home_rules_of_engagement)
+    return true
+end
+
+-- A flight lost on its way home (directive landing): a new mission from where it is
+-- straight to a landing at its base, returning fire only.
+function GiveOrders.land(w, g)
+    local m = w.mission
+    local base = Airbase.getByName(m.landing_base)
+    if not base then
+        Log.warn(string.format("%s: landing base %s not found — no landing order", m.id, m.landing_base))
+        return false
+    end
+    local bp = base:getPoint()
+    local p = AIRCRAFT_PROFILE[m.aircraft_type]
+    local speed = p and p.cruise_speed_mps or 230
+    local ok, err = pcall(function()
+        local lead
+        for _, u in ipairs(g:getUnits() or {}) do
+            if u:isExist() and u:inAir() then lead = u break end
+        end
+        local pos = lead:getPoint()
+        g:getController():setTask({ id = "Mission", params = { airborne = true, route = { points = {
+            { x = pos.x, y = pos.z, alt = pos.y, alt_type = "BARO", speed = speed, speed_locked = true,
+              type = "Turning Point", action = "Turning Point", ETA = 0, ETA_locked = false,
+              task = { id = "ComboTask", params = { tasks = {} } } },
+            { x = bp.x, y = bp.z, alt = bp.y, alt_type = "BARO", speed = speed, speed_locked = true,
+              type = "Land", action = "Landing", airdromeId = base:getID(), ETA = 0, ETA_locked = false,
+              task = { id = "ComboTask", params = { tasks = {} } } },
+        } } } })
+    end)
+    if not ok then
+        Log.warn(string.format("%s: landing order failed: %s", m.id, tostring(err)))
+        return false
+    end
+    local ctl = controllerOf(g, m, "land")
+    if ctl then setRules(ctl, AIR_CONTROL.going_home_rules_of_engagement) end
     return true
 end
 

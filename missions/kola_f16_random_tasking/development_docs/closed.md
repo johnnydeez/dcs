@@ -551,6 +551,18 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 
 ---
 
+### Bug 8. Scramble intercept points sit right at the kill-zone line
+
+**Status:** fixed 2026-10-02, not flown (John: a 10 km margin). `interceptPoint` keeps the point `AIR_DEFENSE.scramble_killzone_margin_km` (10) outside the leash's line; a base left with less than `scramble_min_leg_km` doesn't answer ("no way to the raid outside enemy airspace and kill zones").
+
+**Seen:** `event_logs\2026-09-30_213757.log`, grep `MSN2902`: "WAYPOINT 2 of 3: intercept point … 7 km inside SAM_SODA_SA11_1" (11:15:45), then 19 s later "LEASH going home: inside the kill zone of SAM_SODA_SA11_1". The scramble was sent home the moment it reached the point it had been sent to.
+
+**Cause:** `interceptPoint` walks out from the base in 5 km steps and keeps the last point outside enemy kill zones (85 % of a ring). The leash sends a jet home as soon as it's inside that same line. A point just outside the line, plus the AI's own intercept geometry, puts the jet over the line almost at once.
+
+**Proposed fix:** keep the intercept point a margin outside the leash's line (e.g. an `AIR_DEFENSE.scramble_killzone_margin_km`, ~10–15 km); if that leaves no leg of `scramble_min_leg_km`, don't scramble.
+
+---
+
 ### Bug 9. The player never learns they destroyed static targets
 
 **Status:** fixed 2026-10-01, not run in DCS yet. `BriefAirTasking` watches kills: a static object the mission spawned, destroyed by a player (or by a weapon a player launched, if the player is gone), gives that player's group a 15 s popup, e.g. "Destroyed: MiG-29S (parked aircraft at Vuojarvi): 2 of 3 critical for MSN2023_OCA", then "MSN2023_OCA target destroyed: success" once the success fraction is reached. The scheduler now counts a kill whose shooter is gone, too.
@@ -656,6 +668,28 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 
 ---
 
+### Bug 16. A scramble launched from the wrong base: a tail chase from Rovaniemi while Blue's northern bases held no alert
+
+**Status:** fixed 2026-10-02, not flown. John: no tail chases, and every base with a fitting runway is an alert base.
+- **Alert posture:** every held base whose runway and parking fit an interception type, outside enemy kill zones, holds `alert_aircraft_per_base` (3) jets (`alert_bases` is gone). On the 10:38 roll: Blue 17 alert bases (Enontekiö has no 3 free spots), Red 11; missions and patrols planned as before over six seeds.
+- **No tail chases:** a base answers only a raid whose heading is within `AIR_DEFENSE.scramble_tail_chase_deg` (100°) of the line from the raid to the base; else that base refuses "flying away from it" and the next one is tried.
+
+**Seen:** `event_logs\2026-10-01_134933.log`, grep `MSN2901`, `MSN5023_STRIKE`.
+- MSN5023_STRIKE (2× Su-24M from Kittila) flew north toward `TGT_ALTA_communications_site_1`, heading 345–354, flying away from Rovaniemi (44 → 115 km from the Rovaniemi Patriot between 06:09 and 06:16).
+- 06:14:04: `SCRAMBLE MSN2901_SCRAM FA-18C_hornet from Rovaniemi after MSN5023_STRIKE … 13 min from TGT_ALTA_communications_site_1; intercept 95 km out`. It spawned at 06:15:25: a tail chase behind a raid flying away from the base.
+- Blue's alert bases this roll: Rovaniemi, Kuusamo, Hosio, all on the southern / eastern front. Blue also held Banak (and Alta, Tromsø, Bardufoss, Evenes, Andøya) in the north, where the raid was going, with no alert jets. (Alta's 1,490 m runway is just short for the F-16 / F/A-18; Banak fits.)
+
+**Cause:**
+- **Alert posture** (`planAlertPosture`, `stages/plan_air_tasking.lua`): the alert bases are the `alert_bases` (3) held bases nearest the enemy, plus the nearest of each other region. "Nearest the enemy" picks one stretch of the front, here Rovaniemi / Kuusamo / Hosio at 64–137 km, and leaves another stretch (Finnmark: Banak is farther from the nearest Red base) with nothing. Distance to the enemy says nothing about which own assets a base can defend.
+- **Base pick** (`pickBase`, now `consumers/control_air_flights/scramble_fighters.lua`): the nearest ready alert base whose intercept point is in reach, at least `scramble_min_leg_km` out and reached in time (bug 1's test). Nothing looks at the geometry: a base behind a raid flying away from it passes when the raid is slow enough, and the jet chases it from behind toward someone else's sector.
+
+**Proposed fix (decide with John):**
+- **Alert bases by coverage, not by distance to the enemy:** pick alert bases so every own asset near the front (held bases and catalog targets in or near the contested airspace, the patrol stations' defended sites) is within a scramble radius (e.g. ~150 km) of one, greedily the base covering the most uncovered assets first, up to a maximum (e.g. 4–5). Finnmark would then get Banak.
+- **No tail chases:** a base only answers a raid that is coming toward it or passing across it, not one flying away from it (e.g. the raid's heading points within ~100° of the bearing from the raid to the base, or the intercept point lies ahead of the raid and nearer the asset it threatens than the raid is). Otherwise `NO_SCRAMBLE … flying away from <base>`, and the next base is tried.
+- Or prefer the alert base nearest the **asset the raid threatens** (`threat_asset`) rather than nearest the raid.
+
+---
+
 ### Bug 17. A DEAD flight flew into a live SA-11 with glide bombs, behind a player SEAD tasking nobody flew
 
 **Status:** fixed 2026-10-01 (found the same day, John: "attacking an SA-11 with glide bombs. That's never going to work"; then: "if the AI DEAD missions only fly after successful SEAD missions then the AI DEAD missions should also only fly after successful human SEAD missions"). An AI mission behind a player's SEAD tasking now flies in sequence: it starts `strike_after_suppression_s` after the player's planned landing (`scheduleHumanSeadPackage`) and launches only once its threats are out of the fight; if not, two AI jets fly the player's SEAD tasking once (`<id>_AGAIN`, the AI SEAD loadout, the same route), then the mission is cancelled. AI DEAD missions in AI packages already worked this way (their route enters their own target's ring, so it gets a SEAD flight and they wait for it). Standoff DEAD weapons stay with bug 4.
@@ -672,6 +706,37 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 - **DEAD only against a blind site:** a DEAD mission always gets a SEAD flight on its own target site first, and (like any AI mission in sequence) launches only once that site's radars are out of the fight; its glide bombs then finish the launchers and command post. Its route's other threats as before.
 - **An AI mission behind a player's SEAD** waits for the player: it launches only once its threats are out of the fight (the same check as in sequence), waiting while the tasking could still be flown, else cancelled. Or the planner never puts an AI mission behind a player SEAD: the player's SEAD tasking escorts an AI package that has its own AI SEAD as well.
 - Longer term: standoff DEAD weapons released outside the ring (the *Standoff attacks* backlog item, bug 4).
+
+---
+
+### Bug 18. Patrol handover: the old patrol stays on station after its relief arrives
+
+**Status:** fixed 2026-10-02, not flown. Patrols are now watched by the controller with the directive `handover`: once a later patrol of the same station is on task and within `AIR_CONTROL.handover.on_station_km` (15) of the race-track, the old one goes home: `CONTROL … handover: relieved by MSN2003_CAP, on station (2 km from the race-track)`.
+
+**Seen:** `event_logs\2026-10-01_141412.log`, grep `MSN2002_CAP`, `MSN2003_CAP`.
+- Both fly station CAP_KIRU_front_1 from Kiruna. MSN2003 (F/A-18C) was on station at 07:00:24, 7 min ahead of its planned 07:07, because the station is ~1.5 min from Kiruna. MSN2002 (F-16C, on station since 06:10, also 7 min early) stays until ~07:17.
+- From 07:02 both flew the same race-track, 26,247 ft, 440 kt, about one minute apart, like one stacked 2-ship.
+
+**Cause:** rotations are planned to overlap (the next patrol arrives 10 min before the last leaves, `plan.md`, *Rotations*), and the outgoing patrol keeps its planned off-station time whatever happens. A short transit stretches the overlap further.
+
+**Proposed fix:** when the relief reaches its station (its on-station `WAYPOINT`), send the outgoing patrol on that station home (`Controller:setTask` home, as the leash does). Keep the planned overlap as the latest handover time.
+
+---
+
+### Bug 19. A flight that misses its landing flies off in a straight line until its fuel runs out
+
+**Status:** fixed 2026-10-02, not flown. Every AI flight now has the directive `landing` (`AIR_CONTROL.landing`): once a flight is on its way home (sent home, a jet of it landed, or past its planned landing), a jet that gets `away_km` (20) farther from its landing base than its closest since, or a flight still up `overdue_s` (20 min) after its planned landing (or its last order), gets a new landing order straight to its base: `CONTROL … land: MSN7025_SEAD_2 lost after its landing: 45 km from Vuojarvi and getting farther (it was 2 km away); sent to land at Vuojarvi`. At most 2 orders, and never while a jet of the flight is on the ramp (a landed one is removed after 3 min; a late wingman not yet up), so no landed jet is sent up again. Packages: a suppression flight still in the air but off its attack and past its planned landing counts as landed for the wait (`decide_launches.lua`), so the mission retries or cancels instead of waiting on it.
+
+**Seen:** `event_logs\2026-10-01_141412.log`, grep `MSN5025_SEAD_2`.
+- MSN5025_SEAD (2× Su-34 from Vuojärvi) went cold at 06:23 and flew home. `_1` landed at Vuojärvi at 06:34:12; `_2` was beside the field at 06:33.
+- From 06:34 to the end of the run (07:07) `_2` held heading 317, 303 kt, 4,445 ft: ~300 km in a straight line, out of its own airspace into contested airspace, fuel 52 % → 31 %.
+- **Knock-on effect:** MSN5023_OCA was `DELAYED` twice ("waiting for MSN5025_SEAD, still in the air"), so the package's mission was held up by a jet that would never land.
+
+**Cause (suspected):** `_2` missed its landing (most likely a go-around behind its lead) and, with no waypoints left after `Land`, the DCS AI flies on along its last heading. Nothing in the script notices a flight that should have landed.
+
+**Proposed fix:**
+- Watch every AI flight after its last waypoint (or once sent home): if it is overdue to land (e.g. 10 min past its planned landing, or its time home), or getting farther from its landing base for a few minutes in a row, give it a new landing order (`Controller:setTask`, as the leash and the go-cold rule do) at its base, or the nearest held base it can reach. Log it (`LEASH`-style line, e.g. `LANDING … lost after its landing, sent to land at <base>`).
+- Packages in sequence stop waiting for a flight that is overdue: a suppression flight whose jets have all fired, gone home and are overdue counts as landed for `DELAYED`.
 
 ---
 
@@ -704,6 +769,33 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 - Comments and examples naming 5xxx flights: `consumers/control_air_flights/scramble_fighters.lua` (header: "Blue 2901+, Red 5901+"), `consumers/control_air_flights/control_air_flights.lua`, `consumers/write_event_log.lua`, `data/air_tasking.lua`.
 - `plan.md` *Naming and ids* (Flight row: "Red 5001+ (scrambles … 5901+)") and the event-log examples.
 - Old event logs and the docs' run notes keep their 5xxx numbers (history).
+
+---
+
+### Bug 22. The low SEAD way out climbs through short-range SAMs the routing doesn't see
+
+**Status:** fixed 2026-10-02, not flown. The SEAD low-threat map (`ctx.low_threats`, `threatCircles` kind "low") now also holds every enemy short-range SAM site's ring + `short_range_margin_km` (5): the whole way in and out, low legs and climb-out included, routes around them, and the launch point keeps clear of them. On the 10:38 roll every SEAD route kept ≥ 5 km outside every short-range ring; SEAD flights planned unchanged over six seeds.
+
+**Seen:** `event_logs\2026-10-01_222355.log`, grep `MSN5024_SEAD`, `SAM_BANA_SA8_2`.
+- MSN5024_SEAD (2× Su-34 from Kilpyavr) fired its 8 Kh-31P at `SAM_BANA_IRISTSLM_1` from 41 km (03:55:35), went cold, went out low, and climbed through 6,000–11,000 ft in contested airspace (03:58–04:00).
+- That put it within 13 km of `SAM_BANA_SA8_2` (an SA-8, ring 10 km). The SA-8 fired three missiles; MSN5024_SEAD_1 was shot down at 6,040 ft (04:00:09), `_2` got away.
+- On the way in, the flight passed the same SA-8 at 26,000 ft, above its reach.
+
+**Cause:** short-range SAM sites (SA-8, SA-15, Roland) aren't planned threats: `lib/threat_routing.lua` routes attack flights around medium and long-range rings only (+ base-defense Pantsirs / Tors). That was safe while flights stayed at ≥ 7,500 m; item 10's low ingress, low egress and climb-out now fly inside a short-range SAM's reach. This answers item 10's open question "short-range SAMs are deadly down low".
+
+**Proposed fix:** route the SEAD flight's low legs and its climb-out (everything below the short-range systems' ceiling, ~5,000 m) around short-range SAM sites too, with a margin (SA-8 10 km, SA-15 12, Roland 8, + ~5 km). The launch-point clearance test could count them the same way.
+
+---
+
+### Bug 23. A scramble refusal names the reason of the last alert base tried, not the best one
+
+**Status:** fixed 2026-10-02, not flown. `pickBase` keeps each ready base's reason and gives the one nearest the raid: `no scramble: Su-24M: Rovaniemi: flying away from it (and 2 more alert bases refused)`.
+
+**Seen:** `event_logs\2026-10-01_222355.log`, grep `no scramble: FA-18C`: `RED CONTROL MSN2025_SEAD no scramble: FA-18C_hornet: can't reach the raid before it reaches SAM_KUUS_SA8_1 (26 min, raid 5 min)` (03:43:34). The raid was next to Kuusamo, a Red alert base with jets ready; 26 min is almost certainly the time from Alakurtti or Koshka Yavr. Why Kuusamo itself was refused doesn't show.
+
+**Cause:** `pickBase` (`consumers/control_air_flights/scramble_fighters.lua`) overwrites `why` for every alert base it tries, so the logged reason is the last base in the posture list.
+
+**Proposed fix:** keep each base's reason and log the nearest base's (or all of them, `Kuusamo: …; Alakurtti: …`).
 
 ---
 
@@ -754,6 +846,18 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 **Cause:** two DCS AI behaviours. (1) Every `Bombing` / `AttackGroup` task was sent with `altitudeEnabled = false`, so once the attack starts the AI picks its own altitude. (2) The lead holds low and slow until its wingman has taken off and joined (MSN2027's wingman took off 2.5 min after the lead; MSN2024's 4 min, its lead circled at ~2,000 ft for 8 min). On a short route the attack starts before the climb ever happens.
 
 **Fix:** `consumers/spawn_aircraft_groups.lua`: `Bombing`, `AttackGroup` and the SEAD salvo carry the route's target-waypoint altitude (`altitudeEnabled = true`), so the AI attacks from the planned altitude. Watch `SHOT … from <ft>` on bombs and anti-radiation missiles. The wingman delay is DCS's (John: taxi times are DCS).
+
+---
+
+### Bug 29. The AI retry of a player's SEAD tasking against a Tor went home without firing
+
+**Status:** fixed 2026-10-02, not flown (John: closer launch point). The launch distance is the target's reach + `launch_past_reach_km` (15), at most `launch_km` (55): Tor M2 31 km, Pantsir 35, NASAMS 30, SA-6 40, Roland / Tunguska 23; SA-11, IRIS-T, Hawk and the long-range sites stay at 55. A SEAD flight that has reached its launch point with every anti-radiation missile still aboard 2 min later gets one line: `CONTROL … no shot: 2 min after reaching its launch point, 31 km from DEF_VUOJ_…, all 8 anti-radiation missiles still aboard`.
+
+**Seen:** `event_logs\2026-10-02_005718.log`; grep `MSN2026_SEAD_AGAIN`. John flew the other tasking, so the controller flew MSN2026_SEAD (his unflown SEAD on the Vuojärvi Tor M2, `DEF_VUOJ_radar_missile_launchers_1`) as 2 AI F-16s (`retry`, 04:40). They reached the launch point 40 km out at 2,600 ft (04:46), fired nothing and landed at Rovaniemi (04:50). MSN2025_OCA was still waiting on it when the run ended.
+
+**Suspects:** a HARM shot from 40 km at 2,600 ft at a point-defense Tor (12 km reach) may be out of the AI's launch range, and the Tor's radar may not have been on at that distance. The launch distance is set for long-range sites. After the attack waypoint the next one is the landing, so the AI just went home.
+
+**Proposed fix (decide with John):** a launch distance by target (short-range and point-defense targets much closer, e.g. ~25 km, or a DEAD instead of a SEAD for them); and a flight that reaches its launch point and fires nothing within a few minutes is logged (`CONTROL … no shot`).
 
 ---
 

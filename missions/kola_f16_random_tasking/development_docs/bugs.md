@@ -57,6 +57,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 **Status:** worked around 2026-10-01 (John: remove it from the roster for now, with a comment why). The Su-24M is out of Red's `suppression_of_air_defenses` roster (`data/coalition_rosters.lua`); finding the pylon DCS rejects is still open.
 
+**Guard built 2026-10-02, not flown:** the ammo check 5 s after spawn (`logAmmo`) hands any jet with no weapon aboard (its gun aside), while its loadout lists weapon pylons, to the controller (`ControlAirFlights.unarmed`), which removes it on the ramp: `CONTROL … stand down: … carry no weapons (its loadout 'SEAD' lists 4 weapon pylons); removed on the ramp; the flight isn't flying` (or `the rest of the flight flies`). The `dcs.log` warning now reads `carries no weapons`. A package behind a removed SEAD flight sees its threats still in the fight, so the gate flies it once more (`_AGAIN`, likely unarmed again) and then cancels: the package doesn't go without its suppression.
+
 **Seen:** `event_logs\2026-09-30_213757.log`, grep `MSN5024`; `dcs.log`: "MSN5024_SEAD_1 carries nothing — its loadout 'SEAD' lists 4 pylons" (both jets).
 - MSN5024_SEAD (2× Su-24M from Alakurtti) was PKG5023's suppression flight for the Rovaniemi SA-10. It flew 75 km into the SA-10's ring with nothing to shoot, and both jets died there (the SA-10 and the F-15C patrol MSN2002).
 - The same package's Su-24M OCA flight (RBK-250) spawned armed, so it's this one loadout, not the type.
@@ -71,21 +73,11 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ---
 
-## 8. Scramble intercept points sit right at the kill-zone line
-
-**Status:** open, waiting for John's decision (detail given 2026-10-01: keep the intercept point ~10 km outside the leash's line, or leave it; the scramble flies its own intercept from takeoff anyway, so the waypoint mostly pulls it toward the edge).
-
-**Seen:** `event_logs\2026-09-30_213757.log`, grep `MSN2902`: "WAYPOINT 2 of 3: intercept point … 7 km inside SAM_SODA_SA11_1" (11:15:45), then 19 s later "LEASH going home: inside the kill zone of SAM_SODA_SA11_1". The scramble was sent home the moment it reached the point it had been sent to.
-
-**Cause:** `interceptPoint` walks out from the base in 5 km steps and keeps the last point outside enemy kill zones (85 % of a ring). The leash sends a jet home as soon as it's inside that same line. A point just outside the line, plus the AI's own intercept geometry, puts the jet over the line almost at once.
-
-**Proposed fix:** keep the intercept point a margin outside the leash's line (e.g. an `AIR_DEFENSE.scramble_killzone_margin_km`, ~10–15 km); if that leaves no leg of `scramble_min_leg_km`, don't scramble.
-
----
-
 ## 13. Su-34s blow up on the ramp seconds after spawning
 
 **Status:** worked around 2026-10-01 (John: open parking only for now). The Su-34's profile allows only terminal 104 (open-air) spots; the DCS test of spot size is still open.
+
+**Logging built 2026-10-02, not flown:** a jet destroyed before it ever took off, within 2 min of spawning, is a `RAMP_LOSS` line in the event log (and a `dcs.log` warning) with its base and spot: "Su-27 destroyed on the ramp 8 s after spawning, before taking off, at Afrikanda spot 37: a spawn failure, not combat". Grep `RAMP_LOSS` after each run to collect the spots for the spot-size test.
 
 **Seen:** `event_logs\2026-10-01_112448.log`, grep `MSN5024_SEAD`, `MSN5023_STRIKE`.
 - MSN5024_SEAD (08:02:00) and MSN5023_STRIKE (08:06:07), each 2× Su-34 on the ramp at Afrikanda. 12–15 s after spawning, each flight read `ABORTED` twice, then both jets were `DESTROYED`, "no killer recorded", at 499 ft (field height), pilots ejected. All of PKG5023 was gone before takeoff.
@@ -101,84 +93,6 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 - First confirm in DCS: spawn a Su-34 on Afrikanda spots 27 and 34, and on a terminal-104 spot, and watch.
 - If it's the spot size: limit the Su-34 (and other large types: Su-24M, Tu-22M3, A-50, E-3A, B-1B, F-15E?) to spots that fit. Options: terminal 104 only for them, or a per-airfield list of spots too small for large jets, surveyed once like the airbase footprints. DCS's `getParking` gives no spot size, so it has to come from the type or a survey.
 - Also: a flight whose jets die on the ramp within a minute of spawning could be logged as a spawn failure (`dcs.log` `WARN`), so it isn't read as combat.
-
----
-
-## 16. A scramble launched from the wrong base: a tail chase from Rovaniemi while Blue's northern bases held no alert
-
-**Status:** open (found 2026-10-01, John).
-
-**Seen:** `event_logs\2026-10-01_134933.log`, grep `MSN2901`, `MSN5023_STRIKE`.
-- MSN5023_STRIKE (2× Su-24M from Kittila) flew north toward `TGT_ALTA_communications_site_1`, heading 345–354, flying away from Rovaniemi (44 → 115 km from the Rovaniemi Patriot between 06:09 and 06:16).
-- 06:14:04: `SCRAMBLE MSN2901_SCRAM FA-18C_hornet from Rovaniemi after MSN5023_STRIKE … 13 min from TGT_ALTA_communications_site_1; intercept 95 km out`. It spawned at 06:15:25: a tail chase behind a raid flying away from the base.
-- Blue's alert bases this roll: Rovaniemi, Kuusamo, Hosio, all on the southern / eastern front. Blue also held Banak (and Alta, Tromsø, Bardufoss, Evenes, Andøya) in the north, where the raid was going, with no alert jets. (Alta's 1,490 m runway is just short for the F-16 / F/A-18; Banak fits.)
-
-**Cause:**
-- **Alert posture** (`planAlertPosture`, `stages/plan_air_tasking.lua`): the alert bases are the `alert_bases` (3) held bases nearest the enemy, plus the nearest of each other region. "Nearest the enemy" picks one stretch of the front, here Rovaniemi / Kuusamo / Hosio at 64–137 km, and leaves another stretch (Finnmark: Banak is farther from the nearest Red base) with nothing. Distance to the enemy says nothing about which own assets a base can defend.
-- **Base pick** (`pickBase`, now `consumers/control_air_flights/scramble_fighters.lua`): the nearest ready alert base whose intercept point is in reach, at least `scramble_min_leg_km` out and reached in time (bug 1's test). Nothing looks at the geometry: a base behind a raid flying away from it passes when the raid is slow enough, and the jet chases it from behind toward someone else's sector.
-
-**Proposed fix (decide with John):**
-- **Alert bases by coverage, not by distance to the enemy:** pick alert bases so every own asset near the front (held bases and catalog targets in or near the contested airspace, the patrol stations' defended sites) is within a scramble radius (e.g. ~150 km) of one, greedily the base covering the most uncovered assets first, up to a maximum (e.g. 4–5). Finnmark would then get Banak.
-- **No tail chases:** a base only answers a raid that is coming toward it or passing across it, not one flying away from it (e.g. the raid's heading points within ~100° of the bearing from the raid to the base, or the intercept point lies ahead of the raid and nearer the asset it threatens than the raid is). Otherwise `NO_SCRAMBLE … flying away from <base>`, and the next base is tried.
-- Or prefer the alert base nearest the **asset the raid threatens** (`threat_asset`) rather than nearest the raid.
-
----
-
-## 18. Patrol handover: the old patrol stays on station after its relief arrives
-
-**Status:** open, later fix (John, 2026-10-01: once the new patrol shows up, the old one can just go home).
-
-**Seen:** `event_logs\2026-10-01_141412.log`, grep `MSN2002_CAP`, `MSN2003_CAP`.
-- Both fly station CAP_KIRU_front_1 from Kiruna. MSN2003 (F/A-18C) was on station at 07:00:24, 7 min ahead of its planned 07:07, because the station is ~1.5 min from Kiruna. MSN2002 (F-16C, on station since 06:10, also 7 min early) stays until ~07:17.
-- From 07:02 both flew the same race-track, 26,247 ft, 440 kt, about one minute apart, like one stacked 2-ship.
-
-**Cause:** rotations are planned to overlap (the next patrol arrives 10 min before the last leaves, `plan.md`, *Rotations*), and the outgoing patrol keeps its planned off-station time whatever happens. A short transit stretches the overlap further.
-
-**Proposed fix:** when the relief reaches its station (its on-station `WAYPOINT`), send the outgoing patrol on that station home (`Controller:setTask` home, as the leash does). Keep the planned overlap as the latest handover time.
-
----
-
-## 19. A flight that misses its landing flies off in a straight line until its fuel runs out
-
-**Status:** open (John, 2026-10-01: to be fixed; give it a new landing order).
-
-**Seen:** `event_logs\2026-10-01_141412.log`, grep `MSN5025_SEAD_2`.
-- MSN5025_SEAD (2× Su-34 from Vuojärvi) went cold at 06:23 and flew home. `_1` landed at Vuojärvi at 06:34:12; `_2` was beside the field at 06:33.
-- From 06:34 to the end of the run (07:07) `_2` held heading 317, 303 kt, 4,445 ft: ~300 km in a straight line, out of its own airspace into contested airspace, fuel 52 % → 31 %.
-- **Knock-on effect:** MSN5023_OCA was `DELAYED` twice ("waiting for MSN5025_SEAD, still in the air"), so the package's mission was held up by a jet that would never land.
-
-**Cause (suspected):** `_2` missed its landing (most likely a go-around behind its lead) and, with no waypoints left after `Land`, the DCS AI flies on along its last heading. Nothing in the script notices a flight that should have landed.
-
-**Proposed fix:**
-- Watch every AI flight after its last waypoint (or once sent home): if it is overdue to land (e.g. 10 min past its planned landing, or its time home), or getting farther from its landing base for a few minutes in a row, give it a new landing order (`Controller:setTask`, as the leash and the go-cold rule do) at its base, or the nearest held base it can reach. Log it (`LEASH`-style line, e.g. `LANDING … lost after its landing, sent to land at <base>`).
-- Packages in sequence stop waiting for a flight that is overdue: a suppression flight whose jets have all fired, gone home and are overdue counts as landed for `DELAYED`.
-
----
-
-## 22. The low SEAD way out climbs through short-range SAMs the routing doesn't see
-
-**Status:** open (found 2026-10-01, 22:23 run).
-
-**Seen:** `event_logs\2026-10-01_222355.log`, grep `MSN5024_SEAD`, `SAM_BANA_SA8_2`.
-- MSN5024_SEAD (2× Su-34 from Kilpyavr) fired its 8 Kh-31P at `SAM_BANA_IRISTSLM_1` from 41 km (03:55:35), went cold, went out low, and climbed through 6,000–11,000 ft in contested airspace (03:58–04:00).
-- That put it within 13 km of `SAM_BANA_SA8_2` (an SA-8, ring 10 km). The SA-8 fired three missiles; MSN5024_SEAD_1 was shot down at 6,040 ft (04:00:09), `_2` got away.
-- On the way in, the flight passed the same SA-8 at 26,000 ft, above its reach.
-
-**Cause:** short-range SAM sites (SA-8, SA-15, Roland) aren't planned threats: `lib/threat_routing.lua` routes attack flights around medium and long-range rings only (+ base-defense Pantsirs / Tors). That was safe while flights stayed at ≥ 7,500 m; item 10's low ingress, low egress and climb-out now fly inside a short-range SAM's reach. This answers item 10's open question "short-range SAMs are deadly down low".
-
-**Proposed fix:** route the SEAD flight's low legs and its climb-out (everything below the short-range systems' ceiling, ~5,000 m) around short-range SAM sites too, with a margin (SA-8 10 km, SA-15 12, Roland 8, + ~5 km). The launch-point clearance test could count them the same way.
-
----
-
-## 23. A scramble refusal names the reason of the last alert base tried, not the best one
-
-**Status:** open (found 2026-10-01, 22:23 run). Log wording; the decision itself may be right.
-
-**Seen:** `event_logs\2026-10-01_222355.log`, grep `no scramble: FA-18C`: `RED CONTROL MSN2025_SEAD no scramble: FA-18C_hornet: can't reach the raid before it reaches SAM_KUUS_SA8_1 (26 min, raid 5 min)` (03:43:34). The raid was next to Kuusamo, a Red alert base with jets ready; 26 min is almost certainly the time from Alakurtti or Koshka Yavr. Why Kuusamo itself was refused doesn't show.
-
-**Cause:** `pickBase` (`consumers/control_air_flights/scramble_fighters.lua`) overwrites `why` for every alert base it tries, so the logged reason is the last base in the posture list.
-
-**Proposed fix:** keep each base's reason and log the nearest base's (or all of them, `Kuusamo: …; Alakurtti: …`).
 
 ---
 
@@ -214,15 +128,3 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 - The pop-up altitude is now held through the attack (bug 28).
 
 **Still open:** the low-altitude reach should apply only close to the ground (a few hundred metres), not up to 3,000 m; roadmap item 12's launch points and layers rest on it. Watch in the next run: `SHOT` ranges of the salvo and of the sites back, `CONTROL.*go cold` seconds after the last missile, losses.
-
----
-
-## 29. The AI retry of a player's SEAD tasking against a Tor went home without firing
-
-**Status:** open (found 2026-10-02).
-
-**Seen:** `event_logs\2026-10-02_005718.log`; grep `MSN2026_SEAD_AGAIN`. John flew the other tasking, so the controller flew MSN2026_SEAD (his unflown SEAD on the Vuojärvi Tor M2, `DEF_VUOJ_radar_missile_launchers_1`) as 2 AI F-16s (`retry`, 04:40). They reached the launch point 40 km out at 2,600 ft (04:46), fired nothing and landed at Rovaniemi (04:50). MSN2025_OCA was still waiting on it when the run ended.
-
-**Suspects:** a HARM shot from 40 km at 2,600 ft at a point-defense Tor (12 km reach) may be out of the AI's launch range, and the Tor's radar may not have been on at that distance. The launch distance is set for long-range sites. After the attack waypoint the next one is the landing, so the AI just went home.
-
-**Proposed fix (decide with John):** a launch distance by target (short-range and point-defense targets much closer, e.g. ~25 km, or a DEAD instead of a SEAD for them); and a flight that reaches its launch point and fires nothing within a few minutes is logged (`CONTROL … no shot`).

@@ -37,7 +37,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 **Goes with it** (same work, or right after):
 - **Bug 27, the low-altitude reach** (found in the 2026-10-02 00:57 run; do this first): `lib/sam_reach.lua` lets a site reach only its low-altitude figure up to 3,000 m, but at the pop-up the SA-11 fired at 39 km (model: 25), the Patriot at 50 km (model: 30), the SA-10 at 46 km (model: 40). The low figure should hold only close to the ground. The campaign's launch points, low routes and layers all rest on it, so a layer worked out with today's model could send flights into reach. The SEAD numbers were retuned the same day (launch 55 km, pop-up 15 km before it, go cold on the last missile); see that run's results before building.
-- **Bug 22:** route the low legs and the climb-out around short-range SAM sites; with many more low SEAD flights this matters at once.
+- ~~**Bug 22:** route the low legs and the climb-out around short-range SAM sites~~ (built 2026-10-02, not flown: `closed.md`, bug 22).
 - **Two flights at once against an SA-10 / Patriot / IRIS-T** (backlog, *SEAD follow-ups*): Red's Kh-31P salvoes went 0 for 16 against the Rovaniemi Patriot (14:14 run) and the Banak IRIS-T (22:23 run). Watch the campaign's first run before deciding.
 - `plan.md` *Packages* gets the as-built notes; the summary line counts campaign flights and layers; the planning log names each site's layer and blockers, and every site not attacked and why.
 
@@ -53,7 +53,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 **Where it stands:**
 - **Built and moved to `closed.md` (2026-10-02):** 4a (the controller), 4b (attack flights defend themselves) and the bandit call with the abort of a defenceless flight; all have flown (the bandit call first worked in the 2026-10-01 22:23 run). What's left of this item is below.
-- Left in this item: the rest of 4c below (8b out of weapons, 9 the slow leash, 11 the patrol merge, 6 targets already destroyed), and new directives from the 14:14 run: a landing order for a lost flight (bug 19), patrol handover (bug 18), a pop shot from the edge of a ring.
+- Left in this item: the rest of 4c below (8b out of weapons, 9 the slow leash, 11 the patrol merge, 6 targets already destroyed), and new directives from the 14:14 run: a pop shot from the edge of a ring (the landing order for a lost flight, bug 19, and patrol handover, bug 18, were built 2026-10-02).
 - Each coalition's radar picture (item 1) says which enemy aircraft its radars see, where they are, and where they're heading.
 - The rules collected so far (from the `plan.md` backlog, "AI behaviour rules, one place"): patrols leashed to own and contested airspace; strikes go home if their SEAD fails; no second wave into what killed the first (doctrine idea).
 

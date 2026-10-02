@@ -12,7 +12,7 @@
 -- check_every_s: the fast check, for directives that can't wait for the radar picture's
 --   round (self_defence). leash and suppression run on the picture's round (30 s).
 -- intent_priority: when directives want different things, the higher number wins
---   (safety first): stand down > home > resume > defend.
+--   (safety first): stand down > land > home > resume > defend.
 -- going_home_rules_of_engagement: what a flight sent home may still shoot at.
 
 -- leash: a scramble chases its raid away or kills it, without flying head first into
@@ -33,6 +33,23 @@
 -- when it is still on the attack attack_time_s after it came within arrival_km of its
 -- launch point (the site's radar never came on). The clock starts on arrival, not at
 -- the planned time, so a flight that took off late still gets its shot (bug 20).
+
+-- suppression, also: a flight that has reached its launch point and still has every
+-- anti-radiation missile no_shot_after_s later gets one "no shot" line (bug 29: the AI
+-- retry on the Vuojarvi Tor reached its launch point, fired nothing and flew home).
+
+-- handover: a patrol goes home once the next patrol on its station is there (within
+-- on_station_km of the race-track) and on task (John, 2026-10-01, bug 18: rotations
+-- overlap, and a short transit made the old and the new patrol fly the race-track
+-- together for 17 min). The planned overlap stays the latest handover time.
+
+-- landing: every AI flight on its way home (sent home, past its planned landing, or with
+-- a jet already landed) is watched until it is down. A jet getting away_km farther from
+-- its landing base than it has been since, or still in the air overdue_s after the
+-- flight's planned landing, is lost: the flight gets a new landing order straight to its
+-- base, at most max_orders times (bug 19, 2026-10-01: MSN5025_SEAD_2 missed its landing
+-- and flew on for 300 km). The order waits while a jet of the flight that landed is still
+-- on the ramp (it is removed 3 min after landing), so it never sends that one up again.
 
 -- self_defence: the controller calls a bandit as soon as the coalition's radar picture
 -- shows it coming for an attack flight, and decides at once (John, 2026-10-01: "you
@@ -60,14 +77,16 @@ AIR_CONTROL = {
     check_every_s = 5,
 
     directives_by_mission_type = {
-        strike                      = { "self_defence" },
-        airfield_strike             = { "self_defence" },
-        destruction_of_air_defenses = { "self_defence" },
-        suppression_of_air_defenses = { "suppression", "self_defence" },
-        interception                = { "leash" },
+        strike                      = { "self_defence", "landing" },
+        airfield_strike             = { "self_defence", "landing" },
+        destruction_of_air_defenses = { "self_defence", "landing" },
+        suppression_of_air_defenses = { "suppression", "self_defence", "landing" },
+        interception                = { "leash", "landing" },
+        combat_air_patrol           = { "handover", "landing" },
+        airborne_early_warning      = { "landing" },
     },
 
-    intent_priority = { stand_down = 4, home = 3, resume = 2, defend = 1 },
+    intent_priority = { stand_down = 5, land = 4, home = 3, resume = 2, defend = 1 },
 
     going_home_rules_of_engagement = "return_fire",
 
@@ -76,6 +95,15 @@ AIR_CONTROL = {
         arrival_km         = 15,     -- this close to its launch point it has arrived (the AI starts its attack ~12 km out)
         attack_time_s      = 600,
         killzone_fraction  = 0.85,
+        no_shot_after_s    = 120,
+    },
+    handover = {
+        on_station_km      = 15,
+    },
+    landing = {
+        away_km            = 20,
+        overdue_s          = 1200,
+        max_orders         = 2,
     },
     leash = {
         enemy_airspace_km  = 5,      -- as far past the contested airspace as it may go

@@ -103,6 +103,11 @@ AIR_MISSION_TYPE = {
         -- SA-10 46 km at ~3,000 ft) and 6 of 6 SEAD jets that got there died. John: pop
         -- up and fire earlier
         launch_km = 55,
+        -- a short-reaching target gets a closer launch point: its reach + this, at most
+        -- launch_km (bug 29, 2026-10-02: John's SEAD on the Vuojarvi Tor M2, 16 km, flown
+        -- by the AI from 40 km, fired nothing). Tor M2 31 km, Pantsir 35, NASAMS 30,
+        -- SA-6 40; the SA-11, IRIS-T, Hawk and the long-range sites stay at launch_km
+        launch_past_reach_km = 15,
         low_altitude_m = 275,          -- ~900 ft above the ground (John's figure from flying it)
         low_speed_mps = 270,           -- ~525 kt
         low_entry_margin_km = 10,      -- down this far before the first ring
@@ -112,6 +117,11 @@ AIR_MISSION_TYPE = {
         popup_altitude_m = 3000,       -- ~10,000 ft (John: one number); up to here a site reaches only
                                        -- as far as its low-altitude figure (AIR_DEFENSE.killzone_low_altitude_m)
         low_fuel_factor = 1.5,
+        -- the way in and out (low legs, climb-out) also keeps this far outside every enemy
+        -- short-range SAM site's ring (SA-8 10 km, SA-15 12, Roland 8), which can't reach a
+        -- cruising jet but can a low one (bug 22, 2026-10-01: MSN5024_SEAD_1 shot down by
+        -- an SA-8 on its climb-out); the launch point too
+        short_range_margin_km = 5,
     },
     -- AttackGroup on each of the SAM or early-warning site's groups, from the ingress point
     destruction_of_air_defenses = {
@@ -318,9 +328,10 @@ HUMAN_TASKING = {
 -- reacts to the radar picture every round, the controller (consumers/control_air_flights/)
 -- brings them home):
 --   alert_posture_planned  false: no alert bases are planned, so nothing scrambles
---   alert_bases           alert bases per coalition: held bases whose runway and parking
---                         fit an interception type, nearest the enemy; plus the nearest of
---                         each other region (pocket) that has one (John, 2026-09-30)
+--   alert bases           every held base whose runway and parking fit an interception
+--                         type, outside enemy kill zones (John, 2026-10-02, bug 16: the 3
+--                         nearest the enemy left Finnmark with none; was alert_bases = 3
+--                         plus the nearest of each other region)
 --   alert_aircraft_per_base  alert jets each alert base holds. A jet that lands is back on
 --                         alert scramble_turnaround_s later (refuelled and rearmed); a jet
 --                         that is shot down is gone for the mission (John, 2026-09-30: a base
@@ -350,6 +361,15 @@ HUMAN_TASKING = {
 --                         pulled back to own or contested airspace and out of enemy kill
 --                         zones) must be at least this far from the base, or there's no
 --                         way to the raid and the base doesn't answer
+--   scramble_killzone_margin_km  the intercept point is also kept this far outside the
+--                         leash's line (killzone_fraction of an enemy ring), so the leash
+--                         doesn't send the jet home the moment it gets there (bug 8,
+--                         2026-10-01: MSN2902 leashed 19 s after reaching its intercept point)
+--   scramble_tail_chase_deg  a base answers a raid only if the raid's heading is within this
+--                         many degrees of the line from the raid to the base (coming toward
+--                         it or passing across it); one flying away from it is left to a
+--                         base ahead of it (bug 16, 2026-10-01: a Hornet from Rovaniemi
+--                         chased a raid flying north, away from it)
 --   raid_radius_km, raid_heading_deg  contacts within this distance of the one that
 --                         triggered, and within this many degrees of its heading, are one
 --                         raid: one scramble, EngageGroup on each of them
@@ -384,7 +404,6 @@ AIR_DEFENSE = {
     early_warning_leg_km       = 80,
 
     alert_posture_planned = true,
-    alert_bases           = 3,
     alert_aircraft_per_base = 3,
     scramble_turnaround_s = 1800,
     scramble_cooldown_s   = 900,
@@ -394,6 +413,8 @@ AIR_DEFENSE = {
     scramble_reserve_aircraft = 2,
     scramble_takeoff_s    = 150,
     scramble_min_leg_km   = 10,
+    scramble_killzone_margin_km = 10,
+    scramble_tail_chase_deg = 100,
     raid_radius_km        = 20,
     raid_heading_deg      = 45,
 }

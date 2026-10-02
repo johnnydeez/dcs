@@ -5,7 +5,7 @@
 -- reasonable way around exists.
 --
 --   local map = ThreatRouting.buildMap(circles, bounds, multiplier)
---       circles = { { id, x, z, radius_m } }, bounds = { min_x, max_x, min_z, max_z },
+--       circles = { { id, x, z, radius_m, reach_m (optional, kept) } }, bounds = { min_x, max_x, min_z, max_z },
 --       multiplier (optional) = function(x, z) → a cell's cost factor on top of its
 --       threats (the airspace: own, contested, enemy)
 --   local points = ThreatRouting.route(map, from, to, max_length_m)
@@ -13,7 +13,7 @@
 --       longer than that — the straight line when none exists
 --   local ids = ThreatRouting.crossed(map, points)          -- circle ids the route enters,
 --                                                           -- in the order it enters them
---   local c = ThreatRouting.circle(map, id)                 -- { id, x, z, r2 } or nil
+--   local c = ThreatRouting.circle(map, id)                 -- { id, x, z, r2, reach_m } or nil
 --   ThreatRouting.length(points)                            -- metres
 
 ThreatRouting = {}
@@ -59,7 +59,7 @@ end
 function ThreatRouting.buildMap(circles, bounds, multiplier)
     local map = { circles = {}, x0 = bounds.min_x, z0 = bounds.min_z }
     for _, c in ipairs(circles) do
-        map.circles[#map.circles + 1] = { id = c.id, x = c.x, z = c.z, r2 = c.radius_m * c.radius_m }
+        map.circles[#map.circles + 1] = { id = c.id, x = c.x, z = c.z, r2 = c.radius_m * c.radius_m, reach_m = c.reach_m }
     end
     map.nx = math.ceil((bounds.max_x - bounds.min_x) / CELL_M) + 1
     map.nz = math.ceil((bounds.max_z - bounds.min_z) / CELL_M) + 1
