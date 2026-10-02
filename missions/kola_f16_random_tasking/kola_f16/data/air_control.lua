@@ -27,16 +27,22 @@
 -- suppression: a SEAD flight dumps its anti-radiation missiles at its SAM site from the
 -- launch point and goes cold (John, 2026-10-01). It is sent home (by its way back, not
 -- straight) when it has fired them all (checked the moment it fires one, and every
--- check_every_s; John, 2026-10-02: no waiting once the salvo is away); when it presses more than press_km past its
--- launch point toward the site; when it is inside the kill zone of another SAM site
--- (at its altitude: low on the run-in, a site reaches only its low-altitude figure); or
+-- check_every_s; John, 2026-10-02: no waiting once the salvo is away); when it reaches
+-- its press-on point having fired nothing ("no shot": no radar to shoot at; bug 36, John,
+-- 2026-10-02: on along the same track until a radar ping, then home as planned); when it
+-- presses more than press_km past its press-on point (its launch point on a plan without
+-- one) toward the site; when it is inside the kill zone of another SAM site
+-- (at its height above the ground: low on the run-in, a site reaches only its
+-- low-altitude figure; not from the pop-up through the press-on leg while it has
+-- missiles aboard, the plan's accepted exposure, roadmap item 12); or
 -- when it is still on the attack attack_time_s after it came within arrival_km of its
 -- launch point (the site's radar never came on). The clock starts on arrival, not at
 -- the planned time, so a flight that took off late still gets its shot (bug 20).
 
--- suppression, also: a flight that has reached its launch point and still has every
--- anti-radiation missile no_shot_after_s later gets one "no shot" line (bug 29: the AI
--- retry on the Vuojarvi Tor reached its launch point, fired nothing and flew home).
+-- suppression, also: a flight with no press-on point (none clear of the other sites)
+-- that has reached its launch point and still has every anti-radiation missile
+-- no_shot_after_s later gets one "no shot" line (bug 29: the AI retry on the Vuojarvi
+-- Tor reached its launch point, fired nothing and flew home).
 
 -- handover: a patrol goes home once the next patrol on its station is there (within
 -- on_station_km of the race-track) and on task (John, 2026-10-01, bug 18: rotations
@@ -71,7 +77,19 @@
 -- farther than warning_range_km, after max_engage_s, when the flight is out of radar
 -- missiles, or when the fight takes it into an enemy kill zone (killzone_fraction of
 -- how far a site reaches at its altitude) its route doesn't pass through on purpose.
--- After that it engages again only after reengage_after_s.
+-- After that it engages again only after reengage_after_s; a bandit it broke off for a
+-- kill zone, not while the flight is still inside one.
+-- A SEAD flight with its anti-radiation missiles aboard isn't the air-to-air asset (John,
+-- 2026-10-02, bug 39): it commits only when fired upon, or when the bandit is hot inside
+-- sead_commit_km (outside its shot area); otherwise it stays low on its route, or
+-- finishes its salvo, and says "press on" once per bandit. Its fight is broken off for
+-- any kill zone by height, its own target's included, outside its shot area, and for none
+-- inside it.
+
+-- suppression, also: once one jet of a SEAD flight has fired its last anti-radiation
+-- missile, the others get salvo_time_s, then the flight goes cold with whatever is left
+-- ("salvo over"; bug 40: a wingman firing one HARM at a time for 76 s inside an SA-10's
+-- envelope died).
 
 AIR_CONTROL = {
     check_every_s = 5,
@@ -91,11 +109,12 @@ AIR_CONTROL = {
     going_home_rules_of_engagement = "return_fire",
 
     suppression = {
-        press_km           = 10,
+        press_km           = 5,      -- past its press-on point (was 10 past the launch point until bug 36)
         arrival_km         = 15,     -- this close to its launch point it has arrived (the AI starts its attack ~12 km out)
         attack_time_s      = 600,
         killzone_fraction  = 0.85,
         no_shot_after_s    = 120,
+        salvo_time_s       = 20,     -- once one jet is empty, the rest of the flight gets this long (bug 40)
     },
     handover = {
         on_station_km      = 15,
@@ -120,5 +139,6 @@ AIR_CONTROL = {
         max_engage_s                     = 180,
         reengage_after_s                 = 30,
         killzone_fraction                = 0.85,
+        sead_commit_km                   = 25,    -- a SEAD flight with missiles aboard commits only this close, or fired upon (bug 39)
     },
 }

@@ -811,6 +811,8 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 
 **Fix:** John renamed each slot template's unit to match its group (2026-10-02). `miz_player_slots.py` needed no re-run: `data/player_slots.lua` keeps group names only.
 
+**Checked 2026-10-02 (`event_logs\2026-10-02_145532.log`):** `PLAYER_IN` and every `PICTURE_CALL` say `f16_tromso`, so grepping the group name finds the player's lines. The player didn't take off that run, so `TAKEOFF` / `POSITION` / `SHOT` weren't seen under the new name.
+
 ---
 
 ### Bug 25. No friendly datalink tracks and no SAM threat rings on the player's HSD
@@ -834,6 +836,26 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 - `consumers/spawn_aircraft_groups.lua`: every AI unit gets its own STN (`AddPropAircraft.STN_L16`, octal from 01000; the player slots use 00201–00211), and every spawned flight gets `setCommand({ id = "EPLRS", value = true, groupId })` at once (scrambles and `_AGAIN` copies go through the same spawner).
 - `consumers/spawn_ground_groups.lua`: `run(entries, label, { show_on_mfd = set })` spawns those groups with `hiddenOnMFD = false`; `init.lua` passes every medium and long-range SAM site (not escorts, not short-range or early warning). A forum report (since the 12 May 2026 update) says the HSD shows about 16 threats at most; Red fields ~11 such sites per roll. Fits the fog-of-war rule's "confirmed" strategic SAMs.
 - Also found: the slot templates' unit names (bug 24).
+
+---
+
+### Bug 27. SEAD flights shot down at the pop-up: the sites reach far more than the low-altitude model said
+
+**Status:** fixed 2026-10-02, not flown. Tuned first (John: "pop up and fire earlier, and go cold as soon as they loose the salvo"), then the reach model fixed as step 0 of roadmap item 12 (session 15, late).
+
+**Seen:** `event_logs\2026-10-02_005718.log`; grep `MSN2024_SEAD`, `MSN5024_SEAD`, `MSN5025_SEAD`. Every SEAD jet that reached its target died (6 of 6; MSN5031's two died earlier, to a scramble):
+- MSN2024 (2× F-16 on `SAM_ALAK_SA11_1`): the profile as planned (cruise 24,600 ft, low leg 1,400–1,600 ft, pop-up), 8 HARMs from 33–44 km at ~10,000 ft; the SA-11 fired at 39 km and both jets died ~28 km from it. The search radar died to a HARM; the launchers (each with its own radar) kept shooting. The AI kept closing during the 33 s salvo (43 → 33 km) and the go-cold came 8 s after the first hit (the 30 s picture round).
+- MSN5025 (2× Su-34 on `SAM_ROVA_Patriot_1`): Vuojärvi is ~58 km from the Patriot, so it popped up 80 s after takeoff; the Patriot fired at 50 km at 8,300 ft; it dived, never fired a Kh-31P, both died.
+- MSN5024 (2× Su-34 on `SAM_KITT_SA10_1`): never above ~3,400 ft (bug 28; a 52 s pop-up leg); the SA-10 fired at 46 km; one jet fired 4 Kh-31P from 36–45 km and killed the 40B6M tracking radar; the SA-10 fired 8 missiles at the Kh-31Ps.
+
+**Cause:** `lib/sam_reach.lua` lets a site reach only its low-altitude figure (SA-11 25 km, Patriot 30, SA-10 40) up to `killzone_low_altitude_m` (3,000 m), and the pop-up goes to exactly that altitude, 40 km out. At 3,000 m the sites see and reach nearly their full envelope; the low figure only holds near the ground (radar horizon, clutter).
+
+**Done 2026-10-02:**
+- `launch_km` 40 → 55 and `popup_km` 12 → 15 (`data/air_tasking.lua`). Re-planning the 00:57 roll over six seeds: SEAD flights 3–6 → 5–8 per coalition, AI attack missions 2–8 → 4–8 (a launch point farther out is clear of more sites).
+- Go cold the moment the last anti-radiation missile leaves: the `suppression` directive runs on the fast check (5 s), and the controller runs it again 0.5 s after each anti-radiation missile a watched flight fires.
+- The pop-up altitude is now held through the attack (bug 28).
+
+**The reach model (roadmap item 12, step 0):** `lib/sam_reach.lua` now goes by height above the ground (`SamReach.aboveGround`): the low figure up to `killzone_low_altitude_m` (300 m), the full ring from `killzone_high_altitude_m` (3,000 m), straight between (were 3,000 / 7,000 m above sea level). All three shots fit (the Patriot reaches 50 km at 900 m above the ground). Used that way by the leash, the bandit call's kill-zone check, go cold and the scrambles' SAM cover (the contact's altitude made a height above the ground). Not used for the SEAD launch point and low route: they stay cleared of the other sites' low figure, the pop-up being accepted exposure (every SEAD jet lost at its pop-up fell to its own target; with the truer reach a launch point would have to sit outside every other site's full ring and Kola's core would go unattacked); to match, go cold ignores other sites' kill zones from the pop-up (within `popup_km` + 2 km of the launch point) until the salvo is away. The validation that the pop-up stays below `killzone_low_altitude_m` is gone. John confirmed the split (2026-10-02: "probably fine"); the next run will tell. Watch: `SHOT` ranges of the salvo and of the sites back, `CONTROL.*go cold` seconds after the last missile and none for another site during the pop-up, losses.
 
 ---
 
@@ -868,3 +890,58 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 **Seen:** `event_logs\2026-10-02_005718.log`; grep `MSN5024_SEAD`. At 04:12:35 MSN5024 called `defend` on the F-15C patrol MSN2009_CAP that had just fired at it (24 km); 4 s later "back on way home: MSN2009_CAP lost from the radar picture": Red's picture never held the F-15C, only the shot gave it away. It engaged again only at 9 km, 30 s later (the re-engage hold). The surviving Su-34 still killed the F-15C with an R-77 as it died.
 
 **Fix:** `directives_per_flight.lua` (`self_defence`): a bandit that fired at the flight within `shot_memory_s` (30 s) stays the fight whether the picture holds it or not.
+
+---
+
+### Bug 31. Dumb-bomb strikes dropped one bomb a pass and circled over the target
+
+**Status:** fixed 2026-10-02, not flown.
+
+**Seen:** `event_logs\2026-10-02_145532.log`; grep `MSN7037_STRIKE`, `MSN7033`. MSN7037 (2× Su-34, 8× FAB-500 each, on `TGT_BANA_supply_depot_1`) held its planned 5,000 m and dropped **one** FAB-500 per jet per pass, roughly every 2 min, from ~17,000 ft, coming back over the target again and again (04:36–04:43 and on), with 1 of 4 critical objects destroyed by 04:41. MSN7033 did the same. John: "not a good attack strategy": fly in, drop everything, get out fast, or use different weapons.
+
+**Cause:** a `bomb_critical_objects` attack had one `Bombing` task per critical object (up to 4) with `expend = "Auto"` and no limit on the number of attacks. With unguided bombs, the DCS AI drops one bomb per task per pass and comes back around until they're gone. Every Red strike and airfield-strike loadout uses unguided bombs (Su-34 and Su-24M FAB-500 / RBK, Tu-22M3 FAB). Every Blue one uses JDAMs.
+
+**Fix:** `stages/plan_air_tasking.lua` (`attackOf`, `dropsUnguidedBombs`): a flight whose loadout carries bombs and no guided weapon (by weapon name) gets one aim point, the centre of the critical objects, as carpet bombing already did, with weapon type bombs and `expend = "All"`. `consumers/spawn_aircraft_groups.lua`: a `Bombing` task with `expend = "All"` also sets `attackQtyLimit = true, attackQty = 1`, so the AI makes one attack and then flies on to its egress. Guided-bomb flights (Blue's JDAMs) are unchanged. Re-planning the 14:55 roll gives every Red strike / OCA 1 point, `All`, bombs. Watch for `SHOT … fired 8x FAB_500` in one line per jet, then the egress `WAYPOINT`.
+
+**Bombing from too high (John, 2026-10-02):** "those RED flights were also bombing from too high, they didn't hit anything from 17k feet". The log shows MSN7037 (released at ~16,900–17,060 ft) did hit: 8 statics at once at 04:39:11 and the ammunition depot destroyed at 04:41:33 (1 of 4 critical), but one critical object in ~5 minutes of passes. Not changed yet. **John's direction (2026-10-02, logged only):** different weapons rather than a lower altitude: "we don't want to fly jets low enough to get attacked". So the fix to build is a Red strike loadout with guided or standoff weapons, flown from a safe altitude. **Best candidate: the KAB-500S**, Russia's GPS / GLONASS-guided 500 kg bomb, the JDAM equivalent (`{KAB_500S_LOADOUT}`, "KAB-500S - 500kg GPS Guided Bomb" in `data/aircraft_pylons.lua`): the Su-34 takes it on pylons 3–10 (up to 8, like today's FAB-500 load), and the Su-30 on 6 pylons; the Su-24M and Tu-22M3 can't. No existing loadout carries it, so it would be a hand loadout (`… R-77` like the others: KAB-500S on 3–10, R-77s, ECM pods). It would drop from altitude onto the critical objects' coordinates like Blue's JDAMs (one `Bombing` task per object, so bug 31's one-pass rule wouldn't apply). Untested in DCS: that the AI releases it from a `Bombing` task, and that this pydcs pylon data still matches the current Su-34. The Su-24M (FAB-500 / RBK) would still need a lower altitude or to come off strike. Other candidates from `--list Su-34`: `KAB-500*4` (KAB-500LG laser-guided; whether the AI can aim it without a pod is untested), `Kh-29T*4` / `Kh-29L*4` (TV / laser missiles, ~10 km), `Kh-59M*2` (standoff, inertial). This ties in with the *Standoff attacks* backlog item and bug 4. Test in DCS which of these the AI actually releases and hits with.
+
+**Built 2026-10-02 (John: "try 2 different loadouts, one with the KAB-500S and one with the Kh-59M*2 for strikes. We are doing air denial with standoff weapons, no one should really be overflying targets"), harness only, not flown:**
+- Su-34 strike flies one of two loadouts at random per flight: `hand:Strike KAB-500S R-77` (the Strike R-77 pylons with 8 KAB-500S on 3-10, `kola_data_tools/aircraft_loadouts_by_hand.json`) or `dcs:Kh-59M*2,R-73*2,R-77*2,ECM`. `aircraft_loadout_choices.json` takes a list of picks; `aircraft_loadouts.py` writes the first to `AIRCRAFT_LOADOUT` and all of them to `AIRCRAFT_LOADOUT_OPTIONS`; the planner picks per flight (`pickLoadout`) before it routes.
+- **No overflying:** `AIR_STANDOFF_WEAPONS` (`data/air_tasking.lua`: Kh-59M `release_km` 40, KAB-500S 8). A strike whose loadout carries one gets its "target" waypoint at the release point that far short of the target, on the way in, and turns home from there (`buildRoute`); the route, and so its SEAD needs, end at the release point. Each jet's weapons are spread over at most as many critical objects as it carries, the same number at each (`expend` One / Two / Four), one attack per object (`attackQtyLimit`).
+- Harness (the 16:03 roll, 3 seeds): Kh-59M flights 37-40 km short, 2 objects, One each; KAB-500S flights 8 km short, 2-3 objects, Two / Four each; none of them needed a SEAD flight.
+- Unchanged: Su-34 / Su-24M airfield strike (RBK, one pass), Su-24M strike (FAB-500), Tu-22M3 (carpet), Blue's JDAM flights (over the target, as before).
+- **Watch:** `LOADOUT` lines (both loadouts seen), `SHOT … X_59M` / `KAB_500S` with range and altitude, `HIT` / `TARGET` on the critical objects, and the flight's `POSITION` after the release point (turning home, not pressing on). The release distances are guesses: from the `Bombing` task the AI flies its own attack from the ingress and may release earlier or later.
+
+**Still open (John):** the attack altitude (Su-34 strike 5,000 m, OCA 3,000 m) and whether Red should carry guided weapons instead (the Su-34 has `KAB-500*4` laser-guided, `Kh-29T/L*4` and `Kh-59M*2` loadouts in `--list Su-34`; whether the AI self-designates the KAB-500L is untested).
+
+---
+
+### Bug 33. SEAD flights from a base near their target climb into the kill zone instead of staying low
+
+**Status:** fixed 2026-10-02, not flown (found in the review of the 14:55 run; John set what should happen the same day).
+
+**What should happen** (John, 2026-10-02): a SEAD flight against a long-range SAM ingresses at **very low altitude** and stays there until it is within firing distance. Then it pops up **on afterburner to ~6,000 ft** (10,000 ft, today's `popup_altitude_m` 3,000 m, is too high), fires the entire salvo and goes cold. So:
+- **Base close to the target:** the flight never climbs. Low from takeoff to the pop-up.
+- **Target far away:** it climbs for the cruise over, then descends to low level before the rings (as today).
+
+**Seen:** `event_logs\2026-10-02_145532.log`; grep `MSN7023_SEAD`, `MSN7024_SEAD`, `MSN2025_SEAD`. On this roll Vuojärvi (Red) and Rovaniemi (Blue) are ~90 km apart, each under the other's long-range SAM: Vuojärvi 30 km inside the Rovaniemi Patriot's ring, Rovaniemi 52 km inside the Vuojärvi SA-10's. Red's rotation flies 10 of 11 SEAD flights from Vuojärvi; Blue's SA-10 flight flies from Rovaniemi. The planned routes are short (`dcs.log`: MSN7023 36 km flown, MSN7024 43, MSN2025 24).
+- **The flights climbed instead of staying low.** The low leg and the pop-up came within the first minutes, so the jets went more or less straight from the climb-out into the pop-up. They reached their launch point waypoint 1–2 min after takeoff at 2,500–5,000 ft: MSN7023 at 3,809 ft (04:08:20, takeoff 04:06), MSN7023_SEAD_AGAIN 4,119 ft, MSN7024 5,042 ft, MSN2025 2,491 ft, MSN2025_SEAD_AGAIN 2,863 ft. The Patriot fired at MSN7023 from 62 km at 3,800 ft, 2 min after takeoff.
+- **Then they hung around under the target's full ring trying to get a shot.** At the launch point with `AttackGroup` on and the target out of the AI's reach at that height, the DCS AI manoeuvred in place: MSN7023 turned through 117°, 218°, 109°, 167° at 1,500–5,000 ft for 3 min, then climbed to ~10,400 ft and fired its 8 Kh-31P from 45–61 km (04:10:25–04:11:23); both jets died to the Patriot. MSN7023_SEAD_AGAIN did the same for 6 min and never fired a Kh-31P (it fought the Blue SEAD flight instead; both jets lost). MSN7024 at 5,000 ft never fired at the Rovaniemi SA-11 from 57 km and flew its egress. Blue's MSN2025 / _AGAIN climbed to ~10,600 ft and fired only at 44–54 km (bug 34).
+- **No afterburner on the pop-up:** today the afterburner is allowed only on the egress. The climb to 3,000 m took the Su-34s minutes, not seconds.
+- **`no shot` fires falsely:** its 2 min counts from coming within `arrival_km` (15) of the launch point, which here is at takeoff. MSN7023 got `no shot` at 04:08:06 and fired at 04:10:25.
+
+**Cause (suspected):** `suppressionRoute` builds cruise → descent → low leg → pop-up → launch point and assumes the base is far enough for all of it. With a close base the waypoints still exist but crowd the climb-out, so the low leg is never really flown. The pop-up altitude (3,000 m) and the climb without afterburner put the jets up high, slowly, inside the target's full reach.
+
+**Proposed fix (decide with John):**
+- A SEAD flight whose base is inside the enemy rings, or too close for a cruise, takes off and stays low (275 m RADIO) all the way: no cruise, no descent.
+- Pop-up to ~1,800 m (6,000 ft) with afterburner allowed from the pop-up waypoint, `AttackGroup` (expend All) at the launch point, go cold on the last missile (already built).
+- **To check before trusting it:** the AI's launch range at 6,000 ft. At 10,000 ft the F-16s only fired at 44–48 km, and MSN7024 at 5,000 ft didn't fire at 57 km at all (the Hornets did fire from 59 km at 3,258 ft during their pop-up). The launch distance (55 km) may have to come in for a 6,000 ft shot, which means closer to the site.
+- `no shot` and the 10 min attack timer start from the pop-up waypoint, not from coming within 15 km.
+
+**Fix (built 2026-10-02, harness only):**
+- `stages/plan_air_tasking.lua` (`suppressionRoute`): a flight whose low entry comes sooner than a climb to cruise and the descent back (`lowAt < 2 × descentM`, ~77 km of route with an 8,000 m cruise) goes low from takeoff and never climbs: the departure point, the way in and the way home all at `low_altitude_m` (RADIO). A far target still cruises high and descends before the rings (MSN2031 on the 14:55 roll). A base under an enemy ring was already low from takeoff, and still is.
+- The pop-up waypoint allows the afterburner (from there through the egress; off again at the climb or the last low point home).
+- `data/air_tasking.lua`: `popup_altitude_m` 3,000 → **1,800** (~6,000 ft), `popup_km` 15 → **8** (a short climb on afterburner), `launch_km` 55 → **45** (from 55 km the AI didn't fire: F-16s at ~10,600 ft pressed on and fired at 44–48 km, a Su-34 at 5,000 ft never fired from 57 km). Short-reaching targets keep reach + 15 km when that's less.
+- `no shot` and the 10 min attack timer start at the pop-up waypoint (`ControlAirFlights.waypoint`, called by each waypoint's script command next to `WriteEventLog.waypoint`), or within 15 km of the launch point once the flight is at 80 % of the pop-up altitude, not at takeoff.
+- Harness: the 14:55 roll re-planned. Every Vuojärvi / Rovaniemi SEAD flight is now takeoff → 900 ft legs → pop-up (afterburner) 8 km before a launch point 45 km out at 1,800 m → back low; SEAD flights per coalition unchanged (Red 11, Blue 9); a 6 h smoke run clean.
+- **Watch in the next run:** `SHOT` ranges and altitudes of the salvo (does the AI fire from ~45 km at 6,000 ft, or press on to the 10 km `press_km` limit?); `POSITION` low after takeoff; the time from the `pop-up` `WAYPOINT` to the first `SHOT`; return fire at the pop-up; `no shot` only after the pop-up.

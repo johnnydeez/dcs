@@ -5,6 +5,8 @@
 -- Plain data, no logic. Every CLSID was checked against data/aircraft_pylons.lua.
 --   AIRCRAFT_LOADOUT[type][mission type] = { source, name, fuel, chaff, flare, gun,
 --       pylons = { { num, CLSID, weapon (its name, for the brief) } } }
+--   AIRCRAFT_LOADOUT_OPTIONS[type][mission type] = { loadout, loadout, ... } where the choice
+--       lists several: each flight gets one at random (AIRCRAFT_LOADOUT holds the first)
 
 AIRCRAFT_LOADOUT = {
     ["A-10C_2"] = {
@@ -553,19 +555,19 @@ AIRCRAFT_LOADOUT = {
     },
     ["Su-34"] = {
         strike = {
-            source = "hand", name = "Strike R-77",
+            source = "hand", name = "Strike KAB-500S R-77",
             fuel = 9800, chaff = 64, flare = 64, gun = 100,
             pylons = {
                 { num = 1, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82F}", weapon = "L005 Sorbtsiya ECM pod (left)" },
                 { num = 2, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}", weapon = "R-77 (AA-12 Adder) - Active Rdr" },
-                { num = 3, CLSID = "{37DCC01E-9E02-432F-B61D-10C166CA2798}", weapon = "FAB-500M-62 - 500 kg GP Bomb LD" },
-                { num = 4, CLSID = "{37DCC01E-9E02-432F-B61D-10C166CA2798}", weapon = "FAB-500M-62 - 500 kg GP Bomb LD" },
-                { num = 5, CLSID = "{37DCC01E-9E02-432F-B61D-10C166CA2798}", weapon = "FAB-500M-62 - 500 kg GP Bomb LD" },
-                { num = 6, CLSID = "{37DCC01E-9E02-432F-B61D-10C166CA2798}", weapon = "FAB-500M-62 - 500 kg GP Bomb LD" },
-                { num = 7, CLSID = "{37DCC01E-9E02-432F-B61D-10C166CA2798}", weapon = "FAB-500M-62 - 500 kg GP Bomb LD" },
-                { num = 8, CLSID = "{37DCC01E-9E02-432F-B61D-10C166CA2798}", weapon = "FAB-500M-62 - 500 kg GP Bomb LD" },
-                { num = 9, CLSID = "{37DCC01E-9E02-432F-B61D-10C166CA2798}", weapon = "FAB-500M-62 - 500 kg GP Bomb LD" },
-                { num = 10, CLSID = "{37DCC01E-9E02-432F-B61D-10C166CA2798}", weapon = "FAB-500M-62 - 500 kg GP Bomb LD" },
+                { num = 3, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                { num = 4, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                { num = 5, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                { num = 6, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                { num = 7, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                { num = 8, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                { num = 9, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                { num = 10, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
                 { num = 11, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}", weapon = "R-77 (AA-12 Adder) - Active Rdr" },
                 { num = 12, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82A}", weapon = "L005 Sorbtsiya ECM pod (right)" },
             },
@@ -650,6 +652,45 @@ AIRCRAFT_LOADOUT = {
             fuel = 50000, chaff = 48, flare = 48, gun = 100,
             pylons = {
                 { num = 3, CLSID = "{BDAD04AA-4D4A-4E51-B958-180A89F963CF}", weapon = "33 x OFAB-250-270 - 250 kg GP Bomb LD" },
+            },
+        },
+    },
+}
+
+AIRCRAFT_LOADOUT_OPTIONS = {
+    ["Su-34"] = {
+        strike = {
+            {
+                source = "hand", name = "Strike KAB-500S R-77",
+                fuel = 9800, chaff = 64, flare = 64, gun = 100,
+                pylons = {
+                    { num = 1, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82F}", weapon = "L005 Sorbtsiya ECM pod (left)" },
+                    { num = 2, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}", weapon = "R-77 (AA-12 Adder) - Active Rdr" },
+                    { num = 3, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                    { num = 4, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                    { num = 5, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                    { num = 6, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                    { num = 7, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                    { num = 8, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                    { num = 9, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                    { num = 10, CLSID = "{KAB_500S_LOADOUT}", weapon = "KAB-500S - 500kg GPS Guided Bomb" },
+                    { num = 11, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}", weapon = "R-77 (AA-12 Adder) - Active Rdr" },
+                    { num = 12, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82A}", weapon = "L005 Sorbtsiya ECM pod (right)" },
+                },
+            },
+            {
+                source = "dcs", name = "Kh-59M*2,R-73*2,R-77*2,ECM",
+                fuel = 9800, chaff = 64, flare = 64, gun = 100,
+                pylons = {
+                    { num = 1, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82F}", weapon = "L005 Sorbtsiya ECM pod (left)" },
+                    { num = 2, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}", weapon = "R-73 (AA-11 Archer) - Infra Red" },
+                    { num = 3, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}", weapon = "R-77 (AA-12 Adder) - Active Rdr" },
+                    { num = 4, CLSID = "{40AB87E8-BEFB-4D85-90D9-B2753ACF9514}", weapon = "Kh-59M (AS-18 Kazoo) - 930kg, ASM, IN" },
+                    { num = 9, CLSID = "{40AB87E8-BEFB-4D85-90D9-B2753ACF9514}", weapon = "Kh-59M (AS-18 Kazoo) - 930kg, ASM, IN" },
+                    { num = 10, CLSID = "{B4C01D60-A8A3-4237-BD72-CA7655BC0FE9}", weapon = "R-77 (AA-12 Adder) - Active Rdr" },
+                    { num = 11, CLSID = "{FBC29BFE-3D24-4C64-B81D-941239D12249}", weapon = "R-73 (AA-11 Archer) - Infra Red" },
+                    { num = 12, CLSID = "{44EE8698-89F9-48EE-AF36-5FD31896A82A}", weapon = "L005 Sorbtsiya ECM pod (right)" },
+                },
             },
         },
     },

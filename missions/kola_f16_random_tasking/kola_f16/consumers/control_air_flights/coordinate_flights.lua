@@ -7,7 +7,7 @@
 -- each takes its nearest threat nobody has; a flight left with none stays on its
 -- mission (DCS still has it evade anything fired at it).
 --
--- Later: re-tasking a flight whose target is gone, patrol handover, holding packages.
+-- Later: re-tasking a flight whose target is gone.
 
 CoordinateFlights = {}
 

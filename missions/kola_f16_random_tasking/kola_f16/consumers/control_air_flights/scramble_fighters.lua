@@ -115,14 +115,21 @@ end
 
 -- ── where and from where ────────────────────────────────────────
 
--- The enemy medium / long-range SAM site whose kill zone (+ margin_m) holds pos, or nil:
--- at altitude_m (lib/sam_reach.lua), or the full ring without one (an intercept point,
--- flown high).
+-- The enemy medium / long-range SAM site, or base-defense radar SAM (Tor, Pantsir, …;
+-- bug 41), whose kill zone (+ margin_m) holds pos, or nil: at altitude_m (above sea
+-- level; lib/sam_reach.lua goes by the height above the ground there), or the full ring
+-- without one (an intercept point, flown high). A base defense: its full reach at any height.
 local function enemyKillZone(coalitionName, pos, altitude_m, margin_m)
+    local height = SamReach.aboveGround(pos, altitude_m)
     for _, s in ipairs(_plan.sam_sites and _plan.sam_sites.sites or {}) do
         if s.side ~= coalitionName and AIR_ROUTING.threat_layers[s.layer] and (s.engage_m or 0) > 0
-           and Util.dist(pos, s.pos) < SamReach.killZone(s, altitude_m) + (margin_m or 0) and liveGroup(s.id) then
+           and Util.dist(pos, s.pos) < SamReach.killZone(s, height) + (margin_m or 0) and liveGroup(s.id) then
             return s.id
+        end
+    end
+    for _, g in ipairs(SamReach.baseDefenses(_plan, coalitionName)) do
+        if Util.dist(pos, g.pos) < g.reach_m * AIR_DEFENSE.killzone_fraction + (margin_m or 0) and liveGroup(g.id) then
+            return g.id
         end
     end
     return nil
@@ -277,7 +284,7 @@ local function launch(st, pick, raid, groups, id, number, refundToken)
         },
         attack = { kind = "intercept", groups = groups, weapon_type = AIR_WEAPON_TYPE[mt.weapon_type] },
         rules_of_engagement = mt.rules_of_engagement, loadout = AIRCRAFT_LOADOUT[aircraftType].interception,
-        keeps_gun = true, may_jettison = true, afterburner = true, critical_names = {}, suppression_threats = {},
+        keeps_gun = true, may_jettison = true, afterburner = true, critical_names = {},
     }
     TrackAlertJets.hold(c, b.base, spot.terminal_index)
     local grp = SpawnAircraftGroups.spawn(m)

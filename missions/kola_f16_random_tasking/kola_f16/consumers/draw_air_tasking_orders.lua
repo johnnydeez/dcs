@@ -1,8 +1,8 @@
 -- Consumer: debug view of plan.air_tasking_orders on the F10 map.
 --   CONFIG.DRAW_AIR_TASKING_ORDERS: each flight's planned route as a dotted line in its
 --   coalition's colour, and a text mark at the target (mission, aircraft, base, times,
---   package); a suppression flight's mark sits at its attack waypoint, with the threats
---   it engages. Defensive air: each patrol station and the AWACS orbit as a solid
+--   the threats it needs out of the fight and the SEAD flight for each); a SEAD flight's
+--   mark sits at its launch point, with the groups it engages. Defensive air: each patrol station and the AWACS orbit as a solid
 --   race-track with one label listing its flights, a patrol station's defended zone as a
 --   dashed circle and its commit circles as faint dotted ones, human flights' routes
 --   dashed yellow, and each alert base's posture.
@@ -47,22 +47,20 @@ function DrawAirTaskingOrders.apply(plan)
                 table.insert(byStation[m.station], string.format("%s%s %s from %s, on station %s–%s",
                     human and "HUMAN " or "", m.id, m.aircraft_type, m.launch_base, clock(m.tot_s), clock(m.attack.until_s)))
             else
-            local detail
-            if m.escorts then
-                detail = string.format("escorts %s\nengages: %s", m.escorts, table.concat(m.attack.groups, ", "))
-            else
-                detail = "→ " .. m.target
-                if m.needs_suppression then
-                    detail = string.format("%s\ncrosses: %s\nsuppressed by: %s", detail,
-                        table.concat(m.suppression_threats, ", "), table.concat(m.suppressed_by or {}, ", "))
-                end
+            local sead = m.mission_type == "suppression_of_air_defenses"
+            local detail = sead and string.format("%sengages: %s", m.rotation and "SEAD rotation\n" or "",
+                table.concat(m.attack.groups, ", ")) or ("→ " .. m.target)
+            if m.requires_cleared then
+                local bySite, by = ato[coalition].suppression_by_site or {}, {}
+                for i, t in ipairs(m.requires_cleared) do by[i] = string.format("%s (%s)", t, bySite[t] or "none") end
+                detail = string.format("%s\nneeds down: %s", detail, table.concat(by, ", "))
             end
-            local text = string.format("%s%s %s %s (%s)\n%dx %s from %s\nstart %s  TOT %s  back %s\n%s",
-                human and "HUMAN " or "", m.id, coalition:upper(), m.mission_type, m.package or "", m.count, m.aircraft_type, m.launch_base,
+            local text = string.format("%s%s %s %s\n%dx %s from %s\nstart %s  TOT %s  back %s\n%s",
+                human and "HUMAN " or "", m.id, coalition:upper(), m.mission_type, m.count, m.aircraft_type, m.launch_base,
                 clock(m.start_s), clock(m.tot_s), clock(m.end_s), detail)
-            -- suppression flights share their mission's target: label them at their attack waypoint
+            -- a SEAD flight is labelled at its launch point (a DEAD on the same site keeps the site)
             local at = m.target_pos
-            if m.escorts then
+            if sead then
                 for _, w in ipairs(r) do if w.carries_attack_tasks then at = w end end
             end
             trigger.action.markToAll(_mark, text, Util.toVec3(at), true, "")
@@ -114,8 +112,8 @@ function DrawAirTaskingOrders.summaryText(plan)
         local s = ato[c] and ato[c].summary
         if s then
             local first = ato[c].missions[1]
-            parts[#parts + 1] = string.format("%s %d missions + %d suppression flights, %d patrols on %d stations, %d AWACS, %d alert bases%s",
-                c:upper(), s.missions, s.suppression_flights or 0, s.patrols or 0, s.stations or 0, s.early_warning or 0,
+            parts[#parts + 1] = string.format("%s %d missions + %d SEAD flights (%d in the rotation), %d patrols on %d stations, %d AWACS, %d alert bases%s",
+                c:upper(), s.missions, s.suppression_flights or 0, s.rotation_flights or 0, s.patrols or 0, s.stations or 0, s.early_warning or 0,
                 s.alert_bases or 0, first and (", first starts " .. clock(first.start_s)) or "")
         end
     end

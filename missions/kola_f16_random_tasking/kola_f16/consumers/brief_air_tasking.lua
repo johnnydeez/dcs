@@ -5,13 +5,16 @@
 --   BriefAirTasking.start(plan)      Comms menu entries (\ > F10. Other...) for the human flights' coalition:
 --     Human taskings > <flight> > Frag         the tasking: times, target (degrees and
 --                                              decimal minutes for the F-16, MGRS,
---                                              elevation), loadout, threats, package
+--                                              elevation), loadout, threats, the SEAD
+--                                              flights it needs (and their state now)
 --                                 > Steerpoints the points to enter by hand: out to the
 --                                              target (its ground elevation, then each aim
 --                                              point) or the station, then the landing base
 --     Hide text                                 clears the screen
 --     Air tasking order > …                     every flight of the coalition, with its
---                                              state now (planned / airborne / landed / lost)
+--                                              state now (planned / airborne / landed / lost):
+--                                              attack missions (tagged with the SEAD flights
+--                                              they wait on), SEAD flights, patrols
 -- A human flight is only listed: nobody is assigned to it. A player who destroys a static
 -- object the mission spawned gets a popup (DCS's kill list doesn't show static objects),
 -- with the tasking's progress when the object is part of a human tasking's target.
@@ -28,6 +31,7 @@ local KILL_MESSAGE_S  = 15    -- the popup for a static object a player destroye
 local MENU_PAGE       = 9     -- entries per comms submenu (the menu shows 10 at most)
 local NEAR_ROUTE_KM   = 20    -- enemy SAM rings the route passes this close to are listed
 local FEET_PER_METRE  = 3.28084
+local SUPPRESSION     = "suppression_of_air_defenses"
 
 local MISSION_NAME = {
     strike                      = "STRIKE",
@@ -42,6 +46,7 @@ local STEERPOINT_NAME = {
     takeoff = "BASE", departure = "DEP", transit = "NAV", descent = "DESC", ingress = "IP",
     target = "TGT", egress = "EGR", landing = "LAND", station = "CAP A", station_end = "CAP B",
     low = "LOW", popup = "POP",   -- a SEAD run-in: low legs, then the pop-up to the launch point
+    popup_top = "TOP",            -- the top of the pop-up, at the shot altitude
 }
 
 local _plan
@@ -97,6 +102,38 @@ local function missionsById()
     local out = {}
     for _, c in ipairs({ "red", "blue" }) do
         for _, m in ipairs(_plan.air_tasking_orders[c] and _plan.air_tasking_orders[c].missions or {}) do out[m.id] = m end
+    end
+    return out
+end
+
+-- The site table of the mission's coalition: threat id → the SEAD flight that takes it.
+local function seadBySite(m)
+    local ato = _plan.air_tasking_orders[m.coalition]
+    return ato and ato.suppression_by_site or {}
+end
+
+-- The flights waiting on SEAD flight `s` (those listing its site in requires_cleared),
+-- by start time.
+local function waitingOn(s, byId)
+    local out = {}
+    for _, o in pairs(byId) do
+        if o.coalition == s.coalition and o.id ~= s.id then
+            for _, t in ipairs(o.requires_cleared or {}) do
+                if t == s.target then out[#out + 1] = o break end
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.start_s < b.start_s end)
+    return out
+end
+
+-- The SEAD flight for each threat the mission waits on, in route order:
+-- { { threat, sead (mission, or nil) } }.
+local function seadNeeded(m, byId)
+    local bySite, out = seadBySite(m), {}
+    for _, t in ipairs(m.requires_cleared or {}) do
+        local id = bySite[t]
+        out[#out + 1] = { threat = t, sead = id and byId[id] }
     end
     return out
 end
@@ -170,33 +207,47 @@ end
 
 -- ── the frag ────────────────────────────────────────────────────
 
+-- "Needs down: SAM_KUUS_SA11_1 (MSN2024_SEAD, airborne)", one line per threat the
+-- mission waits on (John, 2026-10-02: which SEAD flight had to succeed for it to run).
+local function needsDownLines(m, byId)
+    local out = {}
+    for i, n in ipairs(seadNeeded(m, byId)) do
+        local who = n.sead and (n.sead.id == m.id and "yours"
+            or string.format("%s, %s", n.sead.id, ScheduleAirTaskingOrders.statusOf(n.sead.id))) or "no SEAD flight"
+        out[#out + 1] = string.format("%s%s (%s)", i == 1 and "Needs down: " or "            ", n.threat, who)
+    end
+    return out
+end
+
 local function threatSection(m, byId, threats, lines)
     lines[#lines + 1] = "THREATS"
-    local suppressor = {}
-    local main = m.escorts and byId[m.escorts] or m
-    for _, sid in ipairs(main.suppressed_by or {}) do
-        for _, id in ipairs(byId[sid].suppresses or {}) do suppressor[id] = byId[sid] end
-    end
-    local listed = 0
+    local bySite = seadBySite(m)
+    local listed, shown = 0, {}
     for _, r in ipairs(samRingsNear(m, threats)) do
-        local s = suppressor[r.id]
+        local s = bySite[r.id] and byId[bySite[r.id]]
+        shown[r.id] = true
         local who = ""
         if s then
             who = s.id == m.id and " — YOURS to suppress"
-                  or string.format(" — suppressed by %s (%s), over target %s", s.id, s.aircraft_type, at(s.tot_s))
+                  or string.format(" — SEAD %s (%s), salvo %s", s.id, s.aircraft_type, at(s.tot_s))
         end
         lines[#lines + 1] = string.format("  %s: route %s%s", r.label,
             r.gap_m < 0 and string.format("crosses its ring (%d km inside)", round(-r.gap_m / 1000))
                         or string.format("passes %d km outside its ring", round(r.gap_m / 1000)), who)
         listed = listed + 1
     end
-    -- threats a suppression flight takes that aren't SAM rings (base-defense groups)
-    for id, s in pairs(suppressor) do
-        local t = threats[id]
-        if t and not t.engage_m then
-            lines[#lines + 1] = string.format("  %s%s", t.label, s.id == m.id and " — YOURS to suppress"
-                or string.format(" — suppressed by %s", s.id))
-            listed = listed + 1
+    -- threats on the route that aren't SAM rings (base-defense groups), and its own site
+    local own = m.mission_type == SUPPRESSION and { m.target } or {}
+    for _, list in ipairs({ m.requires_cleared or {}, own }) do
+        for _, id in ipairs(list) do
+            local t = threats[id]
+            if t and not shown[id] then
+                shown[id] = true
+                local s = bySite[id] and byId[bySite[id]]
+                lines[#lines + 1] = string.format("  %s%s", t.label, (s and s.id == m.id) and " — YOURS to suppress"
+                    or s and string.format(" — SEAD %s", s.id) or "")
+                listed = listed + 1
+            end
         end
     end
     if listed == 0 then lines[#lines + 1] = "  no known SAM ring on or near the route" end
@@ -247,23 +298,19 @@ local function fragText(m)
         end
     else
         local t = cat[m.target]
-        local main = m.escorts and byId[m.escorts] or m
-        if m.escorts then
-            lines[#lines + 1] = string.format("ESCORT  %s %s: %dx %s from %s, TOT %s", main.id,
-                missionName(main.mission_type), main.count, main.aircraft_type, main.launch_base, at(main.tot_s))
-            lines[#lines + 1] = string.format("  Be over the target %s, %d min ahead of %s, and suppress:",
-                at(m.tot_s), round((main.tot_s - m.tot_s) / 60), main.id)
-            for _, id in ipairs(m.suppresses or {}) do
-                local th = threats[id]
-                lines[#lines + 1] = string.format("  %s", th and th.label or id)
-                if th then lines[#lines + 1] = "    " .. where(th.pos) end
-            end
-            lines[#lines + 1] = string.format("  (groups: %s)", table.concat(m.attack.groups or {}, ", "))
-        end
         lines[#lines + 1] = string.format("TARGET  %s  [%s]", t and t.label or m.target_label or m.target, m.target)
         if t and t.description then lines[#lines + 1] = "  " .. t.description end
         lines[#lines + 1] = "  " .. where(m.target_pos)
-        if not m.escorts then
+        if m.mission_type == SUPPRESSION then
+            local launch = m.attack.launch
+            lines[#lines + 1] = string.format("  Fire every anti-radiation missile at it from the LAUNCH steerpoint, %d km from the site, at %s; then straight back out low.",
+                launch and round(Util.dist(launch, m.target_pos) / 1000) or 0, at(m.tot_s))
+            if m.attack.press_on then
+                lines[#lines + 1] = string.format("  No radar to shoot at there: press on toward the site to %d km at most, then home.",
+                    round(Util.dist(m.attack.press_on, m.target_pos) / 1000))
+            end
+            lines[#lines + 1] = string.format("  (groups: %s)", table.concat(m.attack.groups or {}, ", "))
+        else
             local points = m.attack.points or {}
             if #points > 0 then
                 lines[#lines + 1] = string.format("  Aim points (%d):", #points)
@@ -287,19 +334,17 @@ local function fragText(m)
     lines[#lines + 1] = ""
     threatSection(m, byId, threats, lines)
 
-    if m.package and not m.station then
-        local main = m.escorts and byId[m.escorts] or m
-        local members = { main }
-        for _, sid in ipairs(main.suppressed_by or {}) do members[#members + 1] = byId[sid] end
-        if #members > 1 then
+    local needs = needsDownLines(m, byId)
+    if #needs > 0 then
+        lines[#lines + 1] = ""
+        for _, l in ipairs(needs) do lines[#lines + 1] = l end
+    end
+    if m.mission_type == SUPPRESSION then
+        local waiting = waitingOn(m, byId)
+        if #waiting > 0 then
             lines[#lines + 1] = ""
-            lines[#lines + 1] = "PACKAGE " .. m.package
-            for _, o in ipairs(members) do
-                local role = o.escorts and ("SEAD: " .. table.concat(o.suppresses or {}, ", ")) or "the mission"
-                lines[#lines + 1] = string.format("  %s%s %dx %s from %s, T/O %s, over target %s — %s", o.id,
-                    o.flown_by == "human" and " (PLAYER)" or "", o.count, o.aircraft_type, o.launch_base,
-                    at(o.takeoff_s), at(o.tot_s), role)
-            end
+            lines[#lines + 1] = "OPENING THE WAY FOR"
+            for _, o in ipairs(waiting) do lines[#lines + 1] = "  " .. flightLine(o, byId) end
         end
     end
     return table.concat(lines, "\n")
@@ -331,7 +376,7 @@ local function steerpointText(m)
     for i = 1, last do
         local r = m.route[i]
         if i > 1 then t = t + Util.dist(m.route[i - 1], r) / math.max(r.speed_mps or 1, 1) end
-        if r.kind == "target" and m.escorts then
+        if r.kind == "target" and m.mission_type == SUPPRESSION then
             -- a SEAD flight's target point is its launch point, at the pop-up altitude
             add("LAUNCH", r, altitudeText(r), at(m.tot_s))
         elseif r.kind == "target" then
@@ -354,9 +399,8 @@ local function shortLine(m, byId)
     local what
     if m.station then
         what = string.format("patrol %s", m.station)
-    elseif m.escorts then
-        local main = byId[m.escorts]
-        what = string.format("escort %s %s on %s", main.id, missionName(main.mission_type), main.target_label or main.target)
+    elseif m.mission_type == SUPPRESSION then
+        what = string.format("SEAD on %s", m.target_label or m.target)
     else
         what = m.target_label or m.target
     end
@@ -366,14 +410,19 @@ end
 
 -- ── the air tasking order ───────────────────────────────────────
 
-local function packageText(pkg, byId)
-    local main = byId[pkg.mission]
-    local lines = { string.format("%s: %s on %s, TOT %s", pkg.id, missionName(main.mission_type),
-        main.target_label or main.target, at(main.tot_s)) }
-    local members = { main }
-    for _, sid in ipairs(pkg.suppression_flights) do members[#members + 1] = byId[sid] end
-    for _, m in ipairs(members) do
-        lines[#lines + 1] = "  " .. flightLine(m, byId) .. " — " .. ScheduleAirTaskingOrders.statusOf(m.id)
+-- An attack mission or a SEAD flight, its state now, and the SEAD it waits on (or, for a
+-- SEAD flight, what waits on it).
+local function missionText(m, byId)
+    local lines = { string.format("%s on %s", missionName(m.mission_type), m.target_label or m.target),
+                    "  " .. flightLine(m, byId) .. " — " .. ScheduleAirTaskingOrders.statusOf(m.id) }
+    for _, l in ipairs(needsDownLines(m, byId)) do lines[#lines + 1] = "  " .. l end
+    if m.mission_type == SUPPRESSION then
+        local waiting = waitingOn(m, byId)
+        if #waiting > 0 then
+            local ids = {}
+            for i, o in ipairs(waiting) do ids[i] = o.id end
+            lines[#lines + 1] = "  opening the way for " .. table.concat(ids, ", ")
+        end
     end
     return table.concat(lines, "\n")
 end
@@ -409,7 +458,7 @@ local function watchStaticKills(plan)
     local tasking = {}   -- catalog target id → the human tasking against it
     for _, c in ipairs({ "red", "blue" }) do
         for _, m in ipairs(plan.air_tasking_orders[c] and plan.air_tasking_orders[c].missions or {}) do
-            if m.flown_by == "human" and not m.escorts and m.target then tasking[m.target] = m end
+            if m.flown_by == "human" and m.mission_type ~= SUPPRESSION and m.target and not m.station then tasking[m.target] = m end
         end
     end
     local launchedBy = {}   -- weapon → the player group that fired it
@@ -533,11 +582,12 @@ function BriefAirTasking.start(plan)
     local summary = {}
     for _, id in ipairs(res.human_missions) do
         local m = byId[id]
+        -- the frag is built again when asked for: it says how the SEAD flights it needs are doing
         local frag, steer = fragText(m), steerpointText(m)
         summary[#summary + 1] = shortLine(m, byId)
         local sub = missionCommands.addSubMenuForCoalition(side,
             string.format("%s %s from %s", m.id, missionName(m.mission_type), m.launch_base), human)
-        missionCommands.addCommandForCoalition(side, "Frag", sub, function() show(side, frag, FRAG_MESSAGE_S) end)
+        missionCommands.addCommandForCoalition(side, "Frag", sub, function() show(side, fragText(m), FRAG_MESSAGE_S) end)
         missionCommands.addCommandForCoalition(side, "Steerpoints", sub, function() show(side, steer, STEERPOINT_MESSAGE_S) end)
         Log.info("HUMAN TASKING " .. (frag:gsub("\n", "\n    ")) .. "\n    " .. (steer:gsub("\n", "\n    ")))
     end
@@ -546,14 +596,30 @@ function BriefAirTasking.start(plan)
 
     -- the air tasking order: states change, so the texts are built when asked for
     local order = missionCommands.addSubMenuForCoalition(side, "Air tasking order")
-    local packages = {}
-    for _, pkg in ipairs(res.packages or {}) do
-        local main = byId[pkg.mission]
-        packages[#packages + 1] = { string.format("%s %s %s", at(main.tot_s), missionName(main.mission_type), pkg.id),
-            function() return packageText(pkg, byId) end, main.tot_s }
+    -- attack missions by start, each tagged with the SEAD flights it waits on; SEAD flights
+    local attacks, seads = {}, {}
+    for _, m in ipairs(res.missions) do
+        if not m.station then
+            local item = { nil, function() return missionText(m, byId) end, m.start_s }
+            local short = m.id:match("^MSN%d+") or m.id
+            if m.mission_type == SUPPRESSION then
+                item[1] = string.format("%s SEAD %s on %s", at(m.tot_s), short, m.target)
+                seads[#seads + 1] = item
+            else
+                local after = {}
+                for _, n in ipairs(seadNeeded(m, byId)) do
+                    if n.sead then after[#after + 1] = n.sead.id:match("^MSN%d+") or n.sead.id end
+                end
+                item[1] = string.format("%s %s %s%s", at(m.tot_s), missionName(m.mission_type), short,
+                    #after > 0 and (" (after " .. table.concat(after, ", ") .. " SEAD)") or "")
+                attacks[#attacks + 1] = item
+            end
+        end
     end
-    table.sort(packages, function(a, b) return a[3] < b[3] end)
-    addPaged(side, order, "Attack packages", packages)
+    table.sort(attacks, function(a, b) return a[3] < b[3] end)
+    table.sort(seads, function(a, b) return a[3] < b[3] end)
+    addPaged(side, order, "Attack missions", attacks)
+    addPaged(side, order, "SEAD flights", seads)
     local stations = {}
     for _, st in ipairs(res.stations or {}) do
         stations[#stations + 1] = { st.id, function() return stationText(st, byId) end }
@@ -569,6 +635,6 @@ function BriefAirTasking.start(plan)
     -- clears a long-lasting frag or steerpoint list once it's entered
     missionCommands.addCommandForCoalition(side, "Hide text", nil, function() show(side, " ", 1) end)
     watchStaticKills(plan)
-    Log.info(string.format("--- Briefing: %d human taskings, %d packages and %d stations in the %s comms menu ---",
-        #res.human_missions, #packages, #stations, sideName:upper()))
+    Log.info(string.format("--- Briefing: %d human taskings, %d attack missions, %d SEAD flights and %d stations in the %s comms menu ---",
+        #res.human_missions, #attacks, #seads, #stations, sideName:upper()))
 end

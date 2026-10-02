@@ -117,10 +117,13 @@ local function attackTasks(m, first)
     end
     local alt = attackAltitude(m)
     if a.kind == "bomb_critical_objects" then
+        -- a set expend (All: one pass with everything; One / Two / Four: a standoff weapon
+        -- spread over the critical objects) is one attack per point, then on to the egress
+        local oneAttack = a.expend ~= nil and a.expend ~= "Auto"
         for _, p in ipairs(a.points) do
             add("Bombing", {
                 x = p.x, y = p.z, weaponType = a.weapon_type, expend = a.expend,
-                attackQtyLimit = false, attackQty = 1, directionEnabled = false, direction = 0,
+                attackQtyLimit = oneAttack, attackQty = 1, directionEnabled = false, direction = 0,
                 altitudeEnabled = alt ~= nil, altitude = alt or 0, groupAttack = true,
             })
         end
@@ -158,9 +161,7 @@ local function attackTasks(m, first)
                 add("EngageTargets", { targetTypes = { [1] = "Air" }, value = "Air;", priority = 0,
                                        maxDistEnabled = true, maxDist = a.engage_range_m })
             end
-        else
-            add("AWACS", {})
-        end
+        end   -- (the AWACS task is on the takeoff waypoint: bug 38)
         -- race-track between the station's two ends, until the time on station is up
         add("ControlledTask", {
             task = { id = "Orbit", params = { pattern = "Race-Track",
@@ -179,6 +180,38 @@ local function attackTasks(m, first)
         Log.warn(string.format("%s: attack kind '%s' isn't built — the flight has no attack task", m.id, a.kind))
     end
     return tasks
+end
+
+-- A SEAD flight's en-route attack on its site, from the top of its pop-up on: the moment the site's radar is seen, every anti-radiation missile at
+-- it, once (John, 2026-10-02, bug 36: on along the same track until it gets a radar ping
+-- and can launch). It stays on past the launch point, through the press-on leg; the go
+-- cold replaces the whole task when the salvo is away or the flight goes home.
+local function pingAttackTasks(m, first)
+    local tasks = {}
+    for _, id in ipairs(groupIds(m, m.attack.groups)) do
+        tasks[#tasks + 1] = { number = first + #tasks, auto = false, id = "EngageGroup", enabled = true,
+                              params = { groupId = id, weaponType = m.attack.weapon_type, priority = 0, visible = false,
+                                         expend = "All", attackQtyLimit = true, attackQty = 1 } }
+    end
+    return tasks
+end
+
+-- The index of the waypoint that carries a SEAD flight's en-route attack: the top of its
+-- pop-up, so it fires from up there, not on the way up (2026-10-02, 17:48 run: the
+-- Su-34s, armed from the pop-up, fired their Kh-31Ps from 1,500-3,300 ft at the first
+-- ping, slow and low, and the SA-10 shot all 8 down; 0 of 24 Kh-31Ps through against
+-- SA-10s and Patriots so far, while the F-16s fired from the top and killed the
+-- Sodankyla SA-10's radars). On a route without a pop-up top: the pop-up, else the last
+-- waypoint before the launch point. nil for other flights.
+local function pingAttackIndex(m)
+    if not (m.attack and m.attack.kind == "harm_salvo") then return nil end
+    local popup
+    for i, r in ipairs(m.route) do
+        if r.kind == "popup_top" then return i end
+        if r.kind == "popup" then popup = i end
+        if r.kind == "target" then return popup or (i > 2 and i - 1) or nil end
+    end
+    return nil
 end
 
 -- A patrol's standing tasks from takeoff to landing: engage any enemy aircraft inside its
@@ -203,7 +236,8 @@ end
 local function reachedCommand(m, index)
     return { number = 1, auto = false, id = "WrappedAction", enabled = true,
              params = { action = { id = "Script", params = {
-                 command = string.format("WriteEventLog.waypoint(%q, %d)", m.id, index) } } } }
+                 command = string.format("WriteEventLog.waypoint(%q, %d) ControlAirFlights.waypoint(%q, %d)",
+                     m.id, index, m.id, index) } } } }
 end
 
 local function waypoint(r, extra)
@@ -243,6 +277,7 @@ local function buildGroup(m, launchId, landingId)
     local rules = m.rules_of_engagement or "open_fire"
 
     local points = {}
+    local pingAt = pingAttackIndex(m)
     for index, r in ipairs(m.route) do
         if r.kind == "takeoff" then
             local tasks = {
@@ -262,6 +297,11 @@ local function buildGroup(m, launchId, landingId)
                 tasks[#tasks + 1] = option(#tasks + 1, OPTION_PROHIBIT_AFTERBURNER, false)
             end
             for _, t in ipairs(zoneEngageTasks(m, #tasks + 1)) do tasks[#tasks + 1] = t end
+            -- the AWACS works from takeoff, not only on station (bug 38: the E-3A reported its
+            -- first contact a minute before its station, 26 min after takeoff)
+            if m.attack and m.attack.kind == "early_warning_on_station" then
+                tasks[#tasks + 1] = { number = #tasks + 1, auto = false, id = "AWACS", enabled = true, params = {} }
+            end
             if r.carries_attack_tasks then
                 for _, t in ipairs(attackTasks(m, #tasks + 1)) do tasks[#tasks + 1] = t end
             end
@@ -279,8 +319,11 @@ local function buildGroup(m, launchId, landingId)
                 alt = land.getHeight({ x = r.x, y = r.z }) })
         else
             local tasks = { reachedCommand(m, index) }
-            if r.afterburner ~= nil then   -- SEAD egress: allowed down low and out; off again at the climb
+            if r.afterburner ~= nil then   -- SEAD: allowed from the pop-up through the egress; off again at the climb
                 tasks[2] = option(2, OPTION_PROHIBIT_AFTERBURNER, not r.afterburner)
+            end
+            if index == pingAt then
+                for _, t in ipairs(pingAttackTasks(m, #tasks + 1)) do tasks[#tasks + 1] = t end
             end
             points[#points + 1] = waypoint(r, { task = combo(tasks) })
         end

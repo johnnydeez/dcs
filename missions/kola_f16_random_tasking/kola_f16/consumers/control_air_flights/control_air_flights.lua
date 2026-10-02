@@ -12,7 +12,7 @@
 --   directives_per_flight.lua    leash, suppression (go cold), self_defence
 --   coordinate_flights.lua       across flights: who takes which threat
 --   give_orders.lua              intent → DCS orders, only when the intent changes
---   decide_launches.lua          a due flight: launch, wait, fly the suppression again,
+--   decide_launches.lua          a due flight: launch, wait, fly its SEAD again,
 --                                cancel; the airborne cap
 --   scramble_fighters.lua        scrambles: trigger, refusals, raid, base, intercept point
 --   track_alert_jets.lua         the alert jets: ready, cooldown, back on alert (bookkeeping)
@@ -278,10 +278,65 @@ function ControlAirFlights.watch(m, params)
         .. (#targets > 0 and (" on " .. table.concat(targets, ", ")) or ""))
 end
 
+-- Flight `id` reached waypoint `index` of its route (the waypoint's script command,
+-- consumers/spawn_aircraft_groups.lua): a SEAD flight's attack clock starts at its
+-- pop-up (bug 33: counted from 15 km of the launch point, it started at takeoff for a
+-- flight from a base that close).
+-- At its press-on point (bug 36) the go cold sends it home if it has fired nothing.
+function ControlAirFlights.waypoint(id, index)
+    local w = _watched[id]
+    local r = w and w.mission.route and w.mission.route[index]
+    if not (r and w.memo.suppression) then return end
+    if (r.kind == "popup" or r.kind == "target") and not w.memo.suppression.arrived_s then
+        w.memo.suppression.arrived_s = timer.getTime()
+    end
+    if r.kind == "press_on" then w.memo.suppression.pressed_on = true end
+    if r.kind == "target" or r.kind == "press_on" then
+        local ok, err = pcall(ControlAirFlights.radarWarningLine, w.mission, r.kind)
+        if not ok then Log.warn(string.format("%s: radar warning line failed: %s", id, tostring(err))) end
+    end
+end
+
+-- One RADAR_WARNING line in the event log for a SEAD flight at its launch or press-on
+-- point (bug 36: in the 16:03 run no flight fired, and nothing showed whether the site's
+-- radar ever reached them): which radars the flight's warning receivers hold, whether
+-- its site's is one, and the lead's height above the ground.
+function ControlAirFlights.radarWarningLine(m, kind)
+    local g = Group.getByName(m.id)
+    if not (g and g:isExist()) then return end
+    local site = m.attack and m.attack.groups and m.attack.groups[1]
+    local emitters, siteSeen = {}, false
+    for _, t in ipairs(g:getController():getDetectedTargets(Controller.Detection.RWR) or {}) do
+        local obj = t.object
+        local okName, groupName = pcall(function() return obj:getGroup():getName() end)
+        if okName and groupName then
+            if groupName == site then siteSeen = true end
+            emitters[groupName] = true
+        end
+    end
+    local names = {}
+    for name in pairs(emitters) do names[#names + 1] = name end
+    table.sort(names)
+    local lead = g:getUnits()[1]
+    local p = lead and lead:getPoint()
+    local height = p and string.format("; lead %s ft, %s ft above the ground",
+        Util.thousands(p.y * 3.28084), Util.thousands((p.y - land.getHeight({ x = p.x, y = p.z })) * 3.28084)) or ""
+    WriteEventLog.add(m.coalition, "RADAR_WARNING", m.id, string.format("at its %s, %.0f km from %s: its radar %s; on the warning receivers: %s%s",
+        kind == "target" and "launch point" or "press-on point",
+        p and m.attack.site and Util.dist({ x = p.x, z = p.z }, m.attack.site) / 1000 or 0, site or "its site",
+        siteSeen and "SEEN" or "not seen", #names > 0 and table.concat(names, ", ") or "nothing", height))
+end
+
 -- Planned flight `id` is due (the scheduler asks at its start, or when told to look
 -- again): decide_launches.lua decides and has the scheduler carry it out.
 function ControlAirFlights.due(id)
     DecideLaunches.due(id)
+end
+
+-- Every jet of flight `id` is down (the scheduler says so once): decide_launches.lua
+-- moves the SEAD rotation on.
+function ControlAirFlights.flightDown(id)
+    DecideLaunches.flightDown(id)
 end
 
 -- True while the flight is watched and still on its task: launched and not yet sent
@@ -302,8 +357,8 @@ end
 -- A spawned flight's jets that carry no weapons although their loadout lists some
 -- (logAmmo, consumers/spawn_aircraft_groups.lua; bug 6: two Su-24Ms flew 75 km into an
 -- SA-10's ring with nothing to shoot): removed on the ramp, never flown. A flight left
--- with no jet isn't flying; its package's gate (decide_launches.lua) then sees its
--- threats still in the fight, as if it had failed.
+-- with no jet isn't flying; the gate (decide_launches.lua) then sees its threat still
+-- in the fight for whatever waits on it, as if it had failed.
 function ControlAirFlights.unarmed(m, unitNames, loadoutText)
     local removed = 0
     for _, name in ipairs(unitNames) do

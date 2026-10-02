@@ -2,7 +2,9 @@
 -- flight. When a planned flight is due (at its start_s, mission time; a start already past
 -- is due a second from now) the scheduler asks the controller (ControlAirFlights.due,
 -- consumers/control_air_flights/decide_launches.lua) and carries out what it decides:
--- launch now, look again later, fly a suppression flight again, or nothing (cancelled).
+-- launch now, look again later, fly a SEAD flight again, or nothing (cancelled). When
+-- every jet of a launched flight is down (landed, lost, removed on the ramp) it tells
+-- the controller (ControlAirFlights.flightDown: the SEAD rotation's next flight goes).
 -- The decisions are the controller's (roadmap.md item 11); this keeps the clock, spawns,
 -- and records (John, 2026-10-01).
 -- Aircraft of planned flights are removed a few minutes after they land, freeing their
@@ -22,7 +24,7 @@ local RAMP_LOSS_S = 120   -- a jet destroyed this soon after spawning, before ta
 
 local _plan
 local _byId = {}      -- mission id → planned mission
-local _flights = {}   -- mission id → { mission, spawned, spawned_at, destroyed = n, lost, landed, removed, again, note, stood_down }
+local _flights = {}   -- mission id → { mission, spawned, spawned_at, destroyed = n, lost, landed, removed, again, note, stood_down, down }
 local _targets = {}   -- critical object name → mission id
 local _gone    = {}   -- names already counted destroyed or lost
 local _tookOff = {}   -- unit names of AI jets that have taken off
@@ -39,11 +41,22 @@ local function flightOf(unit)
     return nil
 end
 
+-- Tells the controller once, when every jet of flight `name` is down.
+local function checkDown(name)
+    local f = _flights[name]
+    local m = f.mission_flown or f.mission
+    if f.down or f.lost + f.landed + (f.removed or 0) < m.count then return end
+    f.down = true
+    local ok, err = pcall(ControlAirFlights.flightDown, name)
+    if not ok then Log.warn(string.format("%s: flight down: %s", name, tostring(err))) end
+end
+
 local function landed(unit)
     local name = flightOf(unit)
     if not name then return end
     local unitName = unit:getName()
     _flights[name].landed = _flights[name].landed + 1
+    checkDown(name)
     timer.scheduleFunction(function()
         local u = Unit.getByName(unitName)
         if u and u:isExist() then u:destroy() end
@@ -84,6 +97,7 @@ local function destroyed(object)
         local f = _flights[flight]
         f.lost = f.lost + 1
         rampLoss(f, name)
+        checkDown(flight)
     end
 end
 
@@ -227,7 +241,7 @@ function ScheduleAirTaskingOrders.launchNow(id, delay)
     return grp and m or nil
 end
 
--- Fly suppression flight `by` once more now (a player's SEAD tasking by two AI jets), as
+-- Fly SEAD flight `by` once more now (a player's SEAD tasking by two AI jets), as
 -- `<by>_AGAIN` on spots free now. Returns the copy, or nil.
 function ScheduleAirTaskingOrders.flyAgain(by)
     local s = aiVersion(_byId[by])
@@ -248,7 +262,10 @@ end
 -- never fly, and the flight's state counts them out.
 function ScheduleAirTaskingOrders.removed(id, n)
     local f = _flights[id]
-    if f then f.removed = (f.removed or 0) + n end
+    if f then
+        f.removed = (f.removed or 0) + n
+        checkDown(id)
+    end
 end
 
 -- A mission's target progress: critical objects destroyed so far (anyone's hits count),
@@ -307,7 +324,9 @@ function ScheduleAirTaskingOrders.start(plan)
         for _, m in ipairs(ato[coalition] and ato[coalition].missions or {}) do
             _flights[m.id] = { mission = m, spawned = false, destroyed = 0, lost = 0, landed = 0 }
             _byId[m.id] = m
-            if not m.escorts then
+            -- a SEAD flight's target (its site) isn't counted for it: the gate looks at the
+            -- site itself, and a DEAD on the same site keeps its own TARGET lines
+            if m.mission_type ~= "suppression_of_air_defenses" then
                 for _, name in ipairs(m.critical_names or {}) do _targets[name] = m.id end
             end
             -- human flights aren't spawned: the player spawns in on the slot (its target

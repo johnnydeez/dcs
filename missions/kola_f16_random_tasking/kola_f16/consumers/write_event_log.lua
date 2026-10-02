@@ -49,6 +49,8 @@ local WAYPOINT_LABEL = {
     ingress = "ingress, pushing: attack tasks active", target = "target", egress = "egress, off target",
     station = "on station", station_end = "off station", intercept = "intercept point",
     low = "low level", popup = "pop-up, climbing to the shot", climb = "climb out, clear of the rings",
+    popup_top = "top of the pop-up, at the shot altitude",
+    press_on = "press-on point, as far toward the site as it goes for a radar to shoot at",
 }
 
 local _plan
@@ -245,7 +247,7 @@ function WriteEventLog.add(coalition, event, subject, details)
     push(coalition, event, subject, details)
 end
 
--- "F-16C_50 2x DEAD from Kittila on SAM_BANA_SA15_1 (SA-15 site), TOT 08:32, PKG2025";
+-- "F-16C_50 2x DEAD from Kittila on SAM_BANA_SA15_1 (SA-15 site), TOT 08:32, after SAM_BANA_SA11_1";
 -- without the TOT when `noTot` (the plan table has its own column)
 local function missionText(m, noTot)
     local text = string.format("%s %dx %s from %s", m.aircraft_type, m.count, MISSION_NAME[m.mission_type] or m.mission_type,
@@ -253,13 +255,11 @@ local function missionText(m, noTot)
     if m.station then
         local st = _stations[m.station]
         text = text .. string.format(", station %s%s", m.station, st and st.label and (" (" .. st.label .. ")") or "")
-    elseif m.escorts then
-        text = text .. string.format(", escorting %s, engaging %s", m.escorts, table.concat(m.suppresses or {}, ", "))
     elseif m.target then
-        text = text .. string.format(" on %s (%s)", m.target, m.target_label or "?")
+        text = text .. string.format(" on %s (%s)%s", m.target, m.target_label or "?", m.rotation and ", SEAD rotation" or "")
     end
     if m.tot_s and not m.station and not noTot then text = text .. ", TOT " .. clock(m.tot_s):sub(1, 5) end
-    if m.package and not m.station then text = text .. ", " .. m.package end
+    if m.requires_cleared and not m.station then text = text .. ", after " .. table.concat(m.requires_cleared, ", ") end
     return text
 end
 
