@@ -17,7 +17,9 @@
 -- landing) it flies once more (a copy, id <id>_AGAIN, one per SEAD flight however many
 -- flights wait on it; a player's SEAD tasking is flown again by two AI jets) and the
 -- flight waits for it; if that fails too, or the site's SEAD flight was cancelled, the
--- flight is cancelled. A SEAD flight whose site is already out of the fight isn't sent.
+-- flight is cancelled. A SEAD flight whose site is already out of the fight isn't sent,
+-- nor a DEAD flight whose site already meets its own success (radars, command post and
+-- launchers: catalog_targets.lua; John, 2026-10-03).
 --
 -- The SEAD rotation (suppression_rotation): one rotation flight in the air at a time per
 -- coalition. A rotation flight due while another is up waits for it; when one is down
@@ -37,6 +39,7 @@
 --   "cancel: SAM_KOSH_SA10_1 still in the fight after a second SEAD flight"
 --   "cancel: SAM_KOSH_SA10_1's SEAD flight MSN2030_SEAD was cancelled"
 --   "cancel: not needed: SAM_KOSH_SA10_1 already out of the fight"
+--   "cancel: not needed: SAM_BANA_SA11_1 already destroyed (4 of 5 critical)"
 --   "cancel: too late: it would not be back before the mission window ends"
 --   "launch late: 23 min after its planned start, on spots free now"
 --   "launch early: 14 min before its planned start (the rotation's flight before it is down), on spots free now"
@@ -47,6 +50,7 @@ DecideLaunches = {}
 local SIDE = { red = 1, blue = 2 }
 local MAX_WAITS = 6   -- looks while a SEAD flight is still on its attack: an hour at strike_after_suppression_s
 local SUPPRESSION = "suppression_of_air_defenses"
+local DESTRUCTION = "destruction_of_air_defenses"
 
 local _plan
 local _catalog = {}      -- catalog target id → target
@@ -94,18 +98,24 @@ end
 
 -- ── threats out of the fight ────────────────────────────────────
 
+-- Whether `names` are destroyed to `success`'s fraction (rounded up, at least one); and
+-- how many are, of how many.
+local function destroyedTo(names, success)
+    local dead = 0
+    for _, name in ipairs(names) do
+        if ScheduleAirTaskingOrders.isGone(name) or not liveUnit(name) then dead = dead + 1 end
+    end
+    local frac = success and success.critical_fraction or 1
+    return dead >= math.max(1, math.ceil(frac * #names - 1e-9)), dead, #names
+end
+
 -- Whether a threat is out of the fight: a SAM site (a catalog target) whose critical
 -- objects (its radars) are destroyed to its success fraction; a group (a base-defense
 -- radar missile launcher) with no live unit.
 local function threatCleared(id)
     local t = _catalog[id]
     if t and t.critical_names and #t.critical_names > 0 then
-        local dead = 0
-        for _, name in ipairs(t.critical_names) do
-            if ScheduleAirTaskingOrders.isGone(name) or not liveUnit(name) then dead = dead + 1 end
-        end
-        local frac = t.success and t.success.critical_fraction or 1
-        return dead >= math.max(1, math.ceil(frac * #t.critical_names - 1e-9))
+        return (destroyedTo(t.critical_names, t.success))
     end
     return not liveGroup(id)
 end
@@ -255,6 +265,16 @@ function DecideLaunches.due(id)
         say(plan, id, "cancel", string.format("not needed: %s already out of the fight", plan.target))
         if plan.rotation then pullForward(c, id) end
         return
+    end
+    -- nor a DEAD flight whose site already meets its own success (its mission's critical
+    -- objects: radars, command post, launchers)
+    if plan.mission_type == DESTRUCTION and plan.critical_names and #plan.critical_names > 0 then
+        local done, dead, of = destroyedTo(plan.critical_names, plan.success)
+        if done then
+            S.note(id, "not needed")
+            say(plan, id, "cancel", string.format("not needed: %s already destroyed (%d of %d critical)", plan.target, dead, of))
+            return
+        end
     end
     if plan.rotation then
         -- one rotation flight in the air at a time

@@ -6,7 +6,7 @@ What's coming after session 10 (2026-09-30), when the mission became playable by
 
 Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means Red unless it says otherwise.
 
-**Order (John, 2026-09-30; items 10–12 added 2026-10-01; item 5 pulled forward and built 2026-10-02; item 13, airfield info, added and built 2026-10-02 outside the order):** ~~radar functions → scrambles → event log~~ → ~~performance in VR~~ (done for now, 2026-10-01) (all in `closed.md`) → ~~every run-time flight decision under the controller (item 11)~~ → ~~SEAD ingress doctrine (item 10)~~ (both in `closed.md`) → **SEAD against the air defenses: a standing rotation, rolling them back outside-in (item 12, top priority; designed 2026-10-01, reworked with John and built 2026-10-02, to fly)** → AI behaviour logic (item 4, the controller's further directives) → ~~AWACS calls (text)~~ (item 5, in `closed.md`) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war. CAP visibility (making patrol routes and times easy to see) was cut on 2026-09-30: John can see the dotted station lines on the map fine for now. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Four optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, and the threat picture on the map for players (after fog of war).
+**Order (John, 2026-09-30; items 10–12 added 2026-10-01; item 5 pulled forward and built 2026-10-02; item 13, airfield info, added and built 2026-10-02 outside the order; item 14, every mission type for players, and item 15, airfield traffic, added 2026-10-03 with no place in the order yet):** ~~radar functions → scrambles → event log~~ → ~~performance in VR~~ (done for now, 2026-10-01) (all in `closed.md`) → ~~every run-time flight decision under the controller (item 11)~~ → ~~SEAD ingress doctrine (item 10)~~ (both in `closed.md`) → **SEAD against the air defenses: a standing rotation, rolling them back outside-in (item 12, top priority; designed 2026-10-01, reworked with John and built 2026-10-02, to fly)** → AI behaviour logic (item 4, the controller's further directives) → ~~AWACS calls (text)~~ (item 5, in `closed.md`) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war. CAP visibility (making patrol routes and times easy to see) was cut on 2026-09-30: John can see the dotted station lines on the map fine for now. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Five optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, the threat picture on the map for players (after fog of war), and a Wild Weasel wingman for SEAD flights (added 2026-10-02).
 
 ---
 
@@ -88,6 +88,56 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 - whether our runway in use matches DCS ATC's and the AI's takeoffs;
 - whether the runway numbers match the airfield charts / F-16's;
 - whether the wind matches the start text and ATC.
+
+---
+
+## 14. Players can fly every mission type, scrambles included (John, 2026-10-03)
+
+**Goal:** a human player can take any mission type the AI flies. That includes the scramble: the player waits on alert, and when the controller decides a scramble from their base they get (n) seconds to take it; if they don't, it goes to the AI as now.
+
+**Where it stands:**
+- Human taskings (`HUMAN_TASKING.mission_types`) offer strike, airfield strike, DEAD, SEAD and CAP. Missing: **interception** (the scramble), and **interdiction** and **close air support** once those are built (`built = false` today).
+- Scrambles are decided at run time by the controller (`consumers/control_air_flights/scramble_fighters.lua`): trigger, refusals, base, intercept point, then an AI jet spawned hot on one of the base's alert spots after `scramble_reaction_s` (60–120 s), watched by the leash.
+- Players spawn by dynamic slots (`f16_<base>`); the controller has no way yet to tell a player in a slot apart from one on alert.
+
+**Approach (proposed, decide with John):**
+- **On alert:** a player says so from the comms menu ("On alert at Ivalo"), sitting in the cockpit on the ramp of an alert base (or, an open question below, airborne on a CAP station). The alert posture already knows each base's jets and spots.
+- **The offer:** when the controller decides a scramble from that base (or one a player on alert could reach in time), the player gets it first: an on-screen call with the raid (BRAA from their base, type if known, what it is inbound on) and "accept within (n) s" from the comms menu. Accepted: the player is the scramble (no AI jet spawned; the base's alert jet count as now), with a frag (BRAA, the intercept point as a steerpoint, the leash's limits as advice). Not accepted in time, or the player isn't ready: the AI scramble launches as today, with no delay added beyond (n).
+- **(n):** inside the reaction time the AI gets anyway (60–120 s), so handing it to the AI late doesn't cost the defence anything; e.g. 60 s.
+- **Logged:** `CONTROL … scramble offered to <player>`, `… taken by <player>` / `… not taken in n s, AI launches`.
+- **The other types:** interdiction and close air support become player taskings when they're built; anything else the AI flies gets a player version as it is added.
+
+**Open:**
+- "On station": waiting on the ramp (cockpit alert, like the AI's) or airborne on a CAP station (a CAP player could be offered an intercept instead of a scramble), or both?
+- (n): one number, or by how far the raid is?
+- Does a player who takes a scramble use up one of the base's alert jets (and its turnaround), as an AI scramble does?
+- The leash for a player: advice only (a call when the raid is gone or the player is past the limits), since the controller can't order a human.
+
+---
+
+## 15. Airfield traffic in the comms menu (John, 2026-10-03)
+
+**Goal:** what's moving at a base right now, in its `Airfield info` text (item 13): how many aircraft are taking off, landing and taxiing, and who. So a player knows before taxiing out or coming in what they'll share the runway and taxiways with.
+
+**Where it stands:** item 13 (built 2026-10-02, not flown) gives each Blue base the wind, the runway in use, the runway numbers, the next AI flight out and in (from the air tasking order, planned times) and the alert jets. Nothing about what is physically moving there now.
+
+**Approach (proposed, decide with John):** part of each base's existing `Airfield info` text (John, 2026-10-03), below the next out / next in lines, worked out when the text is opened, from the live aircraft of the base's coalition (AI and players), each counted once:
+- **Taxiing:** on the ground at the base and moving (above a few knots), or spawned hot on the ramp and not yet airborne (an AI flight about to taxi);
+- **Taking off:** airborne within a few km of the base, low and climbing, within a minute or two of its `TAKEOFF` event (the scheduler records takeoffs);
+- **Landing:** airborne, landing here (an AI flight's `landing_base`, or a player close in), within ~20–30 km, low or descending, on its way home;
+- each with a short line: flight, type, how many, and for landing the distance out ("MSN2025 SEAD, 2x F/A-18C, landing, 12 km out").
+
+```
+Traffic: 1 taking off, 2 landing, 3 taxiing
+  Taking off: MSN2016 CAP, 1x F-15C
+  Landing:    MSN2025 SEAD, 2x F/A-18C, 12 km out; f16_ivalo (player), 25 km out
+  Taxiing:    MSN2027 SEAD, 2x F-16C; MSN2901 scramble, 1x F-16C
+```
+
+**Open:**
+- Players listed by name, or counted only?
+- Parked jets on the ramp, cold (statics, alert jets waiting) left out?
+- The distances and speeds that count as "taking off" and "landing".
 
 ---
 
@@ -324,6 +374,21 @@ MSN2025 lost both jets:
 - Unlisted mobile SAMs: what fraction?
 - Should Red get a player view too, if Red slots come later?
 - Live intel in the first version, or only the planned intel picture?
+
+---
+
+## Optional, later: the SEAD wingman flies Wild Weasel (John, 2026-10-02)
+
+**Goal:** give the second jet of a SEAD 2-ship a job of its own, since in most salvoes it does nothing. John: SEAD works now, so this waits; don't change the SEAD flights for it until it's picked up.
+
+**Why:** in the 19:29 run (`event_logs\2026-10-02_192901.log`) only the lead fired in 3 of 4 salvoes: the wingmen of MSN2026, MSN7023 and MSN7023_SEAD_AGAIN fired nothing before `salvo over` sent the flight home 20 s after the lead's last missile, and flew home with 4 anti-radiation missiles each (in the 17:48 run both F-16s of MSN2024 fired all 8 within 13 s, so it isn't every time). Half of each salvo goes unused.
+
+**The idea:** the lead flies the planned salvo at its site as now; the wingman flies Wild Weasel: it stays in the area (outside the target's kill zone) for a while and fires at any radar that comes up, the site's own if it comes back, a pop-up short-range SAM, an airfield Tor or Pantsir, or covers a strike flight going in behind the salvo.
+
+**To settle when it comes up:**
+- A DCS group has one task, so the wingman would have to be its own group: plan and spawn the SEAD flight as two single-ship groups (one id each, or `MSN2026_SEAD` and `MSN2026_WEASEL`), or split the wingman off after takeoff.
+- What the Weasel is told: `EngageTargets` on SAM radars in a zone, `EngageGroup` on a list of nearby sites, or an orbit with the anti-radiation missiles free; how long it stays, how far it may go, and how the controller's go-cold and bandit rules treat it.
+- Whether it pairs with strikes (Weasel cover timed to an attack flight's run) or stays with the SEAD rotation only.
 
 ---
 

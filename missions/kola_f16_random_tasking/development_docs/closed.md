@@ -494,6 +494,30 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 
 ---
 
+### Bug 4. A DEAD flight's weapon can't outrange its target
+
+**Status:** fixed 2026-10-02, not flown (it had waited for the standoff work since 2026-10-01). Seen again in the 19:29 run (`event_logs\2026-10-02_192901.log`, grep `MSN7032_DEAD`): Kh-29Ts at the Ivalo Roland from 7–9 km; the site was destroyed (3 of 3) and one Su-34 lost.
+
+**Seen:** same log; grep `MSN5023_DEAD`.
+- MSN5023_DEAD, 2× Su-34 from Banak on `SAM_ENON_Roland_1`, carried Kh-29T, a TV-guided missile fired from about 9 km. The Roland reaches about 8 km.
+- Both fired from 9 km at ~12,800 ft, and both were shot down by the Roland (08:21–08:22).
+- The Roland lost one launcher.
+
+**Cause:** DEAD loadouts are chosen per aircraft type (`aircraft_loadout_choices.json`), and the attack altitude is realistic for the weapon. Nothing compares the weapon's release range with the target's ring.
+
+**Proposed fix:**
+- Planning: only pick a DEAD target whose ring is shorter than the flight's weapon range, with a margin; or pick the loadout by target.
+- Ties in with the *Standoff attacks* item in the `plan.md` backlog: which weapons the DCS AI really releases at range.
+
+**Fix (John, 2026-10-02: build what completes missions and is realistic, watch it and re-evaluate):** a DEAD flight against a **short-range** site must hit it from out of its reach: its weapon reaches the site's ring + `AIR_DEAD_WEAPONS.reach_margin_km` (5), or it attacks from at least the system's ceiling + `ceiling_margin_m` (1,000 m) above the site's ground (`SAM_SITE_RECIPE` `ceiling_km`: SA-8 5, SA-15 6, Roland 5.5). Medium and long-range sites need no rule: a DEAD there already waits until SEAD has put the site out of the fight. Human flights aren't held to it.
+- **Loadout by target** (`draftMission`, `deadLoadouts`): the planner picks a DEAD loadout of the aircraft that passes; a target none passes isn't taken by that aircraft (`no DEAD weapon hits its short-range targets from out of reach`). The Su-34 got a second DEAD loadout, `dcs:Kh-59M*2,R-73*2,R-77*2,ECM` (`aircraft_loadout_choices.json`), next to the Kh-29T one.
+- **Weapon reach:** a standoff weapon's `release_km` (`AIR_STANDOFF_WEAPONS`: Kh-59M 40, AGM-154 JSOW 20, new), else `AIR_DEAD_WEAPONS.weapon_reach_km` (Kh-29T 9).
+- **Standoff route for AI DEAD flights** carrying one: the "target" waypoint is the release point, as for strikes; the `AttackGroup` on the site stays (the AI can still close in if it can't fire from there).
+- **Replay of the 19:29 plan, six seeds:** every Red Su-34 DEAD on a short-range site (SA-15, Roland) flew the Kh-59M from 40 km; on medium sites either loadout. Blue's F-15E JDAM passes by height (7,500 m over ceilings of 5–6 km); AI F-16 / F/A-18 DEAD flights fly JSOW from a 20 km release point; no DEAD was lost to the rule.
+- **To watch:** whether the AI fires a Kh-59M at a SAM group from ~40 km (no Kh-59M has flown yet), and how far out it releases JSOW.
+
+---
+
 ### Bug 5. Event log: small fixes
 
 **Status:** fixed 2026-10-01 except (g), not run in DCS yet. (a) the launcher is kept per weapon at `SHOT` (and `Weapon:getLauncher()` as a fallback); (b) "fired SA5B55 at an incoming AGM_88"; (c) "caught in the explosion of SAM_LUOS_SA8_1_1 (Dog Ear radar)"; (d) `statusOf` reads "stood down on the ramp"; (e) the parachute line names the aircraft the pilot left, when the ejection event names the pilot; (f) `ABORTED` folded per flight within 10 s, "(2x)"; (h) "damaged by a nearby explosion"; (i) "fuel 183 % (with external tanks)"; (j) the ring column skips SAM sites with no live unit (checked at most every 30 s); (k) a player's `TAKEOFF` adds "flying MSN2023_OCA?" when one human tasking starts at that base. (g) still waits for a run with jets low over a defended base.
@@ -725,7 +749,7 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 
 ### Bug 19. A flight that misses its landing flies off in a straight line until its fuel runs out
 
-**Status:** fixed 2026-10-02, not flown. Every AI flight now has the directive `landing` (`AIR_CONTROL.landing`): once a flight is on its way home (sent home, a jet of it landed, or past its planned landing), a jet that gets `away_km` (20) farther from its landing base than its closest since, or a flight still up `overdue_s` (20 min) after its planned landing (or its last order), gets a new landing order straight to its base: `CONTROL … land: MSN7025_SEAD_2 lost after its landing: 45 km from Vuojarvi and getting farther (it was 2 km away); sent to land at Vuojarvi`. At most 2 orders, and never while a jet of the flight is on the ramp (a landed one is removed after 3 min; a late wingman not yet up), so no landed jet is sent up again. Packages: a suppression flight still in the air but off its attack and past its planned landing counts as landed for the wait (`decide_launches.lua`), so the mission retries or cancels instead of waiting on it.
+**Status:** fixed 2026-10-02; the landing orders didn't hold in the 19:29 run, so orphaned wingmen are now removed 8 min after their flight's last landing (below; not flown). First fix: Every AI flight now has the directive `landing` (`AIR_CONTROL.landing`): once a flight is on its way home (sent home, a jet of it landed, or past its planned landing), a jet that gets `away_km` (20) farther from its landing base than its closest since, or a flight still up `overdue_s` (20 min) after its planned landing (or its last order), gets a new landing order straight to its base: `CONTROL … land: MSN7025_SEAD_2 lost after its landing: 45 km from Vuojarvi and getting farther (it was 2 km away); sent to land at Vuojarvi`. At most 2 orders, and never while a jet of the flight is on the ramp (a landed one is removed after 3 min; a late wingman not yet up), so no landed jet is sent up again. Packages: a suppression flight still in the air but off its attack and past its planned landing counts as landed for the wait (`decide_launches.lua`), so the mission retries or cancels instead of waiting on it.
 
 **Seen:** `event_logs\2026-10-01_141412.log`, grep `MSN5025_SEAD_2`.
 - MSN5025_SEAD (2× Su-34 from Vuojärvi) went cold at 06:23 and flew home. `_1` landed at Vuojärvi at 06:34:12; `_2` was beside the field at 06:33.
@@ -733,6 +757,12 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 - **Knock-on effect:** MSN5023_OCA was `DELAYED` twice ("waiting for MSN5025_SEAD, still in the air"), so the package's mission was held up by a jet that would never land.
 
 **Cause (suspected):** `_2` missed its landing (most likely a go-around behind its lead) and, with no waypoints left after `Land`, the DCS AI flies on along its last heading. Nothing in the script notices a flight that should have landed.
+
+**Seen again with the fix in, 2026-10-02 (`event_logs\2026-10-02_192901.log`):** all 4 two-ship SEAD flights orphaned their wingman (MSN7023, MSN7023_SEAD_AGAIN, MSN2026, MSN2025). MSN7023_SEAD_2 flew back into the Ivalo SA-11 with 4 Kh-31P aboard and was shot down; MSN2026_SEAD_2 drifted into enemy airspace and drew a MiG-31 scramble. The `land` orders were given and mostly ignored: MSN7023_SEAD_2 and MSN7023_SEAD_AGAIN_2 ignored both of theirs; MSN2026_SEAD_2 turned home ~3 min after its second, maybe on its own.
+- **All runs, every flight whose lead landed with a wingman alive in the air:** 6 landed normally (the wingman held at ~4,300 ft, circled and landed 0–7.5 min after its lead), 7 orphaned (a straight line at 300–315 kt and 4,200–4,450 ft, the same holding altitude). So it is roughly half the time, and it starts at the lead's touchdown (MSN7023_SEAD_2 was on its straight heading 30 s after), not at the landed lead's removal 3 min later.
+
+**Fixed again 2026-10-02, not flown (John: despawn it after 8 min, the latest wingman that landed came down 7.5 min after its lead, and count it as landed in case another flight waits on it):** the `landing` directive removes any jet still in the air `AIR_CONTROL.landing.orphan_remove_after_s` (480) after its flight's last landing, fight or not, and the scheduler counts it as landed (`ScheduleAirTaskingOrders.removedInAir`), so the flight is down for the gate and the SEAD rotation. `CONTROL … >>orphan<< removed: by the controller 8 min 00 s after MSN7023_SEAD_1 landed, counted as landed (Su-34 at 4,232 ft, 64 km from Banak)`. The landing orders stay for the first 8 min. Checked in a luae harness with stubbed DCS.
+- **Tracked in the event log** (John: so we don't lose track if it gets worse or better): `CONTROL` lines marked `>>orphan<<` (John: the controller runs them, so they're CONTROL; the marker makes them easy to find), one when a jet is still in the air as another of its flight lands (`>>orphan<< possibly orphaned: still in the air when <lead> landed (<type> at <height>, <km> from <base>)`), and one for how it ended: `>>orphan<< not orphaned: landed at <base> 4 min 40 s after <lead>`, `>>orphan<< removed: by the controller 8 min 00 s after <lead> landed, counted as landed`, or `>>orphan<< lost: 9 min 50 s after <lead> landed`. Grep `>>orphan<<`.
 
 **Proposed fix:**
 - Watch every AI flight after its last waypoint (or once sent home): if it is overdue to land (e.g. 10 min past its planned landing, or its time home), or getting farther from its landing base for a few minutes in a row, give it a new landing order (`Controller:setTask`, as the leash and the go-cold rule do) at its base, or the nearest held base it can reach. Log it (`LEASH`-style line, e.g. `LANDING … lost after its landing, sent to land at <base>`).
@@ -813,6 +843,8 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 
 **Checked 2026-10-02 (`event_logs\2026-10-02_145532.log`):** `PLAYER_IN` and every `PICTURE_CALL` say `f16_tromso`, so grepping the group name finds the player's lines. The player didn't take off that run, so `TAKEOFF` / `POSITION` / `SHOT` weren't seen under the new name.
 
+**Confirmed 2026-10-02 (`event_logs\2026-10-02_192901.log`, John flying MSN2023_SEAD from Ivalo):** every player line is `f16_ivalo`: `PLAYER_IN`, `TAKEOFF`, `POSITION`, `SHOT`, `HIT`, `DESTROYED`, `PICTURE_CALL`, and the radar picture's `CONTACT` and `CONTROL` lines. Closed.
+
 ---
 
 ### Bug 25. No friendly datalink tracks and no SAM threat rings on the player's HSD
@@ -836,6 +868,49 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 - `consumers/spawn_aircraft_groups.lua`: every AI unit gets its own STN (`AddPropAircraft.STN_L16`, octal from 01000; the player slots use 00201–00211), and every spawned flight gets `setCommand({ id = "EPLRS", value = true, groupId })` at once (scrambles and `_AGAIN` copies go through the same spawner).
 - `consumers/spawn_ground_groups.lua`: `run(entries, label, { show_on_mfd = set })` spawns those groups with `hiddenOnMFD = false`; `init.lua` passes every medium and long-range SAM site (not escorts, not short-range or early warning). A forum report (since the 12 May 2026 update) says the HSD shows about 16 threats at most; Red fields ~11 such sites per roll. Fits the fog-of-war rule's "confirmed" strategic SAMs.
 - Also found: the slot templates' unit names (bug 24).
+
+---
+
+### Bug 26. The AWACS's enemy tracks don't reach the player's HSD
+
+**Status:** closed 2026-10-02 (session 18): not a bug in our spawn. The test mission showed the AWACS's tracks reach the player's HSD however it is put in the mission; Kola's E-3A as spawned today works. John: the improved AWACS coverage (bug 42) should solve what he saw.
+
+**Seen:** `Saved Games\DCS\Missions\datalink_hsd_test.miz`: the E-3A (EPLRS on, listed as the player's Link 16 donor) showed on the HSD as a datalink contact, but the Red MiG-29S 250 km from it never did; John saw the MiG only on his own radar.
+
+**Suspects:**
+- The E-3A has no STN of its own in the test (the editor template gave it none), so the donor link may not work.
+- Since 2026, air-track identity on the F-16 depends on the DTC's ROE tab, and the test's DTC was empty: hostile tracks may be filtered or never declared.
+- The E-3A may not have detected the MiG (no way to tell from the test; the Kola event log's radar picture would show it).
+
+**Seen in Kola, 19:29 run** (`event_logs\2026-10-02_192901.log`; John, flying MSN2023_SEAD with his HSD at 120 and 240 nm for long stretches): no enemy contact on the HSD all mission. Two of the Red jets after him were never in Blue's picture at all (the E-3A was 460–550 km away; bug 42), so nothing could have reached his HSD for those. But from 04:44 to 04:50 Darkstar called "unknown - 355/78nm, 30k, hot": the MiG-31 scramble MSN7902, which the E-3A was tracking (`CONTACT … seen by awacs MSN2001_AEW`). John can't say for sure that it wasn't on the HSD then; he'll check deliberately next time.
+- The Kola E-3A spawns with an STN, the Link 16 block and EPLRS like every AI flight, but **no callsign** (DCS's own AWACS voice calls fail: "Callname -1 not found for MSN2001_AEW_1", 15× in `dcs.log`), and the player slots list **no donors** (a spawned unit can't be named in the .miz).
+
+**Test mission built 2026-10-02 (session 18): `Saved Games\DCS\Missions\awacs_hsd_test.miz`** (Caucasus, from `Sep29CawkusPlay2.miz` like the bug 25 test; builder and script in the session-18 scratchpad, `hsd2\make_awacs_hsd_test.py` and `awacs_hsd_test.lua`). The player is set up like a Kola slot (CJTF Blue, STN 00201, a team of itself) plus one donor. Two Red jets on weapons hold that never react: a MiG-29S at 25,000 ft ~140 km from the AWACS orbit, a Su-25T at ~2,000 ft ~80 km from it. Everything lies ahead of the player, who starts over the Black Sea heading east (John, no HOTAS: autopilot and mouse only): at the start the AWACS orbit is ~120 nm ahead, the Su-25T ~165 nm, the MiG ~195 nm, all within 10° of the nose; after 20 min on autopilot the Red jets are still 45+ nm ahead. Comms menu > HSD test, one at a time (each removes the one before):
+- **A:** an E-3A spawned exactly the Kola way (no callsign);
+- **B:** the same with a callsign (Magic 1-1);
+- **C:** an editor E-3A (late activation) that is the player's donor (Darkstar 1-1);
+- **D:** an editor E-3A that isn't (Overlord 1-1);
+- **E:** no AWACS, an AI F-16 pair spawned the Kola way facing the MiG (their own radars).
+
+Every 10 s an on-screen line (and `dcs.log`, `[AWACS HSD TEST]`) says whether the active test's own radar sees each Red jet, so "the AWACS doesn't see it" and "the datalink doesn't pass it" can be told apart.
+
+**Next:** John flies it. What the Kola fix is follows from which tests show the Red jets: A shows them → nothing to fix in the spawn (look at the 19:29 case again); only B → give every AI flight a callsign from DCS's lists; only C → an editor-placed late-activation AWACS in the Kola .miz, listed as every slot's donor, activated and routed by the script; none → DTC / ROE identity or a DCS limit, look further.
+
+**Result (John flew `awacs_hsd_test.miz`, 2026-10-02):**
+
+| Test | AWACS | HSD | The AWACS's own radar |
+|---|---|---|---|
+| A | spawned exactly the Kola way, no callsign | 2 yellow contacts + 1 friendly | MiG-29S SEEN (162 km), Su-25T not seen |
+| B | A + callsign Magic 1-1 | same | same |
+| C | editor E-3A, late activation, the player's donor | same | same |
+| D | editor E-3A, not a donor | same | same |
+| E | no AWACS: an AI F-16 pair spawned the Kola way | friendlies only | neither Red jet seen |
+
+- **The datalink works with Kola's spawn as it is**: callsign, donor and editor placement make no difference. What John saw in the 19:29 run was coverage: the jets that attacked him were never in Blue's picture (bug 42, the AWACS placement, fixed).
+- **AWACS tracks show yellow (unknown), not red (hostile):** easy to miss on a busy HSD, probably why the MiG-31 Darkstar called at 78 nm went unnoticed. Making them hostile (Link 16 identity, likely the DTC's ROE page) is in the `plan.md` backlog.
+- **The E-3A never saw the Su-25T at ~2,000 ft, 80 km away**, while it saw the MiG-29S at 25,000 ft at 162 km: the DCS AWACS is weak against a low jet over land. Darkstar's coverage call (bug 42) uses 250 km whatever the threat's height, so it overstates coverage for low threats; tune from the `CONTACT` lines' "km away" (`plan.md`, *Still to watch*).
+- Test E settles nothing on fighter-to-fighter tracks: the AI F-16s never detected the MiG (~87 km).
+- A callsign doesn't matter for the datalink, but it would stop DCS's own AWACS voice calls failing ("Callname -1 not found"): a backlog item with the callsign policy.
 
 ---
 
@@ -945,3 +1020,19 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 - `no shot` and the 10 min attack timer start at the pop-up waypoint (`ControlAirFlights.waypoint`, called by each waypoint's script command next to `WriteEventLog.waypoint`), or within 15 km of the launch point once the flight is at 80 % of the pop-up altitude, not at takeoff.
 - Harness: the 14:55 roll re-planned. Every Vuojärvi / Rovaniemi SEAD flight is now takeoff → 900 ft legs → pop-up (afterburner) 8 km before a launch point 45 km out at 1,800 m → back low; SEAD flights per coalition unchanged (Red 11, Blue 9); a 6 h smoke run clean.
 - **Watch in the next run:** `SHOT` ranges and altitudes of the salvo (does the AI fire from ~45 km at 6,000 ft, or press on to the 10 km `press_km` limit?); `POSITION` low after takeoff; the time from the `pop-up` `WAYPOINT` to the first `SHOT`; return fire at the pop-up; `no shot` only after the pop-up.
+
+---
+
+### Bug 42. Blue's radar never saw the two Red scrambles that killed the player; Darkstar read "clean"
+
+**Status:** fixed 2026-10-02 (session 18), not flown. Found by John in the 19:29 run.
+
+**Seen:** `event_logs\2026-10-02_192901.log`, grep `MSN7901_SCRAM`, `MSN7903_SCRAM`, `PICTURE_CALL`. John flew MSN2023_SEAD from Ivalo to the Afrikanda SA-6. Red scrambled a Su-27 from Alakurtti (he saw it on his own radar and killed it) and a MiG-31 from Koshka Yavr, which he only saw when it was behind him, cold for home; it killed him with an R-40R from 2 km. Neither ever had a `CONTACT` line in Blue's picture, so Darkstar had nothing to call ("clean" or other groups far away) and nothing could reach his HSD.
+
+**Cause:** where the AWACS orbited. The old rule kept the orbit 200 km from every enemy base; with Kirkenes, Banak, Alta, Kuusamo and Alakurtti Red, the only place that met it was off Bodø, aimed at Banak. The E-3A was 470 km from Alakurtti, 460 from Koshka Yavr and 537–548 from Afrikanda and Monchegorsk; its first detections in our logs come at 120–210 km (session 11). Blue's nearest ground radars were 150–250 km away, mostly short-range, with low flyers under their horizon. Red's A-50, orbiting from Olenya near its own front, held John from takeoff. Not a DCS limit: a real planner wouldn't send a strike 250 km past Ivalo with no AWACS over it. And Darkstar's "clean" read the same wherever Blue had no radar at all.
+
+**Fix (John: "great plan"):**
+- **The AWACS is placed where its coalition fights** (`planEarlyWarning`, `plan.md` *Defensive air*): the orbit (own airspace, 150 km from enemy fighter bases, 80 km from the contested airspace, clear of kill zones) that sees the most of the front, the targets in reach and the enemy fighter bases within 250 km, from the nearest base that can fly it; a second one for Blue where its fronts are too far apart. Replay of the 19:29 plan: Blue's E-3A 224 km from Alakurtti and Banak, 296 from Afrikanda.
+- **Darkstar says when the player is outside coverage** (`call_air_picture.lua`, `AIR_PICTURE_CALLS.coverage`): "DARKSTAR: no radar coverage your area, picture unknown".
+- **`CONTACT` lines say how far away the first sensor saw each contact**, to tune the 250 km.
+- The HSD part is bug 26 (test mission built).

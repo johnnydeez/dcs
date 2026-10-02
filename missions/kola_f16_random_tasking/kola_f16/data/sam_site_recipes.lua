@@ -19,6 +19,8 @@
 --   low_altitude_engage_km  medium / long range: how far it reaches a low flyer (DCS,
 --                researched 2026-09-23, plan.md; IRIS-T and SA-6 estimated). Kill zones
 --                scale from this near the ground to the full ring high up (lib/sam_reach.lua)
+--   ceiling_km   short range: the highest it reaches, above its own ground; a DEAD flight
+--                attacking from higher is out of its reach (AIR_DEAD_WEAPONS, bug 4)
 --
 -- One DCS group per site: a system's radars and launchers must share a group to work
 -- together. Engagement and detection radii come from UNIT_POOL (ED's data), not here.
@@ -113,6 +115,7 @@ SAM_SITE_RECIPE = {
     -- ── short range (field units, away from airbases) ───────────
     ["SA-8"] = {
         layer = "short_range", footprint_m = 60, unit_spacing = 20,
+        ceiling_km = 5,     -- highest it reaches (9M33M3)
         parts = {
             { "Osa 9A33 ln",        2, 3, "launchers" },
             { "Dog Ear radar",      0, 1, "centre" },
@@ -121,6 +124,7 @@ SAM_SITE_RECIPE = {
     },
     ["SA-15"] = {
         layer = "short_range", footprint_m = 50, unit_spacing = 20,
+        ceiling_km = 6,     -- highest it reaches (9M331)
         parts = {
             { "Tor 9A331",          2, 2, "launchers" },
             { "GAZ-66",             1, 1, "edge" },
@@ -128,6 +132,7 @@ SAM_SITE_RECIPE = {
     },
     ["Roland"] = {
         layer = "short_range", footprint_m = 50, unit_spacing = 20,
+        ceiling_km = 5.5,   -- highest it reaches (Roland 3)
         parts = {
             { "Roland ADS",         2, 2, "launchers" },
             { "Roland Radar",       0, 1, "centre" },
@@ -137,6 +142,7 @@ SAM_SITE_RECIPE = {
     -- Not rostered: in DCS Rapier can't engage low flyers without hitting the ground.
     ["Rapier"] = {
         layer = "short_range", footprint_m = 60, unit_spacing = 20,
+        ceiling_km = 3,     -- highest it reaches
         parts = {
             { "rapier_fsa_blindfire_radar",      1, 1, "centre" },
             { "rapier_fsa_optical_tracker_unit", 1, 1, "centre" },

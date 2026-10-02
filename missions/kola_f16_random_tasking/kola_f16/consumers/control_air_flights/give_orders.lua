@@ -9,6 +9,7 @@
 --               whatever it was doing, a fight included.
 --   land        Controller:setTask, straight from where the flight is to a landing at its
 --               base (a flight lost on its way home), and return fire
+--   remove      the jets named removed where they are (orphans in the air, bug 19)
 --   stand_down  the group removed (still on the ramp)
 --   defend      Controller:pushTask: AttackGroup on the threat, on top of the mission,
 --               inside a ControlledTask that stops after self_defence.max_engage_s or when
@@ -129,6 +130,17 @@ function GiveOrders.land(w, g)
     end
     local ctl = controllerOf(g, m, "land")
     if ctl then setRules(ctl, AIR_CONTROL.going_home_rules_of_engagement) end
+    return true
+end
+
+-- Jets `names` removed from the world where they are (an orphan in the air, bug 19).
+function GiveOrders.remove(names)
+    for _, name in ipairs(names) do
+        pcall(function()
+            local u = Unit.getByName(name)
+            if u and u:isExist() then u:destroy() end
+        end)
+    end
     return true
 end
 
