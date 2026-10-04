@@ -8,7 +8,9 @@
 --               rules of engagement AIR_CONTROL.going_home_rules_of_engagement. Replaces
 --               whatever it was doing, a fight included.
 --   land        Controller:setTask, straight from where the flight is to a landing at its
---               base (a flight lost on its way home), and return fire
+--               base (a flight lost on its way home, or a jet still up after another of
+--               its flight landed), and return fire; with a jet of the flight on the
+--               ground, to each jet in the air on its own unit controller (bug 19)
 --   remove      the jets named removed where they are (orphans in the air, bug 19)
 --   stand_down  the group removed (still on the ramp)
 --   defend      Controller:pushTask: AttackGroup on the threat, on top of the mission,
@@ -97,8 +99,12 @@ function GiveOrders.home(w, g, pos)
     return true
 end
 
--- A flight lost on its way home (directive landing): a new mission from where it is
--- straight to a landing at its base, returning fire only.
+-- A flight lost on its way home (directive landing), or a jet still up after another of
+-- its flight landed: a new mission from where it is straight to a landing at its base,
+-- returning fire only. With every live jet in the air the order goes to the group; with
+-- one on the ground (landed, or not yet taken off) it goes to each jet in the air on its
+-- own controller (DCS has unit controllers for aircraft): the group's order went to the
+-- landed lead and the wingman never heard it (bug 19). Returns true when any jet got it.
 function GiveOrders.land(w, g)
     local m = w.mission
     local base = Airbase.getByName(m.landing_base)
@@ -109,28 +115,49 @@ function GiveOrders.land(w, g)
     local bp = base:getPoint()
     local p = AIRCRAFT_PROFILE[m.aircraft_type]
     local speed = p and p.cruise_speed_mps or 230
-    local ok, err = pcall(function()
-        local lead
-        for _, u in ipairs(g:getUnits() or {}) do
-            if u:isExist() and u:inAir() then lead = u break end
-        end
-        local pos = lead:getPoint()
-        g:getController():setTask({ id = "Mission", params = { airborne = true, route = { points = {
+    local function mission(pos)
+        return { id = "Mission", params = { airborne = true, route = { points = {
             { x = pos.x, y = pos.z, alt = pos.y, alt_type = "BARO", speed = speed, speed_locked = true,
               type = "Turning Point", action = "Turning Point", ETA = 0, ETA_locked = false,
               task = { id = "ComboTask", params = { tasks = {} } } },
             { x = bp.x, y = bp.z, alt = bp.y, alt_type = "BARO", speed = speed, speed_locked = true,
               type = "Land", action = "Landing", airdromeId = base:getID(), ETA = 0, ETA_locked = false,
               task = { id = "ComboTask", params = { tasks = {} } } },
-        } } } })
-    end)
-    if not ok then
-        Log.warn(string.format("%s: landing order failed: %s", m.id, tostring(err)))
-        return false
+        } } } }
     end
-    local ctl = controllerOf(g, m, "land")
-    if ctl then setRules(ctl, AIR_CONTROL.going_home_rules_of_engagement) end
-    return true
+    local up, onGround = {}, false
+    pcall(function()
+        for _, u in ipairs(g:getUnits() or {}) do
+            if u:isExist() and u:getLife() > 0 then
+                if u:inAir() then up[#up + 1] = u else onGround = true end
+            end
+        end
+    end)
+    if #up == 0 then return false end
+    local given = 0
+    if not onGround then
+        local ok, err = pcall(function() g:getController():setTask(mission(up[1]:getPoint())) end)
+        if not ok then
+            Log.warn(string.format("%s: landing order failed: %s", m.id, tostring(err)))
+            return false
+        end
+        local ctl = controllerOf(g, m, "land")
+        if ctl then setRules(ctl, AIR_CONTROL.going_home_rules_of_engagement) end
+        return true
+    end
+    for _, u in ipairs(up) do
+        local ok, err = pcall(function()
+            local ctl = u:getController()
+            ctl:setTask(mission(u:getPoint()))
+            setRules(ctl, AIR_CONTROL.going_home_rules_of_engagement)
+        end)
+        if ok then
+            given = given + 1
+        else
+            Log.warn(string.format("%s: landing order to %s failed: %s", m.id, tostring(u:getName()), tostring(err)))
+        end
+    end
+    return given > 0, true
 end
 
 -- Jets `names` removed from the world where they are (an orphan in the air, bug 19).

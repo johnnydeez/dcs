@@ -26,6 +26,9 @@ COALITION_ROSTER = {
         shoulder_launched_missile = { { "SA-18 Igla-S manpad", 3 }, { "SA-18 Igla manpad", 1 } },
         infantry                  = { { "Soldier AK", 2 }, { "Infantry AK ver2", 1 }, { "Infantry AK ver3", 1 },
                                       { "Soldier RPG", 1 } },
+        -- rearms SAMs within ~600 ft: "Truck Ural-4320" in the mission editor (only some
+        -- truck variants do; John, 2026-10-04). Every SAM site and base-defense SAM gets one.
+        supply_truck              = { { "Ural-375", 1 } },
         -- ── convoys (data/convoy_recipes.lua; Red only for now) ──
         cargo_truck               = { { "Ural-4320-31", 3 }, { "KAMAZ Truck", 2 }, { "GAZ-66", 1 } },
         fuel_truck                = { { "ATZ-10", 2 }, { "ATZ-5", 1 }, { "TZ-22_KrAZ", 1 } },
@@ -51,6 +54,8 @@ COALITION_ROSTER = {
         -- RBS 70 isn't in DCS; Finland fielded Igla until recently
         shoulder_launched_missile = { { "Soldier stinger", 3 }, { "SA-18 Igla-S manpad", 1 } },
         infantry                  = { { "Soldier M4", 3 }, { "Soldier M249", 1 } },
+        -- rearms SAMs within ~600 ft: "Truck M939 Heavy" in the mission editor (John, 2026-10-04)
+        supply_truck              = { { "M 818", 1 } },
     },
 }
 

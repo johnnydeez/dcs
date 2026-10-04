@@ -79,17 +79,22 @@
 -- A flight engages one bandit (another flight of the coalition never takes the same
 -- one) and goes back to its mission when the bandit is destroyed, dropped from the
 -- picture, turned cold (heading more than cold_aspect_deg off the line to the flight),
--- farther than warning_range_km, after max_engage_s, when the flight is out of radar
--- missiles, or when the fight takes it into an enemy kill zone (killzone_fraction of
--- how far a site reaches at its altitude) its route doesn't pass through on purpose.
+-- farther than warning_range_km, after max_engage_s (not while a missile of the flight is
+-- still flying, nor within shot_memory_s of being fired upon: 2026-10-04, both SEAD duels
+-- of the 2026-10-03 14:15 run were timed out the moment the missiles were in the air),
+-- when the flight is out of radar missiles, or when the fight takes it into an enemy
+-- kill zone (killzone_fraction of how far a site reaches at its altitude; not a site out
+-- of the fight, its radars destroyed) its route doesn't pass through on purpose.
 -- After that it engages again only after reengage_after_s; a bandit it broke off for a
 -- kill zone, not while the flight is still inside one.
--- A SEAD flight with its anti-radiation missiles aboard isn't the air-to-air asset (John,
--- 2026-10-02, bug 39): it commits only when fired upon, or when the bandit is hot inside
--- sead_commit_km (outside its shot area); otherwise it stays low on its route, or
--- finishes its salvo, and says "press on" once per bandit. Its fight is broken off for
--- any kill zone by height, its own target's included, outside its shot area, and for none
--- inside it.
+-- A SEAD flight isn't the air-to-air asset (John, 2026-10-02, bug 39): with its
+-- anti-radiation missiles aboard it commits only when fired upon, or when the bandit is
+-- hot inside sead_commit_km (outside its shot area); otherwise it stays low on its route,
+-- or finishes its salvo, and says "press on" once per bandit. After its salvo the same
+-- holds on its way home (John, 2026-10-04: in the 2026-10-03 14:15 run 10 of 15 losses
+-- were SEAD jets fighting after their salvoes). Its fight is broken off for any kill
+-- zone by height (every live site, silenced or not), its own target's included, outside
+-- its shot area, and for none inside it.
 
 -- suppression, also: once one jet of a SEAD flight has fired its last anti-radiation
 -- missile, the others get salvo_time_s, then the flight goes cold with whatever is left

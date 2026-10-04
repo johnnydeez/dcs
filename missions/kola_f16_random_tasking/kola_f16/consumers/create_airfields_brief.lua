@@ -161,7 +161,7 @@ local function jetsUp(id)
 end
 
 -- Every AI flight of the coalition as { id, mission (as flown), record }: the planned ones
--- and their second tries (<id>_AGAIN).
+-- and their second and third tries (<id>_AGAIN, <id>_LATER).
 local function flights()
     local out = {}
     local ato = _plan.air_tasking_orders[COALITION]
@@ -170,8 +170,10 @@ local function flights()
         if f and m.flown_by ~= "human" then
             out[#out + 1] = { id = m.id, mission = f.mission_flown or f.mission, record = f }
         end
-        local again = f and f.again and ScheduleAirTaskingOrders.record(f.again)
-        if again then out[#out + 1] = { id = f.again, mission = again.mission, record = again } end
+        for _, copyId in ipairs({ f and f.again or false, f and f.later or false }) do
+            local copy = copyId and ScheduleAirTaskingOrders.record(copyId)
+            if copy then out[#out + 1] = { id = copyId, mission = copy.mission, record = copy } end
+        end
     end
     return out
 end
@@ -205,6 +207,7 @@ local function flightText(fl, t)
     local m = fl.mission
     local number = fl.id:match("^MSN%d+") or fl.id
     if fl.id:match("_AGAIN$") then number = number .. " again" end
+    if fl.id:match("_LATER$") then number = number .. " later" end
     return string.format("%s %s %s, %dx %s (%s)", at(t), number, BriefAirTasking.missionName(m.mission_type),
         m.count, m.aircraft_type, fl.state)
 end

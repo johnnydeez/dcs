@@ -126,8 +126,10 @@ local function act(w, s, intent)
     elseif intent.kind == "land" then
         local mem = w.memo.landing
         mem.orders, mem.ordered_at = (mem.orders or 0) + 1, now
-        if GiveOrders.land(w, g) then
-            log(w, intent, string.format("%s; sent to land at %s (%s)", intent.why, m.landing_base, where(w, s.pos)))
+        local given, perJet = GiveOrders.land(w, g)
+        if given then
+            log(w, intent, string.format("%s; sent to land at %s%s (%s)", intent.why, m.landing_base,
+                perJet and ", each jet in the air on its own order" or "", where(w, s.pos)))
             w.state, w.defending = "going_home", nil
             mem.closest = nil   -- measured again from here
         end
@@ -181,8 +183,11 @@ local function check(coalition, clock)
             _watched[id] = nil   -- shot down or gone: the scheduler has logged it
         elseif s then
             if s.airborne then w.airborne_once = true end
-            if w.airborne_once and not s.airborne then
-                _watched[id] = nil   -- landed
+            -- landed: none of it in the air any more, and none still waiting to take off
+            -- (bug 48: a lead shot down while its wingman sat in the taxi queue ended the
+            -- watch, and the wingman flew its whole SEAD with no go cold or bandit call)
+            if w.airborne_once and not s.airborne and not A.waitingToTakeOff(s) then
+                _watched[id] = nil
             else
                 watched[#watched + 1] = w
                 local intents = {}
@@ -247,6 +252,12 @@ local function isAntiRadiation(weapon)
     return d and d.category == Weapon.Category.MISSILE and d.guidance == Weapon.GuidanceType.RADAR_PASSIVE
 end
 
+-- True for an air-to-air missile.
+local function isAirToAir(weapon)
+    local d = weapon:getDesc()
+    return d and d.category == Weapon.Category.MISSILE and d.missileCategory == Weapon.MissileCategory.AAM
+end
+
 local handler = {}
 function handler:onEvent(e)
     if e.id ~= world.event.S_EVENT_SHOT or not e.weapon then return end
@@ -256,6 +267,13 @@ function handler:onEvent(e)
         local own = e.initiator and e.initiator.getGroup and e.initiator:getGroup()
         if own and _watched[own:getName()] and isAntiRadiation(e.weapon) then
             wake(_watched[own:getName()].mission.coalition)
+        end
+        -- a watched flight's own air-to-air missile: its fight isn't timed out while one
+        -- is still flying (the self_defence directive)
+        local mine = own and _watched[own:getName()]
+        if mine and isAirToAir(e.weapon) then
+            mine.reports.own_missiles = mine.reports.own_missiles or {}
+            table.insert(mine.reports.own_missiles, e.weapon)
         end
         local target = e.weapon:getTarget()
         local group = target and target.getGroup and target:getGroup()
@@ -326,7 +344,10 @@ function ControlAirFlights.radarWarningLine(m, kind)
     local names = {}
     for name in pairs(emitters) do names[#names + 1] = name end
     table.sort(names)
-    local lead = g:getUnits()[1]
+    local lead
+    for _, u in ipairs(g:getUnits() or {}) do
+        if u:isExist() and u:inAir() then lead = u break end
+    end
     local p = lead and lead:getPoint()
     local height = p and string.format("; lead %s ft, %s ft above the ground",
         Util.thousands(p.y * 3.28084), Util.thousands((p.y - land.getHeight({ x = p.x, y = p.z })) * 3.28084)) or ""

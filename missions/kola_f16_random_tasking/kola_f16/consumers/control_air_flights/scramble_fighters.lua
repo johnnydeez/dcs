@@ -119,11 +119,13 @@ end
 -- bug 41), whose kill zone (+ margin_m) holds pos, or nil: at altitude_m (above sea
 -- level; lib/sam_reach.lua goes by the height above the ground there), or the full ring
 -- without one (an intercept point, flown high). A base defense: its full reach at any height.
+-- A site out of the fight (its radars destroyed: DecideLaunches.outOfTheFight) isn't one.
 local function enemyKillZone(coalitionName, pos, altitude_m, margin_m)
     local height = SamReach.aboveGround(pos, altitude_m)
     for _, s in ipairs(_plan.sam_sites and _plan.sam_sites.sites or {}) do
         if s.side ~= coalitionName and AIR_ROUTING.threat_layers[s.layer] and (s.engage_m or 0) > 0
-           and Util.dist(pos, s.pos) < SamReach.killZone(s, height) + (margin_m or 0) and liveGroup(s.id) then
+           and Util.dist(pos, s.pos) < SamReach.killZone(s, height) + (margin_m or 0) and liveGroup(s.id)
+           and not DecideLaunches.outOfTheFight(s.id) then
             return s.id
         end
     end
@@ -240,7 +242,7 @@ local function raidGone(st, groups)
     for _, name in ipairs(groups) do
         local contact = TrackRadarPicture.contact(st.coalition, name)
         if not liveGroup(name) then
-            why = why or (name .. " destroyed")
+            why = why or AssessFlightSituations.goneText(name)
         elseif not contact then
             why = why or (name .. " lost from the radar picture")
         elseif contact.airspace == "enemy" and not contact.inbound then

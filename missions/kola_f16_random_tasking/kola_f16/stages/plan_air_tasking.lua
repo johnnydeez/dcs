@@ -153,7 +153,7 @@ local ATTACKS        = { bomb_critical_objects = true, attack_group = true, enga
                          engage_aircraft_on_station = true, early_warning_on_station = true, intercept = true }
 local PLANNED_AS     = { mission = true, rotation = true, station = true, response = true }
 local RULES          = { open_fire = true, weapons_free = true, weapons_hold = true }
-local TAKEOFFS       = { parking = true, runway = true }
+local TAKEOFFS       = { parking = true, runway = true, air = true }
 local PATROL         = "combat_air_patrol"
 local EARLY_WARNING  = "airborne_early_warning"
 local INTERCEPTION   = "interception"
@@ -942,12 +942,20 @@ end
 
 -- Whether a DEAD flight of `aircraftType` carrying `loadout` hits target `t` from out of
 -- its reach (AIR_DEAD_WEAPONS, bug 4): its weapon outranges the site's ring, or it
--- attacks from above the system's ceiling. Only short-range sites are held to it.
+-- attacks from above the system's ceiling. Only short-range sites and base-defense
+-- groups (a DEAD flight opening one for an attack, bug 49) are held to it.
 local function outOfReach(ctx, t, aircraftType, loadout)
-    if t.layer ~= "short_range" then return true end
     local D, site = AIR_DEAD_WEAPONS, siteOf(ctx, t.id)
+    local ringM
+    if t.kind == "base_defense" then
+        ringM = t.reach_m
+    elseif t.layer == "short_range" then
+        ringM = site and site.engage_m
+    else
+        return true
+    end
     local reach = weaponReachKm(loadout)
-    if reach and site and reach >= (site.engage_m or 0) / 1000 + D.reach_margin_km then return true end
+    if reach and ringM and reach >= ringM / 1000 + D.reach_margin_km then return true end
     local recipe = SAM_SITE_RECIPE[t.system]
     local alt = AIRCRAFT_PROFILE[aircraftType].attack_altitude_m[DESTRUCTION]
     if recipe and recipe.ceiling_km and alt then
@@ -1209,13 +1217,35 @@ local function siteTarget(ctx, threat)
     if t then return t end
     for _, g in ipairs(ctx.plan.base_defenses and ctx.plan.base_defenses.groups or {}) do
         if g.id == threat then
-            local names = {}
-            for i in ipairs(g.units) do names[i] = g.id .. "_" .. i end
+            local names, reach, detect = {}, 0, 0
+            for i, u in ipairs(g.units) do
+                names[i] = g.id .. "_" .. i
+                local pool = UNIT_POOL.ground[u.type]
+                if pool then
+                    reach, detect = math.max(reach, pool.threat_m or 0), math.max(detect, pool.detection_m or 0)
+                end
+            end
             return { id = g.id, label = string.format("%s at %s", (g.role:gsub("_", " ")), g.base),
-                     kind = "base_defense", pos = g.pos, critical_names = names, success = { critical_fraction = 1 } }
+                     kind = "base_defense", pos = g.pos, group_ids = { g.id }, reach_m = reach, detect_m = detect,
+                     critical_names = names, success = { critical_fraction = 1 } }
         end
     end
     return nil
+end
+
+-- Whether a SEAD flight ever gets a shot at `threat` (bug 49, 2026-10-04 runs: two Su-34
+-- SEAD flights on Hosio's Roland flew home with all 16 Kh-31Ps). The AI fires an
+-- anti-radiation missile only at a radar on its warning receivers, so the radar has to
+-- see the flight; the press-on point lies no closer than the threat's reach +
+-- short_range_margin_km, and a radar that sees less far than that (the Roland ADS: 12 km,
+-- its missiles 8 km) never shows there. Such a threat is opened by a DEAD flight from out
+-- of its reach instead (John, 2026-10-05).
+local function seadGetsAShot(ctx, threat)
+    local s = siteOf(ctx, threat)
+    local t = not s and siteTarget(ctx, threat)
+    local detect, reach = s and s.detect_m or t and t.detect_m, s and s.engage_m or t and t.reach_m
+    if not (detect and reach and detect > 0) then return true end
+    return detect >= reach + AIR_MISSION_TYPE[SUPPRESSION].short_range_margin_km * 1000
 end
 
 -- Where an enemy air defense sits against the front, like targetFront but looked for as
@@ -1289,6 +1319,72 @@ local function draftSuppressionFlight(ctx, threat, opts)
                          route_threats = through, requires_cleared = requires,
                          to_target_s = toTarget, home_s = home,
                          lead_s = round(lead[1] + math.random() * (lead[2] - lead[1])) }
+            end
+        end
+    end
+    return nil, why
+end
+
+-- A DEAD flight that opens `threat` for an attack where a SEAD flight would get no shot
+-- (seadGetsAShot, bug 49): a DEAD aircraft from the roster with a loadout that hits it
+-- from out of its reach (deadLoadouts: a standoff weapon), a base as for a SEAD flight
+-- (opts.front, opts.prefer_base), routed like any attack to the weapon's release point.
+-- It takes the threat's place in the site table, so whatever crosses the threat waits on
+-- it as on a SEAD flight. requires_cleared: the other threats its route crosses, each
+-- with a SEAD flight in the table or one planned alongside it (opts.alongside, a set).
+-- Returns the draft, or nil and why not.
+local function draftStandoffDestruction(ctx, threat, opts)
+    local mt = AIR_MISSION_TYPE[DESTRUCTION]
+    local target = siteTarget(ctx, threat)
+    local front = opts.front
+    if not target then return nil, "not a known enemy air defense" end
+    if not front then return nil, "no own region faces it" end
+    local maxEnemyKm = front.depth_m / 1000 + AIR_TARGETING.enemy_airspace_slack_km
+    local why = "no DEAD weapon hits it from out of its reach"
+    for _ = 1, AIRCRAFT_TRIES do
+        local aircraftType = Util.weightedPick(COALITION_AIRCRAFT[ctx.coalition][DESTRUCTION])
+        local p = AIRCRAFT_PROFILE[aircraftType]
+        local loadouts = deadLoadouts(ctx, aircraftType, target)
+        if #loadouts > 0 then
+            if why == "no DEAD weapon hits it from out of its reach" then why = "no base in reach" end
+            local candidates = {}
+            for _, b in ipairs(launchBases(ctx, aircraftType)) do
+                local km = Util.dist(ctx.plan.world.airbases[b].pos, target.pos) / 1000
+                if ctx.base_region[b] == front.region and km <= p.combat_radius_km then
+                    candidates[#candidates + 1] = { name = b, km = km, order = b == opts.prefer_base and -1 or km }
+                end
+            end
+            table.sort(candidates, function(a, b) return a.order < b.order end)
+            for _, c in ipairs(candidates) do
+                local loadout = Util.pick(loadouts)
+                local standoff = standoffOf(loadout)
+                local route, crossed = buildRoute(ctx, ctx.plan.world.airbases[c.name].pos, target.pos, DESTRUCTION, mt, p,
+                    standoff and standoff.release_km)
+                local enemyKm = enemyAirspaceKm(ctx, route)
+                local requires, blocked = {}, nil
+                for _, id in ipairs(crossed) do
+                    if id ~= threat then
+                        if ctx.suppression[id] or (opts.alongside and opts.alongside[id]) then
+                            requires[#requires + 1] = id
+                        else
+                            blocked = blocked or id
+                        end
+                    end
+                end
+                if enemyKm > maxEnemyKm then
+                    why = "too deep in enemy airspace"
+                elseif blocked then
+                    why = string.format("its route crosses %s, which has no SEAD flight", blocked)
+                else
+                    local toTarget, home = legSeconds(route, p.cruise_speed_mps)
+                    local lead = AIR_PACKAGE.suppression_lead_s
+                    return { mission_type = DESTRUCTION, mt = mt, aircraft_type = aircraftType, p = p,
+                             target = target, threat = threat, base = c.name, front = front,
+                             enemy_airspace_km = enemyKm, distance_km = c.km, count = flightSize(mt, p),
+                             route = route, loadout = loadout, requires_cleared = requires,
+                             to_target_s = toTarget, home_s = home, opens_for_attack = true,
+                             lead_s = round(lead[1] + math.random() * (lead[2] - lead[1])) }
+                end
             end
         end
     end
@@ -1597,19 +1693,22 @@ end
 
 -- A scheduled SEAD flight → its plan entry, and into the site table: from now on every
 -- flight whose route goes through its threat waits on it. `why`: "rotation", "player" (a
--- player's SEAD tasking) or the id of the mission whose route needed it.
+-- player's SEAD tasking) or the id of the mission whose route needed it. A DEAD flight
+-- opening a threat no SEAD flight gets a shot at (draftStandoffDestruction, bug 49) goes
+-- into the site table the same way.
 local function commitSuppression(ctx, f, why)
     local s = commitFlight(ctx, f)
     s.rotation = why == "rotation" or nil
     ctx.suppression[f.threat] = { id = s.id, salvo_s = s.tot_s }
     ctx.out.suppression_by_site[f.threat] = s.id
     local sum = ctx.out.summary
-    sum.suppression_flights = sum.suppression_flights + 1
+    if f.mission_type == SUPPRESSION then sum.suppression_flights = sum.suppression_flights + 1 end
     if s.rotation then
         ctx.out.suppression_rotation[#ctx.out.suppression_rotation + 1] = s.id
         sum.rotation_flights = sum.rotation_flights + 1
     end
-    logFlight(ctx, s, string.format("  %s, engages %s%s",
+    logFlight(ctx, s, string.format("  %s%s, engages %s%s",
+        f.opens_for_attack and "DEAD from out of its reach (no SEAD shot at it), " or "",
         why == "rotation" and "SEAD rotation" or why == "player" and "the player's SEAD" or ("first needed by " .. why),
         table.concat(s.attack.groups, ", "),
         s.requires_cleared and ("; needs down first: " .. table.concat(s.requires_cleared, ", ")) or ""))
@@ -1632,14 +1731,22 @@ end
 
 -- The SEAD flights a drafted mission's route needs: one for each threat it crosses that
 -- the site table has no flight for yet, from the mission's own base when it can, else the
--- nearest. Returns them, or nil and why one can't be had.
+-- nearest; a DEAD flight from out of its reach for a threat no SEAD flight gets a shot at
+-- (bug 49). Returns them, or nil and why one can't be had.
 local function draftNeededSuppression(ctx, main)
-    local extras = {}
+    local extras, alongside = {}, {}
+    for _, threat in ipairs(main.crossed) do alongside[threat] = true end
     for _, threat in ipairs(main.crossed) do
         if not ctx.suppression[threat] then
             local c = ThreatRouting.circle(ctx.threats, threat)
             local front = c and siteFront(ctx, c) or main.front
-            local f, why = draftSuppressionFlight(ctx, threat, { front = front, prefer_base = main.base })
+            local f, why
+            if seadGetsAShot(ctx, threat) then
+                f, why = draftSuppressionFlight(ctx, threat, { front = front, prefer_base = main.base })
+            else
+                f, why = draftStandoffDestruction(ctx, threat, { front = front, prefer_base = main.base, alongside = alongside })
+                why = why and ("no shot for SEAD, no DEAD from out of its reach: " .. why)
+            end
             if not f then return nil, why end
             extras[#extras + 1] = f
         end
@@ -2037,20 +2144,27 @@ end
 
 -- Route to a station and home the same way:
 --   takeoff → departure → transit … → station (orbit start, the tasks) → station_end → transit … → landing
-local function stationRoute(ctx, basePos, station, p, alt)
+-- `airStart` (the AWACS, John 2026-10-04: neither side launches without AWACS coverage, so
+-- it is already up there at mission start): it starts in the air on the station, so the
+-- way out is left off: station (air start, the tasks) → station_end → transit … → landing.
+local function stationRoute(ctx, basePos, station, p, alt, airStart)
     local speed, cruise = p.cruise_speed_mps, p.cruise_altitude_m
-    local route = { { kind = "takeoff", x = round(basePos.x), z = round(basePos.z), alt_m = 0, speed_mps = 0 } }
+    local route = {}
     local function add(kind, q, a) route[#route + 1] = { kind = kind, x = round(q.x), z = round(q.z), alt_m = a, speed_mps = speed } end
     local first = station.ends[1]
     local start = basePos
     if Util.dist(basePos, first) > (DEPARTURE_KM + 40) * 1000 then
         start = offset(basePos, first, DEPARTURE_KM)
-        add("departure", start, cruise)
     end
     local out = threatRoute(ctx, start, first, reachOf(p), ctx.station_threats)
-    for i = 2, #out - 1 do add("transit", out[i], cruise) end
+    if not airStart then
+        route[1] = { kind = "takeoff", x = round(basePos.x), z = round(basePos.z), alt_m = 0, speed_mps = 0 }
+        if start ~= basePos then add("departure", start, cruise) end
+        for i = 2, #out - 1 do add("transit", out[i], cruise) end
+    end
     add("station", first, alt)
     route[#route].carries_attack_tasks = true
+    route[#route].air_start = airStart or nil
     add("station_end", station.ends[2], alt)
     for i = #out - 1, 2, -1 do add("transit", out[i], cruise) end
     if start ~= basePos then add("transit", start, cruise) end
@@ -2058,9 +2172,10 @@ local function stationRoute(ctx, basePos, station, p, alt)
     return route
 end
 
--- Seconds from takeoff to the station, and from the station's far end home.
+-- Seconds from takeoff to the station (0 for an air start on it), and from the station's
+-- far end home.
 local function stationLegs(route, speed)
-    local to, home, phase = 0, 0, "out"
+    local to, home, phase = 0, 0, route[1].air_start and "on" or "out"
     for i = 2, #route do
         local d = Util.dist(route[i - 1], route[i]) / speed
         if phase == "out" then to = to + d elseif phase == "home" then home = home + d end
@@ -2098,7 +2213,8 @@ local function draftStationFlight(ctx, missionType, station, arrive_s, leave_s, 
         for _, b in ipairs(bases) do
             local basePos = ctx.plan.world.airbases[b.name].pos
             local alt = p.attack_altitude_m[missionType]
-            local route = stationRoute(ctx, basePos, station, p, alt)
+            local airStart = mt.takeoff == "air"
+            local route = stationRoute(ctx, basePos, station, p, alt, airStart)
             local to, home = stationLegs(route, p.cruise_speed_mps)
             -- station flights have no suppression: a base whose way there enters an enemy
             -- kill zone (or that stands inside one) can't fly them
@@ -2107,7 +2223,7 @@ local function draftStationFlight(ctx, missionType, station, arrive_s, leave_s, 
             -- reach the station through enemy airspace can't fly it
             local enemyKm = enemyAirspaceKm(ctx, route)
             local count = human and human.count or flightSize(mt, p)
-            local taxi = (mt.takeoff == "runway") and 60 or T.taxi_s
+            local taxi = airStart and 0 or (mt.takeoff == "runway") and 60 or T.taxi_s
             -- the AWACS goes at mission start; patrols no earlier than the first attack flights
             local earliest = (missionType == EARLY_WARNING) and 0 or T.first_start_s
             local f = { mission_type = missionType, mt = mt, aircraft_type = aircraftType, p = p, base = b.name,
@@ -2134,7 +2250,7 @@ local function draftStationFlight(ctx, missionType, station, arrive_s, leave_s, 
                 local ok = true
                 if f.player_slot then
                     f.spots = { f.player_slot.parking }
-                elseif mt.takeoff ~= "runway" then
+                elseif mt.takeoff == "parking" or not mt.takeoff then
                     f.spots = reserveParking(ctx, b.name, aircraftType, count, f.start_s)
                     ok = f.spots ~= nil
                     if not ok then reason = "no parking" end
@@ -2302,11 +2418,14 @@ local function planEarlyWarning(ctx)
             -- drafted once to find its base and how long it takes to get there, then again
             -- with that time, so it is spawned at early_warning_start_s and on station as
             -- soon as it can be
+            -- (an air start is on station when spawned: the first draft is the flight)
             local f, why = draftStationFlight(ctx, EARLY_WARNING, station, D.early_warning_start_s, AIR_TASKING_TIMING.window_s)
-            if f then
+            if f and not f.route[1].air_start then
                 local to = stationLegs(f.route, f.p.cruise_speed_mps)
                 local f2 = draftStationFlight(ctx, EARLY_WARNING, station, D.early_warning_start_s + 60 + to, AIR_TASKING_TIMING.window_s)
                 f = f2 or f
+            end
+            if f then
                 station.base, station.home = f.base, f.base
                 station.id = string.format("AEW_%s_%d", AIRBASE_CODE[f.base] or f.base, n)
                 station.label = string.format("early-warning orbit from %s", f.base)
@@ -2380,10 +2499,12 @@ legacyEarlyWarning = function(ctx)
     local station = { id = string.format("AEW_%s_1", AIRBASE_CODE[base] or base), kind = "early_warning",
                       home = base, base = base, centre = { x = round(centre.x), z = round(centre.z) }, ends = { a, b },
                       label = string.format("early-warning orbit from %s", base) }
-    -- the orbit is reached as soon as it can be: spawned at early_warning_start_s
+    -- the orbit is reached as soon as it can be: spawned at early_warning_start_s (an air
+    -- start is on it then)
     local p = AIRCRAFT_PROFILE[aircraftType]
-    local to = stationLegs(stationRoute(ctx, basePos, station, p, p.attack_altitude_m[EARLY_WARNING]), p.cruise_speed_mps)
-    local f, why = draftStationFlight(ctx, EARLY_WARNING, station, D.early_warning_start_s + 60 + to, T.window_s)
+    local airStart = AIR_MISSION_TYPE[EARLY_WARNING].takeoff == "air"
+    local to = stationLegs(stationRoute(ctx, basePos, station, p, p.attack_altitude_m[EARLY_WARNING], airStart), p.cruise_speed_mps)
+    local f, why = draftStationFlight(ctx, EARLY_WARNING, station, D.early_warning_start_s + (airStart and 0 or 60 + to), T.window_s)
     if not f then
         Log.warn(string.format("  %s: no AWACS (%s)", ctx.coalition:upper(), why))
         return nil

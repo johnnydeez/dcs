@@ -187,7 +187,7 @@ Roadmap items and fixed bugs that are done, moved here from `roadmap.md` and `bu
 
 ### 3. Event log: a readable file to watch during the mission
 
-**Status: done (2026-09-30).** Built and run in DCS twice the same day (the second flown by John), then in every run since; its small fixes are bug 5 in `bugs.md`. As built, and how to watch it: `plan.md`, *Event log*.
+**Status: done (2026-09-30).** Built and run in DCS twice the same day (the second flown by John), then in every run since; its small fixes are bug 5 below. As built, and how to watch it: `plan.md`, *Event log*.
 
 What John decided (2026-09-30):
 - **Scope:** a catalogue of every event from the run, so one can comb through it and see how the mission unfolded unit by unit, step by step, without affecting game performance.
@@ -520,7 +520,7 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 
 ### Bug 5. Event log: small fixes
 
-**Status:** fixed 2026-10-01 except (g), not run in DCS yet. (a) the launcher is kept per weapon at `SHOT` (and `Weapon:getLauncher()` as a fallback); (b) "fired SA5B55 at an incoming AGM_88"; (c) "caught in the explosion of SAM_LUOS_SA8_1_1 (Dog Ear radar)"; (d) `statusOf` reads "stood down on the ramp"; (e) the parachute line names the aircraft the pilot left, when the ejection event names the pilot; (f) `ABORTED` folded per flight within 10 s, "(2x)"; (h) "damaged by a nearby explosion"; (i) "fuel 183 % (with external tanks)"; (j) the ring column skips SAM sites with no live unit (checked at most every 30 s); (k) a player's `TAKEOFF` adds "flying MSN2023_OCA?" when one human tasking starts at that base. (g) still waits for a run with jets low over a defended base.
+**Status:** fixed 2026-10-01 except (g), not run in DCS yet. (a) the launcher is kept per weapon at `SHOT` (and `Weapon:getLauncher()` as a fallback); (b) "fired SA5B55 at an incoming AGM_88"; (c) "caught in the explosion of SAM_LUOS_SA8_1_1 (Dog Ear radar)"; (d) `statusOf` reads "stood down on the ramp"; (e) the parachute line names the aircraft the pilot left, when the ejection event names the pilot; (f) `ABORTED` folded per flight within 10 s, "(2x)"; (h) "damaged by a nearby explosion"; (i) "fuel 183 % (with external tanks)"; (j) the ring column skips SAM sites with no live unit (checked at most every 30 s); (k) a player's `TAKEOFF` adds "flying MSN2023_OCA?" when one human tasking starts at that base. **(g) closed 2026-10-04 without a `GUNS` line** (John: if one kind of sleeping unit woke and fired, the rest likely will; revisit if that turns out not to be true): in `event_logs\2026-10-04_200249.log` Kuusamo's defenses, asleep all mission, woke with John 27 km out (`UNIT_AWAKE DEF_KUUS` 04:37:55), and 1 min 40 s later both soldiers of `DEF_KUUS_shoulder_launched_missile_teams_1` fired an Igla-S at him from 1–2 km at ~1,100 ft and killed him (04:39:48, 874 ft). The first shot from a base-defense group of a sleeping kind in any run; no `LATE_WAKE`. Still never seen: `GUNS` (no gun group has come into range), so whether DCS sends `S_EVENT_SHOOTING_START` for AI ground guns is unproven.
 
 **Seen:** same log.
 - **(a) A dead shooter shows as `? (?)`.**
@@ -1036,3 +1036,108 @@ Every 10 s an on-screen line (and `dcs.log`, `[AWACS HSD TEST]`) says whether th
 - **Darkstar says when the player is outside coverage** (`call_air_picture.lua`, `AIR_PICTURE_CALLS.coverage`): "DARKSTAR: no radar coverage your area, picture unknown".
 - **`CONTACT` lines say how far away the first sensor saw each contact**, to tune the 250 km.
 - The HSD part is bug 26 (test mission built).
+
+---
+
+### Bug 48. The controller stops watching a flight whose only airborne jet is shot down while its wingman is still on the ramp
+
+**Status:** fix built 2026-10-05 with bug 53, not flown (John: "check every airborne jet … for all controller commands and also monitoring"; copied to DCS; harness-checked). A flight counts as landed only when no jet of it is in the air **and** none is still on the ground before its takeoff (`AssessFlightSituations.waitingToTakeOff`, from the scheduler's takeoff record, `ScheduleAirTaskingOrders.tookOff`); a fight whose flight has no jet left in the air ends (`back on mission: no jet of the flight left in the air`), so the next jet up starts clean.
+
+**Seen:** grep `MSN2025_SEAD_AGAIN`. 2× F-16C from Kirkenes on the Kilpyavr SA-10 (the rotation's retry of MSN2025).
+- The lead took off at 04:24:22; the wingman only at 04:29:20 (5 min later, the Kirkenes taxi queue again, as in MSN2025 and the 16:50 run).
+- 04:26:44 `defend` on the Red strike MSN7030_STRIKE (24 km, hot) while the lead circled low near Kirkenes waiting; the lead was killed by an R-77 at 04:27:36. No `back on mission` line ever followed.
+- From then on **no `CONTROL` line for the flight at all**: the wingman flew the whole SEAD alone, fired its 4 HARMs at 04:35:22-04:35:45 (all shot down), and got no `go cold` (it should have come 0.5 s after the last missile, `every anti-radiation missile fired`), no bandit call, no landing or orphan check. It went home only because its route did (egress waypoint 04:37:03).
+
+**Cause (from the code):** `control_air_flights.lua`, `check`: once a flight has been airborne (`w.airborne_once`), a check that finds no jet of it in the air (`s.airborne`, any unit `inAir()`) takes it as landed and drops it from `_watched`. With the lead dead and the wingman still on the ramp, that's true, so the flight was unwatched before the wingman ever took off.
+
+**Proposed fix (decide with John):** "landed" only when a jet of the flight has actually landed (the scheduler's `LAND` record, or `ControlAirFlights.flightDown`), or when no jet is in the air **and** none is left on the ramp that hasn't taken off yet; a flight with a jet still waiting to take off stays watched. Check the `defend` state too: a fight whose own jet is gone should end (`back on mission`) so the next jet starts clean.
+
+---
+
+### Bug 49. A SEAD flight against a Roland can never fire: its radar can't see out to the launch point
+
+**Status:** fix built 2026-10-05, not flown (John chose the first option below; copied to DCS; checked by re-planning the 22:39 roll over six seeds). A threat whose radar sees less far than its reach + `short_range_margin_km` (where the press-on point stops) gets no SEAD flight (`seadGetsAShot`, `stages/plan_air_tasking.lua`): of today's types only the Roland ADS (and the Strela-1 / -10, which aren't threats the routing knows). An attack whose route crosses one gets a **DEAD flight from out of its reach** for it instead (`draftStandoffDestruction`): a DEAD aircraft with a loadout whose weapon reaches the threat's reach + `AIR_DEAD_WEAPONS.reach_margin_km` (the Su-34's Kh-59M from 28–40 km on the replays), `AttackGroup` on the group, routed to the release point like bug 4's DEAD. It goes into the site table in the SEAD flight's place, so the attack waits on it, and the gate retries it (`_AGAIN`) and cancels as for SEAD. `dcs.log`: `DEAD from out of its reach (no SEAD shot at it), first needed by …`; a mission that can't have one fails with `no shot for SEAD, no DEAD from out of its reach: …`. Its success is every unit of the group (the gate's test for a base-defense group). On the replays: seeds 1 and 3 planned it for `DEF_HOSI_radar_missile_launchers_1` (MSN7036 / MSN7034, 2× Su-34, Kh-59M), waited on by a strike and an airfield strike.
+
+**Seen again** in `event_logs\2026-10-04_223922.log`: MSN7038_SEAD and MSN7038_SEAD_AGAIN (2× Su-34 each, Vuojärvi) on Hosio's Roland, `RADAR_WARNING` "not seen" at 24 and 17 km both times, `no shot`, 16 Kh-31P flown home; MSN7037_DEAD (on the Hosio Patriot, already 3 of 10 critical down) waited on it and was cancelled.
+
+**Seen:** grep `MSN7028_SEAD`. 2× Su-34 (8 Kh-31P) from Severomorsk-1 on `DEF_KIRK_radar_missile_launchers_1`, Kirkenes's base-defense Roland ADS (a SEAD flight an attack needs: MSN7027_OCA's Tu-22M3s at 05:34 wait on it). `RADAR_WARNING` at the launch point (04:21:47, 24 km) and the press-on point (04:22:14, 18 km): "its radar not seen"; `go cold: no shot … all 8 anti-radiation missiles aboard`; landed 04:38. Meanwhile `SAM_KIRK_SA8_1` was tracking the flight (`TRACKING` 04:22:10) and its mobile guns were on the warning receivers.
+
+**Cause:** the Roland's radar sees only 12 km (`UNIT_POOL` `detection_m` 12,000; `threat_m` 8,000). The launch point for a short-reaching target is its reach + `launch_past_reach_km` (15), here ~24 km, and the press-on leg stops at reach + 5 km (~13 km). Both lie outside 12 km, so the Roland never detects the flight, never shows on its warning receivers, and the AI has nothing to fire at (*DCS facts*: no ping, no shot). The same will hold for any target whose radar sees less than its reach + 5 km. Tor M2 (32 km) and Pantsir are fine; check the other short-range types' `detection_m`.
+
+**Proposed (decide with John):**
+- Don't plan SEAD on a target whose radar can't see the press-on point (detection range < its reach + 5 km); leave it to DEAD from out of its reach (bug 4's Kh-59M / JSOW), and let the waiting attack wait on that DEAD instead.
+- Or bring the press-on point inside the radar's detection range for these targets, accepting the exposure (the Roland reaches 8 km; a press-on point at ~11 km stays outside it).
+
+---
+
+### Bug 51. John couldn't find the JSOW in the F-16C rearm screen for a DEAD frag that lists it
+
+**Status:** resolved, no code change: in the 22:39 run the same night (`event_logs\2026-10-04_223922.log`) John flew MSN2024_DEAD with the JSOW and fired 4× AGM-154A from 29,000 ft at the Kuusamo SA-8 (Dog Ear radar and a Ural destroyed, all three launchers hit). Closed by John 2026-10-05. (Found by John 2026-10-04, `event_logs\2026-10-04_220508.log`.) (The first entry here said the player F-16C can't carry the JSOW at all; the game files show it can, below.)
+
+**Seen:** John took the human tasking MSN2027_DEAD (1× F-16C on `SAM_KUUS_SA11_1`, the Kuusamo SA-11) and spawned at Rovaniemi. The frag's `LOADOUT (as planned for an AI jet)` line gave the AI F-16C's DEAD loadout, 2× AGM-154A JSOW (Liberation `DEAD`, `data/aircraft_loadouts.lua`). He found no JSOW in the rearm screen, stations 3 and 7 included.
+
+**What the game files say** (DCS 2.9.29, files of 2026-09-21):
+- **The F-16C carries it:** `CoreMods\aircraft\F-16C\F-16C.lua` lists `{AGM-154A}` and `{BRU57_2*AGM-154A}` in the `middle` launcher table that stations 3 and 7 use. No `AddPropAircraft` option restricts weapons.
+- **It's filed under missiles, not bombs:** `CoreMods\aircraft\AircraftWeaponPack\glide_bombs.lua` declares the `{AGM-154A}` loadout with `category = CAT_MISSILES`. The rearm window groups each station's list by that category, and with two JSOW entries (single, BRU-57 ×2) they sit in a sub-menu of their own under it.
+- **Not the mission:** all 37 airports in the `.miz` have `unlimitedMunitions = true`. No slot payload has a `restricted` list, which is the only per-station filter the in-game rearm window applies (`Scripts\UI\MissionResourcesDialog.lua`, `pass_ME_restricted`). Our scripts never touch warehouses.
+- **A weapon the warehouse lacks shows, not hides:** it is listed as `NOT AVAILABLE : <name>`.
+
+**Next:** John looks under station 3 or 7, in the missiles category. If it isn't there either:
+- check the Mission Editor's payload page for an F-16C (station 3);
+- then the rearm screen at an always-Blue base (Bodø), to rule out `setCoalition` on contested bases.
+
+**Separately (decide with John):** the frag shows the AI's loadout. A player would be helped more by a loadout they can pick quickly and where to find it, or weapon advice instead.
+
+---
+
+### Bug 52. Wingmen leave their hold the moment their lead lands and fly a straight line (bug 19 again)
+
+**Status:** fix built 2026-10-05, not flown (John: "yeah, we should try that"; copied to DCS; harness-checked). The removal after 8 min (bug 19, `closed.md`) stays as the safety net.
+
+**Seen:** `event_logs\2026-10-04_223922.log`, grep `>>orphan<<`. In 9 of 11 two-ships one jet was still up when the other landed, and every one of them was removed after 8 min (`>>orphan<< removed`) or lost. Only MSN2025_SEAD_AGAIN and MSN7024_SEAD landed together. The pattern, MSN2029_SEAD_2 as the example: holding near Kittilä at ~4,300 ft while its lead came in, then from the moment the lead touched down (05:24:25) a fixed heading 246, 301 kt, 4,345 ft, away from the base, until removed at 05:32:34. The `land:` orders (05:27, 05:30) changed nothing. MSN2031_SEAD_2 flew off from Kittilä into the Rovaniemi SA-10 area and a Su-30 killed it at 06:03:32, 8 min 21 s after its lead landed.
+
+**Cause (suspected):** the landing order was a group order (`Controller:setTask` on the group), and with the lead on the ground the group's controller is its landed lead: the jet in the air never got it. The directive also held the order back while a landed jet was on the ramp ("the order would send it up again").
+
+**Fix:**
+- As soon as a jet of the flight has landed and another is still up, each jet still up gets a landing order (once per landing): `land: MSN2029_SEAD_1 landed, MSN2029_SEAD_2 still in the air; sent to land at Kittila, each jet in the air on its own order (…)`.
+- With any jet of the flight on the ground, `GiveOrders.land` gives the order to each airborne jet on **its own unit controller** (DCS has unit controllers for aircraft), straight to a landing at its base, return fire. With every jet in the air it stays one group order, as before. The old "not while a landed jet is on the ramp" hold is gone (the landed jet gets no order).
+
+**Check in the next run:** `>>orphan<<` lines (how many `possibly orphaned` end `not orphaned: landed` now, against 0 of 9 in this run); the `land: … still in the air` lines; any wingman that takes the order and still flies off.
+
+---
+
+### Bug 53. The controller looked at the lead only: a wingman fought inside a SAM ring and was never broken off
+
+**Status:** fix built 2026-10-05, not flown (John: "this seems to be a re-occurring problem for all CONTROLLER commands and also monitoring"; copied to DCS; harness-checked). Bug 48 is the same kind and was fixed with it.
+
+**Seen:** `event_logs\2026-10-04_223922.log`, grep `MSN2043_STRIKE`. 2× F-16C from Kittilä on the Alta communications site (no `route_threats`, so no ring accepted). The wingman took off ~3 min after the lead. `defend` at 04:27:19 on the Su-27 patrol MSN7016_CAP (95 km, hot). The fight took the wingman up to 27,000 ft and 16 km inside the Ivalo SA-11 #3's ring; two SA-11s fired 4 missiles at it from 37–44 km and killed it at 04:30:00. The lead stayed ~5 km outside the ring at 14,000 ft. No break-off came: the controller's kill-zone test used the situation's position, the lead's. The lead later traded itself for a Su-30 scramble; the target was never attacked.
+
+**Cause:** `AssessFlightSituations.build` takes the first live unit as the lead (even one still on the ramp) and its position is the flight's; the leash, the go cold, the fight's break-off and the bandit call's ranges all measured from it.
+
+**Fix (`consumers/control_air_flights/`):**
+- **The lead** is the first jet in the air (a lead still on the ramp, or landed, isn't where the flight is).
+- **A new fact, `jets`:** every airborne jet with its position. `AssessFlightSituations.flightKillZone` asks each one and returns the site and the jet; the leash (kill zone, and enemy-airspace depth from the deepest jet), the go cold (other sites; a jet in its shot area with missiles aboard left alone) and the fight's break-off (SEAD: a jet in its shot area left alone) all use it. The line names the jet when more than one is up: `back on mission: breaking off: MSN2043_STRIKE_2 inside the kill zone of SAM_IVAL_SA11_3`.
+- **The bandit call:** each enemy group is measured from the closest pair of its jets and ours (range, aspect, closing), and the picture is searched around every jet.
+- **The go cold's "pressed past its press-on point":** the jet closest to the site counts. A SEAD flight is "in its shot area" (finishing its salvo first) when any jet is.
+- **`RADAR_WARNING`:** the height is the first airborne jet's.
+- **Not changed:** going home, the fight itself and the resume are still group orders (only the landing order goes to single jets, bug 52); `POSITION` lines already list every jet.
+
+---
+
+### Bug 54. A site the rotation needs, taken by a non-rotation SEAD flight, got no come-back
+
+**Status:** fix built 2026-10-05, not flown (copied to DCS; harness-checked). Extends bug 46's come-back.
+
+**Seen:** `event_logs\2026-10-04_223922.log`, grep `SAM_ROVA_SA10_1`. The Rovaniemi SA-10's SEAD flight was MSN2025_SEAD, planned for John's DEAD tasking (MSN2024), not a rotation flight. The first try killed nothing (its lead died after the salvo); MSN2025_SEAD_AGAIN destroyed the 64H6E only (the site needs 2 of 3 radars). Bug 46's come-back applies to rotation sites only, so at 05:02:38 the rotation's MSN2028 (on the Rovaniemi SA-11 #2, behind the SA-10) was cancelled "after a second SEAD flight", and MSN2030 with it (05:32:35). MSN2036, MSN2039 and MSN2040 wait on the same site: Blue's whole Rovaniemi branch was gone for the run.
+
+**Fix (`decide_launches.lua`):** the come-back covers every site-table flight whose site a rotation flight needs (`requires_cleared`), not only the rotation's own. Its second try down with the site still in the fight: `come back: SAM_ROVA_SA10_1 still in the fight after MSN2025_SEAD and MSN2025_SEAD_AGAIN: it comes back into the rotation at …`. Then `<id>_LATER`, the same plan flown again, holds the rotation's place while it flies (the rotation's next flight waits for it, and is pulled forward when it is down). Flights waiting on the site wait for it instead of being cancelled. A site only an attack needs still gets no come-back.
+
+---
+
+### Bug 55. "destroyed" for a flight that had landed
+
+**Status:** fixed 2026-10-05, not flown (copied to DCS; harness-checked). Wording only.
+
+**Seen:** `event_logs\2026-10-04_223922.log`: `leash stand down: MSN2017_CAP destroyed` (MSN7934_SCRAM, 05:55:04), though the F-15C had landed at Alakurtti at 05:51:47; `leash home: MSN2025_SEAD destroyed` (MSN7912) for a flight that had landed. The leash, the bandit call's `back on mission` and the scrambles' `stand down before launch` said "destroyed" for any group no longer there.
+
+**Fix:** `AssessFlightSituations.goneText`, from the scheduler's record: `… destroyed` (all lost), `… landed`, `… down (1 lost, 1 landed)`, or `… gone` (a group the scheduler doesn't keep: a player).

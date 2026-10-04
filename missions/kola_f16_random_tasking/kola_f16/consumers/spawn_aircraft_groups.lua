@@ -253,15 +253,22 @@ local function buildGroup(m, launchId, landingId)
     local lo = m.loadout
     local units = {}
     local runway = m.takeoff == "runway"
+    -- an air start (the AWACS): on its first route point, at its altitude and speed,
+    -- heading for the next point; 200 m apart if there were ever more than one
+    local air = m.takeoff == "air"
+    local first, second = m.route[1], m.route[2] or m.route[1]
+    local heading = math.atan2(second.z - first.z, second.x - first.x)
+    if heading < 0 then heading = heading + 2 * math.pi end
     for i = 1, m.count do
         -- a runway takeoff has no spot: DCS lines the group up on the runway
-        local spot = (not runway) and m.parking[i] or { x = m.route[1].x, z = m.route[1].z }
+        local spot = (not runway and not air) and m.parking[i]
+            or { x = first.x - (i - 1) * 200 * math.cos(heading), z = first.z - (i - 1) * 200 * math.sin(heading) }
         local pylons = {}
         for _, py in ipairs(lo.pylons) do pylons[py.num] = { CLSID = py.CLSID, num = py.num } end
         units[i] = {
             name = m.id .. "_" .. i, type = m.aircraft_type, skill = m.skill,
-            x = spot.x, y = spot.z, alt = land.getHeight({ x = spot.x, y = spot.z }), alt_type = "BARO",
-            heading = 0, speed = 0, parking = spot.terminal_index,
+            x = spot.x, y = spot.z, alt = air and first.alt_m or land.getHeight({ x = spot.x, y = spot.z }), alt_type = "BARO",
+            heading = air and heading or 0, speed = air and first.speed_mps or 0, parking = spot.terminal_index,
             payload = { pylons = pylons, fuel = lo.fuel, chaff = lo.chaff, flare = lo.flare,
                         gun = m.keeps_gun and 100 or 0 },
             AddPropAircraft = { STN_L16 = nextStn() },
@@ -279,7 +286,8 @@ local function buildGroup(m, launchId, landingId)
     local points = {}
     local pingAt = pingAttackIndex(m)
     for index, r in ipairs(m.route) do
-        if r.kind == "takeoff" then
+        if r.kind == "takeoff" or r.air_start then
+            -- the first waypoint: takeoff, or an air start's first point (the same tasks)
             local tasks = {
                 { number = 1, auto = false, id = "WrappedAction", enabled = true,
                   params = { action = { id = "EPLRS", params = { value = true, groupId = groupId } } } },
@@ -305,11 +313,15 @@ local function buildGroup(m, launchId, landingId)
             if r.carries_attack_tasks then
                 for _, t in ipairs(attackTasks(m, #tasks + 1)) do tasks[#tasks + 1] = t end
             end
-            points[#points + 1] = waypoint(r, {
-                type = runway and "TakeOff" or "TakeOffParkingHot",
-                action = runway and "From Runway" or "From Parking Area Hot", airdromeId = launchId,
-                alt = land.getHeight({ x = r.x, y = r.z }), speed = 0, task = combo(tasks),
-            })
+            if r.air_start then
+                points[#points + 1] = waypoint(r, { task = combo(tasks) })
+            else
+                points[#points + 1] = waypoint(r, {
+                    type = runway and "TakeOff" or "TakeOffParkingHot",
+                    action = runway and "From Runway" or "From Parking Area Hot", airdromeId = launchId,
+                    alt = land.getHeight({ x = r.x, y = r.z }), speed = 0, task = combo(tasks),
+                })
+            end
         elseif r.carries_attack_tasks then
             local tasks = { reachedCommand(m, index) }
             for _, t in ipairs(attackTasks(m, 2)) do tasks[#tasks + 1] = t end
@@ -366,7 +378,7 @@ function SpawnAircraftGroups.spawn(m)
             Log.warn(string.format("%s unit %d: asked for '%s', DCS spawned '%s'", m.id, i, m.aircraft_type, u:getTypeName()))
         end
     end
-    WriteEventLog.spawned(m, m.takeoff == "runway")
+    WriteEventLog.spawned(m)
     if spent > SLOW_SPAWN_S then
         Log.warn(string.format("%s: addGroup took %.1f s — the sim froze (was %s preloaded?)", m.id, spent, m.aircraft_type))
     end

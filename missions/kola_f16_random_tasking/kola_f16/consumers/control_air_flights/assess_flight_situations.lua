@@ -6,14 +6,18 @@
 -- geometry) happens at most once per flight per check.
 --
 -- A situation is a plain table. The basic facts are filled in at once:
---   id, coalition, mission, group, pos { x, y, z } (the lead, y = altitude), airborne
+--   id, coalition, mission, group, pos { x, y, z } (the lead: its first jet in the air,
+--   y = altitude), airborne
 -- the others are worked out the first time a directive asks for them:
+--   jets                 every airborne jet { unit, name, pos }: kill zones, depth and
+--                        threats are asked for each, not the lead alone
 --   velocity             { x, y, z } of the lead
 --   air_to_air           { count, radar_count, longest_radar } — missiles aboard the flight
 --   anti_radiation_missiles  count aboard the flight
 --   anti_radiation_missiles_by_jet  count aboard each live jet, by unit name
---   threats              enemy airplanes the picture holds within the warning range (and
---                        one that just fired at the flight, at any range), nearest first:
+--   threats              enemy airplanes the picture holds within the warning range of any
+--                        jet (and one that just fired at the flight, at any range), nearest
+--                        first, each measured from the jet of ours closest to it:
 --                        { group, type, range_m, aspect_deg, closing_mps, pos }
 --   shot_at              the last report of an enemy firing at the flight (from the
 --                        controller's DCS event handler), or false
@@ -43,14 +47,47 @@ function AssessFlightSituations.liveGroup(name)
     return ok and live and g or nil
 end
 
--- The first live unit of a group.
+-- Why group `name` is no longer there, for a CONTROL line: "MSN2017_CAP destroyed",
+-- "… landed" (its jets despawned after landing), "… down (1 lost, 1 landed)", or "… gone"
+-- for a group the scheduler doesn't keep (a player). (2026-10-04 22:39 run: "leash stand
+-- down: MSN2017_CAP destroyed" for an F-15C that had landed at Alakurtti.)
+function AssessFlightSituations.goneText(name)
+    local r = ScheduleAirTaskingOrders.record(name)
+    if not r then return name .. " gone" end
+    local landed = r.landed + (r.removed or 0)
+    if r.lost > 0 and landed == 0 then return name .. " destroyed" end
+    if landed > 0 and r.lost == 0 then return name .. " landed" end
+    if landed > 0 then return string.format("%s down (%d lost, %d landed)", name, r.lost, landed) end
+    return name .. " gone"
+end
+
+-- The first live unit of a group: its first airborne one when any jet of it is in the
+-- air (a lead still on the ramp or landed isn't where the flight is), else its first.
 local function leadOf(g)
     local ok, lead = pcall(function()
+        local first
         for _, u in ipairs(g:getUnits() or {}) do
-            if u:isExist() and u:getLife() > 0 then return u end
+            if u:isExist() and u:getLife() > 0 then
+                if u:inAir() then return u end
+                first = first or u
+            end
         end
+        return first
     end)
     return ok and lead or nil
+end
+
+-- Every live jet of group g in the air, as { unit, name, pos }.
+local function airborneJets(g)
+    local list = {}
+    pcall(function()
+        for _, u in ipairs(g:getUnits() or {}) do
+            if u:isExist() and u:getLife() > 0 and u:inAir() then
+                list[#list + 1] = { unit = u, name = u:getName(), pos = u:getPoint() }
+            end
+        end
+    end)
+    return list
 end
 
 -- How far past the contested airspace pos lies, in metres (0 when not in enemy airspace).
@@ -66,15 +103,19 @@ end
 -- bug 41), whose kill zone the aircraft at pos (y: its altitude) is inside, or nil. The
 -- zone is `fraction` of how far it reaches at the aircraft's height above the ground
 -- (lib/sam_reach.lua; a base defense its full reach at any height). Never one of
--- `except` (a set of site or group ids).
-function AssessFlightSituations.enemyKillZone(coalition, pos, fraction, except)
+-- `except` (a set of site or group ids). A site out of the fight (its radars destroyed
+-- to its success fraction: the launch gate's test, DecideLaunches.outOfTheFight) isn't
+-- one, unless `countSilenced`: SEAD flights keep counting every live site, so their
+-- attack and go cold stay as they flew (John, 2026-10-04: don't change SEAD attack behavior).
+function AssessFlightSituations.enemyKillZone(coalition, pos, fraction, except, countSilenced)
     local height = SamReach.aboveGround(pos, pos.y)
     local p = { x = pos.x, z = pos.z }
     for _, s in ipairs(_plan.sam_sites and _plan.sam_sites.sites or {}) do
         if s.side ~= coalition and not (except and except[s.id]) and AIR_ROUTING.threat_layers[s.layer]
            and (s.engage_m or 0) > 0
            and Util.dist(p, s.pos) < SamReach.radius(s, height) * fraction
-           and AssessFlightSituations.liveGroup(s.id) then
+           and AssessFlightSituations.liveGroup(s.id)
+           and (countSilenced or not DecideLaunches.outOfTheFight(s.id)) then
             return s.id
         end
     end
@@ -85,6 +126,39 @@ function AssessFlightSituations.enemyKillZone(coalition, pos, fraction, except)
         end
     end
     return nil
+end
+
+-- The enemy kill zone (enemyKillZone) any airborne jet of the flight in situation s is
+-- inside, and that jet's name; nil when none is. `skip(p)`: a jet at p ({ x, z }) isn't
+-- asked. Every jet, not the lead alone (2026-10-04 22:39 run: MSN2043_STRIKE's wingman
+-- fought 16 km inside an Ivalo SA-11's ring and died while its lead stayed outside it,
+-- and the fight was never broken off).
+function AssessFlightSituations.flightKillZone(s, fraction, except, countSilenced, skip)
+    for _, j in ipairs(s.jets) do
+        if not (skip and skip({ x = j.pos.x, z = j.pos.z })) then
+            local site = AssessFlightSituations.enemyKillZone(s.coalition, j.pos, fraction, except, countSilenced)
+            if site then return site, j.name end
+        end
+    end
+    return nil
+end
+
+-- How far past the contested airspace the deepest airborne jet of the flight is, m.
+function AssessFlightSituations.flightEnemyDepth(s, searchM)
+    local deepest = 0
+    for _, j in ipairs(s.jets) do
+        deepest = math.max(deepest, AssessFlightSituations.enemyDepth(s.coalition, { x = j.pos.x, z = j.pos.z }, searchM))
+    end
+    return deepest
+end
+
+-- Whether a live jet of the flight is still on the ground before its takeoff (a wingman
+-- in the taxi queue): the flight isn't down while one is (bug 48).
+function AssessFlightSituations.waitingToTakeOff(s)
+    for _, u in ipairs(s.units) do
+        if not u.airborne and not ScheduleAirTaskingOrders.tookOff(u.name) then return true end
+    end
+    return false
 end
 
 -- The SAM sites a flight may be inside on purpose: its own target site and the rings
@@ -183,29 +257,50 @@ local function angleBetween(a, b)
     return d > 180 and 360 - d or d
 end
 
--- The live geometry of enemy group `name` against the flight, or nil.
+-- The live geometry of enemy group `name` against the flight, or nil: the closest pair
+-- of an airborne jet of the flight and a live jet of the group (an enemy wingman, or our
+-- own wingman far from its lead, counts as much as the leads).
 local function geometry(s, name, typeName)
     local g = AssessFlightSituations.liveGroup(name)
-    local lead = g and leadOf(g)
-    local ok, p, v = pcall(function() return lead:getPoint(), lead:getVelocity() end)
-    if not (ok and p and v) then return nil end
-    local me, myV = s.pos, s.velocity
-    local dx, dz = me.x - p.x, me.z - p.z
-    local range = math.sqrt(dx * dx + dz * dz)
-    local ux, uz = dx / math.max(range, 1), dz / math.max(range, 1)   -- from the threat toward the flight
-    local closing = (v.x - myV.x) * ux + (v.z - myV.z) * uz
-    local speed = math.sqrt(v.x * v.x + v.z * v.z)
-    local aspect = speed > 1 and angleBetween(headingDeg(v), headingDeg({ x = ux, z = uz })) or 180
-    return { group = name, type = typeName, range_m = range, aspect_deg = aspect, closing_mps = closing, pos = p }
+    if not g then return nil end
+    local theirs = airborneJets(g)
+    if #theirs == 0 then
+        local lead = leadOf(g)
+        local ok, p = pcall(function() return lead:getPoint() end)
+        if ok and p then theirs[1] = { unit = lead, pos = p } end
+    end
+    local best
+    for _, t in ipairs(theirs) do
+        local okV, v = pcall(function() return t.unit:getVelocity() end)
+        for _, j in ipairs(s.jets) do
+            local okMy, myV = pcall(function() return j.unit:getVelocity() end)
+            if okV and v and okMy and myV then
+                local p, me = t.pos, j.pos
+                local dx, dz = me.x - p.x, me.z - p.z
+                local range = math.sqrt(dx * dx + dz * dz)
+                if not best or range < best.range_m then
+                    local ux, uz = dx / math.max(range, 1), dz / math.max(range, 1)   -- from the threat toward the jet
+                    local closing = (v.x - myV.x) * ux + (v.z - myV.z) * uz
+                    local speed = math.sqrt(v.x * v.x + v.z * v.z)
+                    local aspect = speed > 1 and angleBetween(headingDeg(v), headingDeg({ x = ux, z = uz })) or 180
+                    best = { group = name, type = typeName, range_m = range, aspect_deg = aspect, closing_mps = closing, pos = p }
+                end
+            end
+        end
+    end
+    return best
 end
 
--- Enemy airplanes the coalition's picture tracks within the warning range, with their
--- live geometry against the flight, nearest first; plus the enemy that fired at the
--- flight in the last shot_memory_s, at any range (the shot gives it away).
+-- Enemy airplanes the coalition's picture tracks within the warning range of any
+-- airborne jet of the flight, with their live geometry against the flight, nearest first;
+-- plus the enemy that fired at the flight in the last shot_memory_s, at any range (the
+-- shot gives it away).
 FACTS.threats = function(s)
     local lookM = AIR_CONTROL.self_defence.warning_range_km * 1000
     local list, seen = {}, {}
-    for _, c in ipairs(TrackRadarPicture.contactsNear(s.coalition, { x = s.pos.x, z = s.pos.z }, lookM + 20000)) do
+    local spread = 0
+    for _, j in ipairs(s.jets) do spread = math.max(spread, Util.dist({ x = j.pos.x, z = j.pos.z }, { x = s.pos.x, z = s.pos.z })) end
+    for _, c in ipairs(TrackRadarPicture.contactsNear(s.coalition, { x = s.pos.x, z = s.pos.z }, lookM + 20000 + spread)) do
         if c.category == "airplane" and c.state == "tracked" then
             local t = geometry(s, c.group, c.type)
             if t and t.range_m <= lookM then
@@ -224,10 +319,32 @@ FACTS.threats = function(s)
     return list
 end
 
+-- How many of the flight's own air-to-air missiles are still flying (the controller's
+-- DCS event handler keeps each one the flight fires; spent ones are dropped here).
+FACTS.own_missiles_in_flight = function(s)
+    local list = s.watch.reports.own_missiles
+    if not list then return 0 end
+    local flying = {}
+    for _, weapon in ipairs(list) do
+        local ok, exists = pcall(function() return weapon:isExist() end)
+        if ok and exists then flying[#flying + 1] = weapon end
+    end
+    s.watch.reports.own_missiles = flying
+    return #flying
+end
+
 FACTS.shot_at = function(s)
     local r = s.watch.reports.shot_at
     if r and timer.getTime() - r.time <= AIR_CONTROL.self_defence.shot_memory_s then return r end
     return false
+end
+
+-- Every live jet of the flight in the air, { unit, name, pos }; the lead alone when none
+-- is. The kill zones, the threats and the leash ask each one.
+FACTS.jets = function(s)
+    local list = airborneJets(s.group)
+    if #list == 0 then list[1] = { unit = s.lead, name = s.lead:getName(), pos = s.pos } end
+    return list
 end
 
 -- Every live jet of the flight: { name, pos, airborne }.

@@ -12,7 +12,8 @@
 --                see a fixed sector (Patriot). place:
 --                  centre     radars and command post, inner 35 % of the footprint
 --                  launchers  45-95 % of the footprint, around the radars
---                  edge       support vehicles, outer 60-100 %
+--                  edge       support vehicles, outer 60-100 % (not the supply trucks:
+--                             SAM_SITE_SUPPLY below places those)
 --   escort_role  optional: a point-defense group next to the site, types from
 --                COALITION_ROSTER[side][escort_role] (the base-defense rosters)
 --
@@ -37,7 +38,6 @@ SAM_SITE_RECIPE = {
             { "S-300PS 54K6 cp",    1, 1, "centre" },
             { "S-300PS 5P85C ln",   2, 2, "launchers" },
             { "S-300PS 5P85D ln",   2, 4, "launchers" },
-            { "Ural-375",           1, 2, "edge" },
             { "ZIL-131 KUNG",       1, 1, "edge" },
         },
         escort_role = "radar_missile_launcher",           -- Pantsir / Tor next to every S-300
@@ -54,7 +54,6 @@ SAM_SITE_RECIPE = {
             { "Patriot EPP",        1, 1, "centre" },
             { "Patriot AMG",        1, 1, "centre" },
             { "Patriot ln",         6, 6, "launchers" },
-            { "M 818",              1, 2, "edge" },
         },
         escort_role = "infrared_missile_launcher",        -- Avenger alongside
     },
@@ -67,7 +66,6 @@ SAM_SITE_RECIPE = {
             { "SA-11 Buk SR 9S18M1",  1, 1, "centre" },
             { "SA-11 Buk CC 9S470M1", 1, 1, "centre" },
             { "SA-11 Buk LN 9A310M1", 3, 4, "launchers" },
-            { "Ural-375",             1, 2, "edge" },
         },
     },
     ["SA-6"] = {
@@ -76,7 +74,6 @@ SAM_SITE_RECIPE = {
         parts = {
             { "Kub 1S91 str",       1, 1, "centre" },
             { "Kub 2P25 ln",        3, 4, "launchers" },
-            { "Ural-375",           1, 1, "edge" },
         },
     },
     ["NASAMS"] = {
@@ -86,7 +83,6 @@ SAM_SITE_RECIPE = {
             { "NASAMS_Radar_MPQ64F1", 2, 2, "centre" },   -- DCS wants several for coverage
             { "NASAMS_Command_Post",  1, 1, "centre" },
             { "NASAMS_LN_C",          2, 3, "launchers" },
-            { "CHAP_M1083",           1, 1, "edge" },
         },
     },
     ["IRIS-T SLM"] = {
@@ -96,7 +92,6 @@ SAM_SITE_RECIPE = {
             { "CHAP_IRISTSLM_STR",  1, 1, "centre" },
             { "CHAP_IRISTSLM_CP",   1, 1, "centre" },
             { "CHAP_IRISTSLM_LN",   2, 3, "launchers" },
-            { "CHAP_M1083",         1, 1, "edge" },
         },
     },
     ["Hawk"] = {
@@ -108,7 +103,6 @@ SAM_SITE_RECIPE = {
             { "Hawk pcp",           1, 1, "centre" },
             { "Hawk cwar",          0, 1, "centre" },
             { "Hawk ln",            3, 3, "launchers" },
-            { "M 818",              1, 1, "edge" },
         },
     },
 
@@ -181,4 +175,21 @@ SAM_SITE_PLACE = {
     centre    = { 0,    0.35 },
     launchers = { 0.45, 0.95 },
     edge      = { 0.6,  1.0  },
+}
+
+-- Supply trucks, so launchers rearm (2026-10-04, John): DCS rearms a launcher from a
+-- supply truck within a ~600 ft circle (rearm_radius_m; measured in the mission editor),
+-- and only some truck types are supply trucks (COALITION_ROSTER[side].supply_truck:
+-- "Truck Ural-4320" / "Truck M939 Heavy"). Every SAM site but early warning gets them,
+-- placed after its launchers and escort, where every launcher and escort unit is within
+-- rearm_radius_m - margin_m of one (Placement.supplyTruckPoints): one truck, a second only
+-- if one can't reach them all. The recipes' edge trucks used to be the supply trucks,
+-- and on the 2026-10-03 roll 10 launchers on 8 sites were out of their reach. Base-
+-- defense SAMs get theirs from BASE_DEFENSE_PLACEMENT (supply_truck).
+SAM_SITE_SUPPLY = {
+    rearm_radius_m = 183,   -- ~600 ft
+    margin_m       = 18,    -- so a launcher that drives a little is still in reach
+    max_trucks     = 2,
+    spacing_m      = 20,
+    tries          = 60,
 }

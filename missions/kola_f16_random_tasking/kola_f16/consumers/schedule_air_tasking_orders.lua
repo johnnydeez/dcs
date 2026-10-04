@@ -30,7 +30,7 @@ local RAMP_LOSS_S = 120   -- a jet destroyed this soon after spawning, before ta
 
 local _plan
 local _byId = {}      -- mission id → planned mission
-local _flights = {}   -- mission id → { mission, spawned, spawned_at, destroyed = n, lost, landed, removed, again, note, stood_down, down }
+local _flights = {}   -- mission id → { mission, spawned, spawned_at, destroyed = n, lost, landed, removed, again, later, note, stood_down, down }
 local _targets = {}   -- critical object name → mission id
 local _gone    = {}   -- names already counted destroyed or lost
 local _tookOff = {}   -- unit names of AI jets that have taken off
@@ -121,6 +121,7 @@ local function rampLoss(f, unitName)
     local after = timer.getTime() - f.spawned_at
     if after > RAMP_LOSS_S then return end
     local m = f.mission_flown or f.mission
+    if m.takeoff == "air" then return end   -- spawned in the air: never on a ramp
     local n = tonumber(unitName:match("_(%d+)$") or "")
     local spot = n and m.parking and m.parking[n]
     local text = string.format("%s destroyed on the ramp %d s after spawning, before taking off, at %s spot %s: a spawn failure, not combat",
@@ -232,12 +233,13 @@ end
 -- A copy of a planned mission launched `delay` seconds later than planned, under `id`,
 -- on spots free now (the plan itself is never changed). nil when no spots are free.
 local function later(m, delay, id)
-    local spots = spotsNow(m)
-    if not spots then return nil end
     local c = {}
     for k, v in pairs(m) do c[k] = v end
     c.id = id or m.id
     c.start_s, c.takeoff_s, c.tot_s, c.end_s = m.start_s + delay, m.takeoff_s + delay, m.tot_s + delay, m.end_s + delay
+    if m.takeoff == "air" then return c end   -- an air start needs no spot (the AWACS)
+    local spots = spotsNow(m)
+    if not spots then return nil end
     c.parking = spots
     c.route = {}
     for i, r in ipairs(m.route) do c.route[i] = r end
@@ -261,10 +263,16 @@ function ScheduleAirTaskingOrders.planned(id)
 end
 
 -- The record of flight `id`: { mission, spawned, destroyed, lost, landed, last_landing_at,
--- last_landed (unit name), again (the id of its second try), note, stood_down }, or nil.
+-- last_landed (unit name), again (the id of its second try), later (its third, a rotation
+-- flight's come-back), note, stood_down }, or nil.
 -- Read it, never change it.
 function ScheduleAirTaskingOrders.record(id)
     return _flights[id]
+end
+
+-- True once AI jet `unitName` has taken off.
+function ScheduleAirTaskingOrders.tookOff(unitName)
+    return _tookOff[unitName] == true
 end
 
 -- True once the object `name` has been counted destroyed or lost.
@@ -300,13 +308,15 @@ function ScheduleAirTaskingOrders.launchNow(id, delay)
 end
 
 -- Fly SEAD flight `by` once more now (a player's SEAD tasking by two AI jets), as
--- `<by>_AGAIN` on spots free now. Returns the copy, or nil.
-function ScheduleAirTaskingOrders.flyAgain(by)
+-- `<by>_AGAIN` on spots free now; with `comeBack`, its third try `<by>_LATER` (a rotation
+-- site still in the fight after both, AIR_PACKAGE.come_back_after_s). Returns the copy,
+-- or nil.
+function ScheduleAirTaskingOrders.flyAgain(by, comeBack)
     local s = aiVersion(_byId[by])
-    local copy = later(s, timer.getTime() + 1 - s.start_s, s.id .. "_AGAIN")
+    local copy = later(s, timer.getTime() + 1 - s.start_s, s.id .. (comeBack and "_LATER" or "_AGAIN"))
     if not copy or not SpawnAircraftGroups.spawn(copy) then return nil end
     _flights[copy.id] = { mission = copy, spawned = true, spawned_at = timer.getTime(), destroyed = 0, lost = 0, landed = 0 }
-    _flights[by].again = copy.id
+    if comeBack then _flights[by].later = copy.id else _flights[by].again = copy.id end
     return copy
 end
 

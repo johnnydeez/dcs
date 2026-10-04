@@ -42,6 +42,13 @@ local A = AssessFlightSituations
 
 local DIRECTIVES = {}
 
+-- "inside the kill zone of <site>", naming the jet when the flight has more than one in
+-- the air ("MSN2043_STRIKE_2 inside the kill zone of SAM_IVAL_SA11_3").
+local function insideText(s, jet, site)
+    if #s.jets > 1 and jet then return string.format("%s inside the kill zone of %s", jet, site) end
+    return "inside the kill zone of " .. site
+end
+
 -- ── leash ───────────────────────────────────────────────────────
 
 DIRECTIVES.leash = {
@@ -62,7 +69,7 @@ DIRECTIVES.leash = {
                 why = why or (contact and (name .. " back over its own airspace, heading away")
                                        or (name .. " lost from the radar picture"))
             else
-                why = why or (name .. " destroyed")
+                why = why or A.goneText(name)
             end
         end
         local raidGone = why ~= nil
@@ -71,13 +78,13 @@ DIRECTIVES.leash = {
             return nil
         end
         if raidGone then return { kind = "home", why = why } end
-        local depth = A.enemyDepth(c, { x = s.pos.x, z = s.pos.z }, L.front_search_km * 1000)
+        local depth = A.flightEnemyDepth(s, L.front_search_km * 1000)
         if depth > L.enemy_airspace_km * 1000 then
             return { kind = "home", why = depth == math.huge and "deep in enemy airspace"
                 or string.format("%.0f km into enemy airspace", depth / 1000) }
         end
-        local site = A.enemyKillZone(c, s.pos, L.killzone_fraction)
-        if site then return { kind = "home", why = "inside the kill zone of " .. site } end
+        local site, jet = A.flightKillZone(s, L.killzone_fraction)
+        if site then return { kind = "home", why = insideText(s, jet, site) } end
         return nil
     end,
 }
@@ -121,9 +128,11 @@ DIRECTIVES.suppression = {
         local p = { x = s.pos.x, z = s.pos.z }
         if a.site and a.launch then
             -- pressed on past where it may go: its press-on point (bug 36), or its launch
-            -- point on a plan without one
+            -- point on a plan without one; its jet closest to the site counts
             local limit = a.press_on or a.launch
-            local pressed = Util.dist(limit, a.site) - Util.dist(p, a.site)
+            local closest = math.huge
+            for _, j in ipairs(s.jets) do closest = math.min(closest, Util.dist({ x = j.pos.x, z = j.pos.z }, a.site)) end
+            local pressed = Util.dist(limit, a.site) - closest
             if pressed > R.press_km * 1000 then
                 return { kind = "home", why = string.format("%.0f km past its %s toward %s", pressed / 1000,
                     a.press_on and "press-on point" or "launch point", a.groups and a.groups[1] or "its site") }
@@ -146,11 +155,12 @@ DIRECTIVES.suppression = {
         -- not from the pop-up until the salvo is away: up there the other sites reach
         -- farther than their low figure, and that short exposure is the plan's (the
         -- launch point is cleared only of their low reach; roadmap item 12, bug 27), the
-        -- press-on leg included (bug 36)
+        -- press-on leg included (bug 36); asked for each jet, a jet in its shot area with
+        -- missiles still aboard the flight left alone
         mem.accepted = mem.accepted or A.acceptedRings(m)
-        local popping = a.launch and arms > 0 and DirectivesPerFlight.inShotArea(m, p)
-        local other = not popping and A.enemyKillZone(m.coalition, s.pos, R.killzone_fraction, mem.accepted)
-        if other then return { kind = "home", why = "inside the kill zone of " .. other } end
+        local popping = a.launch and arms > 0 and function(q) return DirectivesPerFlight.inShotArea(m, q) end or nil
+        local other, jet = A.flightKillZone(s, R.killzone_fraction, mem.accepted, true, popping)
+        if other then return { kind = "home", why = insideText(s, jet, other) } end
         if mem.arrived_s and now > mem.arrived_s + R.attack_time_s then
             return { kind = "home", why = string.format("still on the attack %d min after it reached its launch point",
                 math.floor(R.attack_time_s / 60)) }
@@ -224,6 +234,16 @@ DIRECTIVES.landing = {
             if u.airborne then up[#up + 1] = u else onGround = true end
         end
         local landedOne = record and (record.landed or 0) > 0
+        -- a jet of the flight just landed and another is still up: each one still up gets
+        -- its own landing order at once (bug 19: the wingman left its hold the moment its
+        -- lead touched down and flew a straight line; in the 2026-10-04 22:39 run 9 of 11
+        -- two-ships ended that way; the group's order went to the lead on the ground)
+        if landedOne and #up > 0 and onGround and mem.after_landing ~= record.last_landing_at then
+            mem.after_landing = record.last_landing_at
+            local names = {}
+            for _, u in ipairs(up) do names[#names + 1] = u.name end
+            return { kind = "land", why = string.format("%s landed, %s still in the air", record.last_landed or "a jet", table.concat(names, ", ")) }
+        end
         local homebound = w.state == "going_home" or landedOne or (m.end_s and now > m.end_s)
         if not homebound then return nil end
         -- each jet's closest approach to its base since it was on its way home
@@ -242,8 +262,9 @@ DIRECTIVES.landing = {
         if not lost and m.end_s and now > math.max(m.end_s, mem.ordered_at or 0) + L.overdue_s then
             lost = string.format("still in the air %d min after its planned landing", math.floor((now - m.end_s) / 60))
         end
-        -- never while a jet of it that landed is still on the ramp: the order would send it up again
-        if not lost or onGround then return nil end
+        -- with a jet of it on the ground the order goes to each jet in the air on its own
+        -- (GiveOrders.land), so a landed one isn't sent up again
+        if not lost then return nil end
         return { kind = "land", why = lost }
     end,
 }
@@ -276,14 +297,24 @@ end
 -- 16:50 run: MSN7023's fight took both Su-34s up to 14,000 ft inside the Patriot it was
 -- sent against). Inside the shot area no ring breaks the fight off, as for the go cold
 -- (bug 39: MSN2025_SEAD_AGAIN's fight was broken off at its pop-up for the Olenya SA-10).
+-- A SEAD flight counts every live site, silenced or not, as it always has.
+-- Every airborne jet is asked (a wingman fighting far from its lead, 2026-10-04 22:39
+-- run); returns the site and the jet.
 local function fightKillZone(s, mem, R)
     local m = s.mission
     if m.attack and m.attack.kind == "harm_salvo" then
-        if DirectivesPerFlight.inShotArea(m, { x = s.pos.x, z = s.pos.z }) then return nil end
-        return A.enemyKillZone(s.coalition, s.pos, R.killzone_fraction)
+        return A.flightKillZone(s, R.killzone_fraction, nil, true, function(q) return DirectivesPerFlight.inShotArea(m, q) end)
     end
     mem.accepted = mem.accepted or A.acceptedRings(m)
-    return A.enemyKillZone(s.coalition, s.pos, R.killzone_fraction, mem.accepted)
+    return A.flightKillZone(s, R.killzone_fraction, mem.accepted)
+end
+
+-- Whether any airborne jet of a SEAD flight is in its shot area.
+local function inShotAreaAny(s)
+    for _, j in ipairs(s.jets) do
+        if DirectivesPerFlight.inShotArea(s.mission, { x = j.pos.x, z = j.pos.z }) then return true end
+    end
+    return false
 end
 
 -- Whether a flight commits to bandit t. Every flight does, but a SEAD flight with its
@@ -293,17 +324,24 @@ end
 -- away from; in its shot area it finishes the salvo unless fired upon (John, 2026-10-02,
 -- bug 39: in the 17:15 run fights cost 6 SEAD jets, sent one SEAD flight home 82 s after
 -- takeoff and broke a salvo off after 3 of 8 missiles). Said once per bandit.
+-- After its salvo it is still no hunter: on its way home it commits only when fired upon
+-- or inside sead_commit_km, and otherwise keeps going (2026-10-04, John: option (a); in the
+-- 2026-10-03 14:15 run the two rotations met head-on after their salvoes, committed at
+-- 72-99 km, and 10 of the 15 jets lost were SEAD jets in those fights).
 local function seadCommits(w, s, mem, R, t)
     local m = s.mission
-    if not (m.attack and m.attack.kind == "harm_salvo") or s.anti_radiation_missiles == 0 or t.fired then return true end
-    local shooting = DirectivesPerFlight.inShotArea(m, { x = s.pos.x, z = s.pos.z })
+    if not (m.attack and m.attack.kind == "harm_salvo") or t.fired then return true end
+    local arms = s.anti_radiation_missiles
+    local shooting = arms > 0 and inShotAreaAny(s)
     if not shooting and t.range_m <= R.sead_commit_km * 1000 then return true end
     mem.pressed_on = mem.pressed_on or {}
     if not mem.pressed_on[t.group] then
         mem.pressed_on[t.group] = true
-        ControlAirFlights.say(m.coalition, m.id, "press on", string.format("bandit %s, %s; %s, %d anti-radiation missiles aboard",
-            threatText(t), closingText(t), shooting and "finishing its salvo first" or "staying low on its route",
-            s.anti_radiation_missiles))
+        ControlAirFlights.say(m.coalition, m.id, "press on", string.format("bandit %s, %s; %s",
+            threatText(t), closingText(t),
+            arms == 0 and "salvo away, staying on its way home"
+                or string.format("%s, %d anti-radiation missiles aboard",
+                    shooting and "finishing its salvo first" or "staying low on its route", arms)))
     end
     return false
 end
@@ -312,18 +350,23 @@ DIRECTIVES.self_defence = {
     clock = "fast",
     on_task_only = false,   -- a flight going home still shoots back
     check = function(w, s)
-        if not s.airborne then return nil end
+        local d = w.defending
+        if not s.airborne then
+            -- its fighting jet shot down with a wingman still on the ramp: the fight ends,
+            -- so the next jet up starts clean (bug 48)
+            if d then return { kind = "resume", why = "no jet of the flight left in the air" } end
+            return nil
+        end
         local R = AIR_CONTROL.self_defence
         local mem = w.memo.self_defence
         local now = timer.getTime()
-        local d = w.defending
         if d then
             -- in a fight: back to the mission when it's over
             mem.hot = nil
             local why
             local t = findThreat(s, d.group)
             if not A.liveGroup(d.group) then
-                why = d.group .. " destroyed"
+                why = A.goneText(d.group)
             -- a bandit that just fired at the flight stays the fight for shot_memory_s
             -- whether the picture holds it or not (2026-10-02: MSN5024_SEAD dropped the
             -- F-15C that had just fired at it 4 s into the fight, Red's picture never held it)
@@ -336,12 +379,16 @@ DIRECTIVES.self_defence = {
                 why = d.group .. string.format(" beyond %d km", R.warning_range_km)
             elseif t.aspect_deg > R.cold_aspect_deg then
                 why = d.group .. " turned cold"
-            elseif now - d.since > R.max_engage_s then
+            -- time is up, but never in the middle of the shots: not while a missile of the
+            -- flight is still flying, nor within shot_memory_s of being fired upon
+            -- (2026-10-04, after the 2026-10-03 14:15 run: both SEAD duels were timed out
+            -- the moment the missiles were in the air, and the jets were hit 1-33 s later)
+            elseif now - d.since > R.max_engage_s and s.own_missiles_in_flight == 0 and not s.shot_at then
                 why = string.format("%d min on %s, time is up", math.floor(R.max_engage_s / 60), d.group)
             else
-                local site = fightKillZone(s, mem, R)
+                local site, jet = fightKillZone(s, mem, R)
                 if site then
-                    why = "breaking off: inside the kill zone of " .. site
+                    why = "breaking off: " .. insideText(s, jet, site)
                     -- not that bandit again while the flight is still inside a kill zone
                     -- (17:15 run: MSN2025_SEAD_AGAIN defend, break off 5 s later, defend again)
                     mem.held_off = d.group

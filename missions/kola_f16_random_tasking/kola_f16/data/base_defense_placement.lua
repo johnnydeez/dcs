@@ -17,6 +17,11 @@
 --                can't keep it inside `spread` is dropped, never pushed outward.
 --   mixed_types  true = pick a type per unit (infantry squad); false = one type per
 --                group (a gun battery is all the same gun)
+--   supply_truck true = a SAM: the group gets a supply truck of its coalition
+--                (COALITION_ROSTER[side].supply_truck), in a group of its own
+--                (<id>_supply, so a live truck never keeps a dead SAM group alive), placed
+--                within rearm reach of every unit (SAM_SITE_SUPPLY; 2026-10-04, John: every
+--                SAM rearms)
 --
 -- Every group and every unit position must pass Placement.isClear (off runways,
 -- taxiways, aprons, parking and water); margins are in CONFIG.
@@ -44,6 +49,7 @@ BASE_DEFENSE_PLACEMENT = {
                     runway_side = { 2, 0, 60 },
                     runway_end = { 1, 0, 10 } },
         ring = { 500, 1500 }, units = { 1, 2 }, spread = 80, unit_spacing = 40, mixed_types = false,
+        supply_truck = true,
     },
     radar_missile_launchers = {
         role = "radar_missile_launcher",
@@ -51,6 +57,7 @@ BASE_DEFENSE_PLACEMENT = {
                     runway_side = { 2, 0, 60 },
                     runway_end = { 1, 0, 10 } },
         ring = { 500, 1500 }, units = { 1, 1 }, spread = 80, unit_spacing = 40, mixed_types = false,
+        supply_truck = true,
     },
     -- infantry may sit at the forest edge: wider offsets, buildings allowed
     shoulder_launched_missile_teams = {
@@ -59,6 +66,7 @@ BASE_DEFENSE_PLACEMENT = {
                     runway_side = { 2, 50, 250 },
                     runway_end = { 1, 0, 10 } },
         ring = { 800, 2000 }, units = { 2, 3 }, spread = 30, unit_spacing = 10, mixed_types = false,
+        supply_truck = true,
     },
     security_infantry = {
         role = "infantry",

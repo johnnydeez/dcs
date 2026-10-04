@@ -19,6 +19,7 @@
 --   summary    = { red = { zones_held, sites, by_layer = { [layer] = n } }, blue = … },
 -- }
 -- Group ids: SAM_<CODE>_<system>_<n> (e.g. SAM_OLEN_SA10_1), escorts <id>_escort.
+-- A site's supply trucks (SAM_SITE_SUPPLY) are units of its own group, placed last.
 
 PlanSamSites = {}
 
@@ -58,6 +59,8 @@ function PlanSamSites.validate()
     end
 
     for _, side in ipairs(COALITIONS) do
+        local trucks = COALITION_ROSTER[side] and COALITION_ROSTER[side].supply_truck
+        if not trucks or #trucks == 0 then bad(string.format("COALITION_ROSTER.%s has no supply_truck (SAM_SITE_SUPPLY)", side)) end
         for layer, list in pairs(COALITION_SAM_SYSTEMS[side] or {}) do
             for _, e in ipairs(list) do
                 local r = SAM_SITE_RECIPE[e[1]]
@@ -309,13 +312,18 @@ local function buildSite(ctx, c, role, system, layer)
     local r    = math.min(radius, recipe.footprint_m)
 
     local units, occupied, broken = {}, {}, false
+    local launchers = {}   -- what the supply trucks must reach
     for _, placeName in ipairs({ "centre", "launchers", "edge" }) do
         for _, part in ipairs(recipe.parts) do
             if part[4] == placeName then
                 local n = math.random(part[2], part[3])
                 local heading = placeName ~= "edge" and c.threat or nil
+                local before = #units
                 local missing = placeUnits(units, occupied, view, zone.pos, r,
                     SAM_SITE_PLACE[placeName], n, part[1], recipe.unit_spacing, heading, sum.rejects, part.aim)
+                if placeName == "launchers" then
+                    for i = before + 1, #units do launchers[#launchers + 1] = units[i] end
+                end
                 if missing > 0 then
                     Log.warn(string.format("  %s: %d x %s could not be placed in %s", id, missing, part[1], zone.name))
                     if placeName == "centre" and part[2] > 0 then broken = true end
@@ -328,6 +336,32 @@ local function buildSite(ctx, c, role, system, layer)
         return nil
     end
 
+    -- the point-defense escort, before the supply trucks, so they reach it too
+    local eUnits = {}
+    if recipe.escort_role then
+        local eType = Util.weightedPick(COALITION_ROSTER[side][recipe.escort_role])
+        placeUnits(eUnits, occupied, view, zone.pos, r, SAM_SITE_PLACE.edge,
+            1, eType, recipe.unit_spacing, c.threat, sum.rejects)
+        for _, u in ipairs(eUnits) do launchers[#launchers + 1] = u end
+    end
+
+    -- supply trucks within rearm reach of every launcher and the escort (SAM_SITE_SUPPLY)
+    if layer ~= "early_warning" and #launchers > 0 then
+        local S = SAM_SITE_SUPPLY
+        local points, outOfReach = Placement.supplyTruckPoints(view, launchers, occupied,
+            { reach_m = S.rearm_radius_m - S.margin_m, max_trucks = S.max_trucks, spacing_m = S.spacing_m, tries = S.tries })
+        local truckType = Util.weightedPick(COALITION_ROSTER[side].supply_truck)
+        for _, p in ipairs(points) do
+            units[#units + 1] = { type = truckType, x = round(p.x), z = round(p.z),
+                                  heading_deg = math.random(0, 359) }
+        end
+        sum.supply_trucks = (sum.supply_trucks or 0) + #points
+        if outOfReach > 0 or #points == 0 then
+            Log.warn(string.format("  %s: %d launcher%s out of a supply truck's reach (%d truck%s placed)", id,
+                outOfReach, outOfReach == 1 and "" or "s", #points, #points == 1 and "" or "s"))
+        end
+    end
+
     local pos = Util.withLatLon({ x = round(zone.pos.x), z = round(zone.pos.z) })
     local engage, detect = siteRanges(recipe)
     local site = { id = id, side = side, system = system, layer = layer, role = role,
@@ -338,10 +372,6 @@ local function buildSite(ctx, c, role, system, layer)
 
     local escortN = 0
     if recipe.escort_role then
-        local eUnits = {}
-        local eType  = Util.weightedPick(COALITION_ROSTER[side][recipe.escort_role])
-        placeUnits(eUnits, occupied, view, zone.pos, r, SAM_SITE_PLACE.edge,
-            1, eType, recipe.unit_spacing, c.threat, sum.rejects)
         if #eUnits > 0 then
             local eid = id .. "_escort"
             out.groups[#out.groups + 1] = { id = eid, side = side, skill = SAM_SITE_SKILL,

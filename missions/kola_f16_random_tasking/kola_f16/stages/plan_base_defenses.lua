@@ -14,6 +14,8 @@
 -- plan.base_defenses = {
 --   groups = { { id, base, side, class, echelon, level, component, role, skill, anchor_kind,
 --                pos = { x, z, lat, lon }, units = { { type, x, z, heading_deg } } } },
+--              a SAM group's supply trucks follow it as <id>_supply: component
+--              "supply_trucks", role "supply_truck", supplies = the SAM group's id
 --   bases  = { [name] = { code, side, class, echelon, level, groups, units, anchors, rejects,
 --                         dropped, on_roads } },
 --   totals = { groups, units, dropped_groups, dropped_units, red = {groups, units}, blue = {...} },
@@ -169,9 +171,39 @@ local function anchorText(anchors)
     return #parts > 0 and table.concat(parts, " ") or "none"
 end
 
+-- The supply trucks of a base-defense SAM group `entry` (BASE_DEFENSE_PLACEMENT
+-- supply_truck): a group of their own, <id>_supply, within rearm reach of every unit
+-- (SAM_SITE_SUPPLY, Placement.supplyTruckPoints); on an airfield road when the SAM group
+-- is on one. nil (and a warning) when no truck fits.
+local function planSupplyTrucks(ab, ctx, entry, onRoad)
+    local S = SAM_SITE_SUPPLY
+    local occupied = {}
+    for _, u in ipairs(entry.units) do occupied[#occupied + 1] = u end
+    local points, outOfReach = Placement.supplyTruckPoints(ab, entry.units, occupied,
+        { reach_m = S.rearm_radius_m - S.margin_m, max_trucks = S.max_trucks, spacing_m = S.spacing_m, tries = S.tries },
+        onRoad and Placement.isClearRoad or nil)
+    if outOfReach > 0 or #points == 0 then
+        Log.warn(string.format("  %s: %d unit%s out of a supply truck's reach (%d truck%s placed)", entry.id,
+            outOfReach, outOfReach == 1 and "" or "s", #points, #points == 1 and "" or "s"))
+    end
+    if #points == 0 then return nil end
+    local truckType = Util.weightedPick(COALITION_ROSTER[ctx.side].supply_truck)
+    local units = {}
+    for _, p in ipairs(points) do
+        units[#units + 1] = { type = truckType, x = round(p.x), z = round(p.z),
+                              heading_deg = (entry.units[1].heading_deg + 180) % 360 }
+    end
+    return {
+        id = entry.id .. "_supply", base = entry.base, side = entry.side, class = entry.class,
+        echelon = entry.echelon, level = entry.level, component = "supply_trucks", role = "supply_truck",
+        skill = entry.skill, anchor_kind = entry.anchor_kind, pos = entry.pos, units = units,
+        supplies = entry.id,
+    }
+end
+
 -- Plans one group. ctx.anchors = footprint anchors by kind; ctx.centres = group centres
--- already placed at this base. Returns the entry (or nil if no clear ground was found)
--- and the number of units dropped.
+-- already placed at this base. Returns the entry (or nil if no clear ground was found),
+-- the number of units dropped, and its supply-truck group (a SAM), or nil.
 local function planGroup(ab, ctx, comp, pl, index, rejects)
     local kindUsed
     local function candidate()
@@ -286,7 +318,7 @@ local function planGroup(ab, ctx, comp, pl, index, rejects)
         end
     end
 
-    return {
+    local entry = {
         id        = string.format("DEF_%s_%s_%d", ctx.code, comp, index),
         base      = ctx.name,
         side      = ctx.side,
@@ -299,7 +331,8 @@ local function planGroup(ab, ctx, comp, pl, index, rejects)
         anchor_kind = kindUsed,
         pos       = Util.withLatLon({ x = round(centre.x), z = round(centre.z) }),
         units     = units,
-    }, dropped
+    }
+    return entry, dropped, pl.supply_truck and #units > 0 and planSupplyTrucks(ab, ctx, entry, onRoad) or nil
 end
 
 -- ── stage ───────────────────────────────────────────────────────
@@ -385,13 +418,13 @@ function PlanBaseDefenses.run(plan)
         for k, list in pairs(anchors) do anchorCounts[k] = #list end
         local summary = { code = code, side = b.side, class = class, echelon = b.echelon,
                           level = level, groups = 0, units = 0, anchors = anchorCounts, rejects = {},
-                          dropped = {}, on_roads = 0 }
+                          dropped = {}, on_roads = 0, supply_trucks = 0 }
         for _, c in ipairs(BASE_DEFENSE_COMPOSITION[level]) do
             local comp, lo, hi = c[1], c[2], c[3]
             local pl = BASE_DEFENSE_PLACEMENT[comp]
             local index = 0
             for _ = 1, math.random(lo, hi) do
-                local entry, dropped = planGroup(ab, ctx, comp, pl, index + 1, summary.rejects)
+                local entry, dropped, supply = planGroup(ab, ctx, comp, pl, index + 1, summary.rejects)
                 out.totals.dropped_units = out.totals.dropped_units + dropped
                 if entry and #entry.units > 0 then
                     index = index + 1
@@ -399,6 +432,11 @@ function PlanBaseDefenses.run(plan)
                     summary.groups = summary.groups + 1
                     if entry.anchor_kind == "road" then summary.on_roads = summary.on_roads + 1 end
                     summary.units  = summary.units + #entry.units
+                    if supply then
+                        out.groups[#out.groups + 1] = supply
+                        summary.supply_trucks = summary.supply_trucks + #supply.units
+                        summary.units = summary.units + #supply.units
+                    end
                 else
                     -- no open ground and no road within reach — should not happen
                     Log.warn(string.format("DROPPED %s group at %s: no open ground and no road within %d m of the runways",
@@ -415,8 +453,8 @@ function PlanBaseDefenses.run(plan)
         t[b.side].groups = t[b.side].groups + summary.groups
         t[b.side].units  = t[b.side].units + summary.units
 
-        Log.info(string.format("  %-22s %-4s %s/%s → %-8s %d groups %d units, %d on roads  (anchors: %s; rejects: %s; no room for: %s)",
-            name, b.side:upper(), class, b.echelon, level:upper(), summary.groups, summary.units,
+        Log.info(string.format("  %-22s %-4s %s/%s → %-8s %d groups %d units (%d supply trucks), %d on roads  (anchors: %s; rejects: %s; no room for: %s)",
+            name, b.side:upper(), class, b.echelon, level:upper(), summary.groups, summary.units, summary.supply_trucks,
             summary.on_roads, anchorText(anchors), rejectText(summary.rejects), rejectText(summary.dropped)))
     end
 

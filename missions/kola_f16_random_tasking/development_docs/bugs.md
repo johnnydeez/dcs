@@ -10,6 +10,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 **Seen again, more of it, now every fitting base is an alert base** (bug 16; `event_logs\2026-10-02_145532.log`, 50 min): three Blue scrambles at one MiG-31 patrol, MSN7016_CAP, on its race-track over Red's airspace, all stood down on the ramp with "back over its own airspace, heading away": MSN2901 (Enontekio, intercept 35 km out), MSN2902 (Banak, **125 km** out), MSN2903 (Enontekio, **159 km** out). Red's MSN7902 was stood down the same way at Blue's F-16 patrol MSN2009_CAP, and MSN7901 before launch at MSN2002_CAP. 5 of 7 scrambles in the run were this churn. Tune with bug 32 (the same "inbound / heading away" test, read the other way).
 
+**Worse on the 2026-10-04 22:39 roll** (`event_logs\2026-10-04_223922.log`): about 14 of ~30 Red scrambles stood down on the ramp, 7 of them at Blue's Alakurtti patrols (MSN2016_CAP, MSN2017_CAP: Alakurtti is the Blue pocket inside Red, so each race-track leg reads as inbound); Blue 5 of 11. See bug 50 too.
+
 **Seen:** same log; grep `SCRAMBLE`, `STOOD_DOWN`, `stood down on the ramp`.
 - Seven scrambles were decided against patrols and then stood down: Red MSN5901 and MSN5904 (both at Blue's F-15C patrol MSN2009_CAP), and Blue MSN2902, MSN2903, MSN2904 and MSN2906 (at Red patrols and a Red scramble going home).
 - **The cycle:**
@@ -23,18 +25,6 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 **Proposed fix, once bug 2 is fixed** (decide with John whether it's still worth it then):
 - Recognise an orbit from the picture: a contact whose heading has reversed within the last few minutes while staying in about the same area.
 - Or require "inbound" for more rounds when the contact is still over its own or contested airspace.
-
----
-
-## 5. Event log: no GUNS line yet
-
-**Status:** open, waiting for a run (the other event-log fixes, (a)–(f) and (h)–(k), are done: `closed.md`, bug 5).
-
-**Seen:** no `GUNS` line in any run so far: either no AAA or gun came into range, or DCS doesn't send `S_EVENT_SHOOTING_START` for AI ground units.
-
-**Also (checked 2026-10-02, all 12 event logs):** no base-defense group of a sleeping kind (towed or mobile guns, infrared missile launchers, MANPADS teams) has fired once, in any run, including the two 2026-09-30 runs from before sleeping existed. So "a woken base fights" is still unproven. Two bases woke with close passes and no shot (Kuusamo, 2026-10-01; Sodankylä, 2026-10-02, the MSN2027 Hornets at 1,200–3,600 ft), but a close pass is anything within 10 km of the base, beyond MANPADS (~5 km) and gun reach (~2–3 km), so that alone doesn't show a fault. The `radar_missile_launchers` (never asleep) do fire: the Vuojärvi Tor M2 at John, 2026-10-02.
-
-**Next:** a test mission (a Red base's defenses put to sleep and woken the way `sleep_ground_units.lua` does, plus a control set never slept, and an AI jet flown low over each), or a run where jets fly low over a defended base. Nothing to fix until then.
 
 ---
 
@@ -61,6 +51,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 ## 13. Su-34s blow up on the ramp seconds after spawning
 
 **Status:** worked around 2026-10-01 (John: open parking only for now). The Su-34's profile allows only terminal 104 (open-air) spots; the DCS test of spot size is still open.
+
+**The same spot twice** (`event_logs\2026-10-04_223922.log`, grep `RAMP_LOSS`): Su-27 scrambles MSN7917 (04:44:54) and MSN7937 (06:00:58), both at **Afrikanda spot 22**, both 13 s after spawning, no killer. Points at the spot, not the type: taking spot 22 (and 37, 2026-10-01) out of use at Afrikanda would be the cheap fix (not built; decide with John).
 
 **Logging built 2026-10-02, not flown:** a jet destroyed before it ever took off, within 2 min of spawning, is a `RAMP_LOSS` line in the event log (and a `dcs.log` warning) with its base and spot: "Su-27 destroyed on the ramp 8 s after spawning, before taking off, at Afrikanda spot 37: a spawn failure, not combat". Grep `RAMP_LOSS` after each run to collect the spots for the spot-size test.
 
@@ -156,7 +148,7 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 38. Blue's AWACS adds nothing to the picture until it reaches its station, ~26 min into the mission
 
-**Status:** open (John, 2026-10-02, 16:03 run: "it has a radar, it's flying at altitude"). **The first fix is built, not flown; copied to DCS 2026-10-02 with bug 36's fix** (John, 2026-10-02): the `AWACS` task moved from the station waypoint to the takeoff waypoint (`spawn_aircraft_groups.lua`), so it runs from wheels-up; the orbit stays on the station waypoint. The next run shows whether cause 2 was it: `seen by awacs` lines while the E-3A is still on its way out. Cause 1 (far base, far station) is untouched. **Seen working in the 17:15 run** (`event_logs\2026-10-02_171553.log`): the E-3A (takeoff 04:01:27 from Bodo) gave Blue its first `seen by awacs` contact at 04:09:04 (MSN7016_CAP, 132 km from Rovaniemi), 12 min before it reached its station at 04:21:36. So cause 2 was real and is fixed; move to `closed.md` once John agrees.
+**Status:** open (John, 2026-10-02, 16:03 run: "it has a radar, it's flying at altitude"). **The first fix is built, not flown; copied to DCS 2026-10-02 with bug 36's fix** (John, 2026-10-02): the `AWACS` task moved from the station waypoint to the takeoff waypoint (`spawn_aircraft_groups.lua`), so it runs from wheels-up; the orbit stays on the station waypoint. The next run shows whether cause 2 was it: `seen by awacs` lines while the E-3A is still on its way out. Cause 1 (far base, far station) is untouched. **Seen working in the 17:15 run** (`event_logs\2026-10-02_171553.log`): the E-3A (takeoff 04:01:27 from Bodo) gave Blue its first `seen by awacs` contact at 04:09:04 (MSN7016_CAP, 132 km from Rovaniemi), 12 min before it reached its station at 04:21:36. So cause 2 was real and is fixed; move to `closed.md` once John agrees. **Cause 1 settled too, 2026-10-04** (John: neither side would launch without AWACS coverage): both AWACS now start in the air on their station at mission start (`takeoff = "air"`; `plan.md`, *Defensive air*), not flown yet.
 
 **Seen:** `event_logs\2026-10-02_160358.log`; grep `MSN2001_AEW`, `seen by awacs`. The E-3A took off from Bodø at 04:01:27 (the held base farthest from the enemy, by design), was at ~29,300 ft by 04:12, and reached its station at 04:27:22. Its first contact (`seen by awacs`) was at 04:26:04, a minute before the station. Until then Blue's picture held 0–1 contacts, all from ground radars or a patrol (`PICTURE` 04:05 / 04:10 / 04:15 / 04:20: 0, 1, 1, 2 contacts). Red's A-50 behaved the same way: on station at 04:06:32 (it launched much nearer the front), first contact 04:05:04.
 
@@ -249,3 +241,82 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 **Cause:** `AssessFlightSituations.enemyKillZone` walks only `plan.sam_sites`. The base-defense `radar_missile_launchers` groups (Tor M2, Pantsir; Blue's Roland / Tor) aren't in it, though the planner's routing keeps clear of them (`lib/threat_routing.lua`: + 5 km) and the radar picture counts them as sensors. So no controller rule sees them: the fight's break-off, the go cold's "inside another site's kill zone", the leash and the scrambles' "under enemy SAM cover". A fight or a chase can run straight into a defended base's Tor.
 
 **Proposed fix (decide with John):** `enemyKillZone` also walks the live base-defense `radar_missile_launchers` groups of the other coalition, with their reach from `lib/sam_reach.lua` (the planner already has them: full reach, no low figure; ~12–20 km), so every rule above sees them. Log names them by group (`DEF_VUOJ_radar_missile_launchers_1`).
+
+---
+
+## 43. Kill zones still counted a SAM site whose radars were dead
+
+**Status:** fix built 2026-10-04, not flown (John agreed; copied to DCS; checked in a luae harness). Found in the AI-only run `event_logs\2026-10-03_141509.log` (69 min).
+
+**Seen:** both Kittila Patriot tracking radars were destroyed at 04:31:50 (MSN7023_SEAD_AGAIN). After that, MSN7035_DEAD broke off 4 fights in 5 s each "inside the kill zone of SAM_KITT_Patriot_1" (04:49-04:56), and Red refused scrambles at 05:04 and 05:06 "under enemy SAM cover" of the same Patriot. The launch gate had already launched MSN7035 *because* the Patriot was out of the fight.
+
+**Fix:** the controller's and the scrambles' kill zones skip a site out of the fight, by the gate's own test (`DecideLaunches.outOfTheFight`: its radars destroyed to its success fraction). That covers the fight's break-off, the leash, the scrambles' "under enemy SAM cover" and the intercept point. **SEAD flights keep counting every live site** (John: don't change SEAD attack behavior): their go cold and their fight's break-off pass `countSilenced`.
+
+---
+
+## 44. A fight was timed out in the middle of the missile exchange
+
+**Status:** fix built 2026-10-04, not flown (copied to DCS; harness-checked).
+
+**Seen:** same run; both SEAD duels ended `back on way home: 3 min on …, time is up` the moment the missiles were in the air (04:20:56, 04:36:54), and the jets were hit 1-33 s later. A defend called at 80-95 km and closing takes about `max_engage_s` (3 min) to reach shot range.
+
+**Fix:** time is up only when no air-to-air missile of the flight is still flying (the controller keeps each one the flight fires, from `S_EVENT_SHOT`) and it hasn't been fired upon in the last `shot_memory_s` (30 s).
+
+---
+
+## 45. SEAD flights fought each other after their salvoes
+
+**Status:** fix built 2026-10-04, not flown (John: option (a); copied to DCS; harness-checked). The SEAD attack itself is unchanged.
+
+**Seen:** same run. 12 of the 15 losses were air-to-air, 10 of them SEAD jets fighting after their salvoes. Blue's rotation (Rovaniemi → the Vuojarvi SA-10) and Red's (Vuojarvi → the Kittila Patriot) fly the same corridor head-on, on the same clock (both spawn at 04:02, the retries around 04:30); after the salvo each committed at 72-99 km, then defend / break off / defend. MSN2026 ↔ MSN7023: all 4 jets lost; MSN2026_AGAIN ↔ MSN7023_AGAIN: 3; MSN2028_AGAIN ↔ MSN7034_AGAIN: 3. MSN2028_AGAIN_2 committed on a MiG-31 with 1 radar missile aboard; the fight climbed it into the Koshka Yavr SA-11.
+
+**Fix:** a SEAD flight whose salvo is away commits only when fired upon, or to a bandit hot inside `sead_commit_km` (25); otherwise `CONTROL … press on: bandit …; salvo away, staying on its way home`, once per bandit. Before the salvo nothing changed.
+
+**Not done (option (b)):** offsetting the two rotations' start times.
+
+---
+
+## 46. A SEAD site that survived both tries blocked a coalition's attacks for the rest of the run
+
+**Status:** fix built 2026-10-04, not flown (copied to DCS; harness-checked). Also the "come back later" half of bug 35.
+
+**Seen:** same run. Every Blue attack mission (MSN2037, 2038, 2039, 2040, 2042) waited on `SAM_VUOJ_SA10_1`. After MSN2026 and MSN2026_SEAD_AGAIN left 1 of its 3 radars dead (it needs 2), MSN2037 was cancelled at 04:44:59 and the rest would follow; the rotation never came back to it. The Koshka Yavr SA-10 did the same to MSN2029 and MSN2030 (cancelled 04:49:56).
+
+**Fix:** a rotation site still in the fight once its SEAD flight's second try is down comes back into the rotation once more, `AIR_PACKAGE.come_back_after_s` (60 min) later, as `<id>_LATER` (the same plan flown again: the plan is fixed, so same base and route), ahead of the rotation's next flight, and only if it would be back before the window ends. Flights waiting on the site wait for it instead of being cancelled; the rotation goes on past a rotation flight that waits for it. After a third failed try they're cancelled ("after three SEAD flights"). Lines: `CONTROL … come back: … it comes back into the rotation at 05:51`, `retry: … comes back as …_LATER, the rotation's next flight`, `wait: waiting for <site>'s SEAD flight to come back (…_LATER, at 05:51)`.
+
+**To check in the next run:** grep `come back`, `_LATER`. Note the SA-10's own reload (plan.md, *DCS facts*): 2 h, so after 60 min a site may be partly rearmed.
+
+---
+
+## 47. Blue's second (southern) E-3A flies its race-track down to the edge of the map
+
+**Status:** open (John, 2026-10-04: seen often). Log only, no fix yet.
+
+**Seen:** the southern Blue AWACS's race-track runs down to the very southern edge of the map. It doesn't need to go that far south, and much of its radar coverage is wasted on empty space past the fight. Example, John's test roll of 2026-10-04 14:20 (`Saved Games\DCS\kola_last_plan.lua`): `MSN2002_AEW` on `AEW_EVEN_2`, race-track `{ -288144, -275, -239448, -11621 }` (x north, z east); the first E-3A, `MSN2001_AEW` on `AEW_BODO_1`, orbits far to the north (`{ 121343, -193604, 191788, -155690 }`).
+
+**Cause (suspected, from the design, not checked in code):** the AWACS placement (bug 42, `orbitCandidates` / `earlyWarningPoints` in `stages/plan_air_tasking.lua`) picks the second orbit by how much of the fight the first leaves unseen within `early_warning_coverage_km` (250), from own-airspace candidates at least 150 km from every enemy fighter base and 80 km from the contested airspace, with the legs laid across the line to the nearest enemy fighter base. Nothing keeps the race-track away from the map edge, nothing prefers the end of the track that faces the fight, and the legs' direction can run the track north-south, away from what it should watch.
+
+**Proposed (decide with John):**
+- Lay the race-track's legs so the whole track stays on the side facing the fight: the far end no farther from the front than the near end plus a little, or legs parallel to the front.
+- Keep the race-track a margin inside the map's edge.
+- Score a candidate by the fight it sees from the race-track's far end too, not only its centre, so a track that drifts away loses.
+
+---
+
+## 50. The radar picture's first-detection ranges are far beyond the 250 km the coverage call assumes
+
+**Status:** open (found 2026-10-04, same log). Log only, no fix yet. Goes with the "AWACS and low flyers" item in `plan.md` (*Still to watch*) and Darkstar's coverage call (bug 42).
+
+**Seen:** `CONTACT … seen by … km away` lines:
+- Blue's E-3A `MSN2001_AEW`: 374, 391, 396, 399 km, on its way out (bug 38's fix); one of them a Su-34 at **853 ft** at 374 km (`MSN7023_SEAD_AGAIN`, 04:24:04).
+- Red's A-50 `MSN7001_AEW`: Blue's E-3A at **633 km** (04:07:34), Blue's patrol MSN2002_CAP at 703 ft at 384 km.
+- The MiG-31 scramble `MSN7901_SCRAM`: John's F-16 at 3,315 ft at **387 km** (04:16:04).
+- Meanwhile at 04:38:04 John's picture call read `no radar coverage` (he was at ~1,200 ft near Kuusamo, more than 250 km from the E-3A).
+
+**Cause (unknown, two possibilities):**
+1. DCS's AI radars really detect that far (a MiG-31 at 387 km and an A-50 at 633 km are well beyond the real systems), so `AIR_PICTURE_CALLS.coverage.awacs_km` (250) is far too short for what the picture actually holds.
+2. `Controller:getDetectedTargets(RADAR)` also returns contacts shared over datalink with the coalition, so the "first sensor" and its distance aren't really who saw it. Then the picture is less "what our radars see" than intended, and the `km away` figures can't be used to tune coverage.
+
+**Seen again, farther** (`event_logs\2026-10-04_223922.log`): an F/A-18C scramble (MSN2910) "saw" a contact at 536 km and a low one (2,327 ft) at 486 km; the Su-30 patrol MSN7004 at 433 km; the Su-30 patrol MSN7003 John's F-16 at 516 km, and Red scrambled MSN7927 on it. No fighter radar reaches that far, so cause 2 (contacts shared across the coalition) is now the likely one; it would also feed bug 3's churn (a near all-seeing picture).
+
+**Proposed (decide with John):** a test mission: an AI E-3A / A-50 and a MiG-31 alone on the map (no other friendly sensors), a target flown out at several heights and ranges, logging `getDetectedTargets(RADAR)` with each entry's `distance` / `visible` / `type` flags every 10 s; then a second run with other friendly aircraft up, to see whether their contacts appear in the lone sensor's list. Then set the coverage figures (and, if 2 is true, filter shared contacts out of the picture).

@@ -66,9 +66,18 @@ function DrawBaseDefenses.apply(plan)
         _mark = _mark + 1
     end
 
+    -- a SAM group's supply trucks go on its own mark, not one of their own
+    local supplied = {}
     for _, g in ipairs(bd.groups) do
-        trigger.action.markToAll(_mark, g.id .. "\n" .. unitText(g.units), Util.toVec3(g.pos), true, "")
-        _mark = _mark + 1
+        if g.supplies then supplied[g.supplies] = g end
+    end
+    for _, g in ipairs(bd.groups) do
+        if not g.supplies then
+            local s = supplied[g.id]
+            trigger.action.markToAll(_mark, g.id .. "\n" .. unitText(g.units) .. (s and (" + " .. unitText(s.units)) or ""),
+                Util.toVec3(g.pos), true, "")
+            _mark = _mark + 1
+        end
     end
 end
 

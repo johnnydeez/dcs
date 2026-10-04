@@ -157,6 +157,65 @@ function Placement.findClear(base, pointFn, tries, extraCheck, clearFn)
     return nil, rejects
 end
 
+-- Where supply trucks go so that every unit in `targets` ({ x, z } each) is within
+-- opts.reach_m of one: DCS rearms a launcher from a supply truck in a circle of ~600 ft
+-- (John measured it in the mission editor, 2026-10-04). Up to opts.max_trucks, each at
+-- the clear spot that brings the most still-uncovered targets in reach (the nearest
+-- farthest one on a tie), tried opts.tries times around those targets' centre; a spot
+-- keeps opts.spacing_m from everything in `occupied` (half that if nothing fits), and
+-- passes `clearFn` (default isClear) on `view`. Returns the points, each also added to
+-- `occupied`, and how many targets are still out of reach.
+function Placement.supplyTruckPoints(view, targets, occupied, opts, clearFn)
+    clearFn = clearFn or Placement.isClear
+    local reach2 = opts.reach_m * opts.reach_m
+    local uncovered = {}
+    for _, t in ipairs(targets) do uncovered[#uncovered + 1] = t end
+    local points = {}
+    for _ = 1, opts.max_trucks do
+        if #uncovered == 0 then break end
+        local cx, cz = 0, 0
+        for _, t in ipairs(uncovered) do cx, cz = cx + t.x, cz + t.z end
+        local centre = { x = cx / #uncovered, z = cz / #uncovered }
+        local best
+        for _, factor in ipairs({ 1, 0.5 }) do
+            local sp2 = (opts.spacing_m * factor) ^ 2
+            for _ = 1, opts.tries do
+                local p = Placement.discPoint(centre, opts.reach_m)
+                local ok = clearFn(view, p)
+                if ok then
+                    for _, o in ipairs(occupied) do
+                        if (p.x - o.x) ^ 2 + (p.z - o.z) ^ 2 < sp2 then ok = false; break end
+                    end
+                end
+                if ok then
+                    local covered, farthest = 0, 0
+                    for _, t in ipairs(uncovered) do
+                        local d2 = (p.x - t.x) ^ 2 + (p.z - t.z) ^ 2
+                        if d2 <= reach2 then
+                            covered = covered + 1
+                            if d2 > farthest then farthest = d2 end
+                        end
+                    end
+                    if covered > 0 and (not best or covered > best.covered
+                       or (covered == best.covered and farthest < best.farthest)) then
+                        best = { p = p, covered = covered, farthest = farthest }
+                    end
+                end
+            end
+            if best then break end
+        end
+        if not best then break end
+        points[#points + 1] = best.p
+        occupied[#occupied + 1] = best.p
+        local left = {}
+        for _, t in ipairs(uncovered) do
+            if (best.p.x - t.x) ^ 2 + (best.p.z - t.z) ^ 2 > reach2 then left[#left + 1] = t end
+        end
+        uncovered = left
+    end
+    return points, #uncovered
+end
+
 -- ── Footprint anchors ───────────────────────────────────────────
 -- Trees are invisible to the API, so placement starts from ground that is open by
 -- construction instead of a blind ring. Derived at startup from the surveyed footprint

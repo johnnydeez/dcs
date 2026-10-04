@@ -264,11 +264,14 @@ local function missionText(m, noTot)
 end
 
 -- A flight has spawned (SpawnAircraftGroups): its line, and it is known by name from now.
-function WriteEventLog.spawned(m, runway)
+function WriteEventLog.spawned(m)
     _flights[m.id] = m
     _launched[m.coalition] = (_launched[m.coalition] or 0) + 1
+    local r = m.route[1]
     push(m.coalition, "SPAWNED", m.id, string.format("%s; %s", missionText(m),
-        runway and "on the runway" or (m.mission_type == "interception" and "hot on the ramp" or "on the ramp")))
+        m.takeoff == "air" and string.format("in the air on its %s, %s ft", r.kind, Util.thousands(r.alt_m * FEET_PER_METRE))
+        or m.takeoff == "runway" and "on the runway"
+        or (m.mission_type == "interception" and "hot on the ramp" or "on the ramp")))
 end
 
 -- A flight reached waypoint `index` of its planned route (a script command on the

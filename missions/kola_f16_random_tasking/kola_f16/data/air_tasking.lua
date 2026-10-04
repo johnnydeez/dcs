@@ -39,9 +39,12 @@
 --                found: patrols) | "weapons_hold" (never fire: AWACS)
 --   engage_range_km  engage_aircraft_on_station: enemy aircraft within this distance of
 --                the flight's route are engaged
---   takeoff      "parking" (default, hot) | "runway" (hot on the runway: the AWACS at
---                start). Scrambles start hot from a free ramp spot, never on the runway,
---                so they can't spawn on top of jets lined up there (John, 2026-09-30)
+--   takeoff      "parking" (default, hot) | "runway" (hot on the runway) | "air" (in the
+--                air at the start of its station's race-track, at station altitude and
+--                speed: the AWACS, John 2026-10-04: neither side would launch without
+--                AWACS coverage, so it is in place at mission start). Scrambles start hot
+--                from a free ramp spot, never on the runway, so they can't spawn on top
+--                of jets lined up there (John, 2026-09-30)
 --   keeps_gun    true: the gun stays loaded (fighters), whatever the profile says
 --   may_jettison true: the flight may jettison stores (fighters drop tanks to fight);
 --                otherwise jettisoning is prohibited, so attack flights keep their bombs
@@ -175,7 +178,7 @@ AIR_MISSION_TYPE = {
     airborne_early_warning = {
         group_name_tag = "AEW", built = true, planned_as = "station", group_task = "AWACS", attack = "early_warning_on_station",
         weapon_type = "auto", ingress_km = 0, egress_km = 0, flight_size = { 1, 1 },
-        rules_of_engagement = "weapons_hold", takeoff = "runway",
+        rules_of_engagement = "weapons_hold", takeoff = "air",
     },
     -- a scramble: burns straight at the one raid it was sent after (John, 2026-09-30)
     interception = {
@@ -314,10 +317,17 @@ AIR_TASKING_SKILL = { "Average", "Good", "High" }
 --                       site it needs out of the fight
 --   wait_for_room_s     at run time, a flight that would put the coalition over its cap
 --                       (a late or early one) waits this long and looks again
+--   come_back_after_s   a rotation site still in the fight after its SEAD flight and that
+--                       flight's second try comes back into the rotation once more, this
+--                       long after the second try is down (<id>_LATER, the same plan
+--                       flown again); flights waiting on the site wait for it (2026-10-04,
+--                       after the 2026-10-03 14:15 run: the Vuojarvi SA-10 survived two
+--                       tries, and every Blue attack mission waited on it)
 AIR_PACKAGE = {
     suppression_lead_s = { 180, 300 },
     strike_after_suppression_s = 600,
     wait_for_room_s = 120,
+    come_back_after_s = 3600,
 }
 
 -- Human flights (session 10): Blue missions planned for players, listed at mission start

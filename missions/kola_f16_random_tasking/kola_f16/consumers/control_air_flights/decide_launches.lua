@@ -28,6 +28,19 @@
 -- is down and whose site is still in the fight gets its second try first, as the
 -- rotation's next flight, not an extra jet.
 --
+-- Coming back later (2026-10-04, after the 2026-10-03 14:15 run, where the Vuojarvi
+-- SA-10 survived two tries and every Blue attack mission waited on it): a rotation site
+-- still in the fight once its SEAD flight's second try is down comes back into the
+-- rotation once more, AIR_PACKAGE.come_back_after_s later (<id>_LATER: the same plan
+-- flown again; the plan is fixed, so the same base and route), ahead of the rotation's
+-- next flight. Flights waiting on that site wait for it instead of being cancelled, and
+-- the rotation goes on past a rotation flight that waits for it.
+-- The same for a site the rotation needs that another flight of the site table takes (a
+-- SEAD flight an attack or a player's tasking needed first; 2026-10-05, after the
+-- 2026-10-04 22:39 run: the Rovaniemi SA-10 was MSN2025_SEAD's, a player DEAD's SEAD;
+-- it survived both tries and every rotation flight behind it was cancelled): its flight
+-- comes back into the rotation as <id>_LATER, and takes the rotation's place while it flies.
+--
 -- A flight launched late (it waited, or the clock passed its start) or early (pulled
 -- forward) flies a copy on spots free now, once there is room under the cap, while the
 -- mission window lasts.
@@ -36,7 +49,10 @@
 --   "wait: waiting for MSN2030_SEAD, still on its attack; looking again at 10:42"
 --   "retry: SAM_KOSH_SA10_1 still in the fight: MSN2030_SEAD flies again as MSN2030_SEAD_AGAIN; waiting until 11:25"
 --   "retry: SAM_KOSH_SA10_1 still in the fight after MSN2030_SEAD: it flies again as MSN2030_SEAD_AGAIN, the rotation's next flight"
---   "cancel: SAM_KOSH_SA10_1 still in the fight after a second SEAD flight"
+--   "come back: SAM_VUOJ_SA10_1 still in the fight after MSN2026_SEAD and MSN2026_SEAD_AGAIN: it comes back into the rotation at 05:36"
+--   "retry: SAM_VUOJ_SA10_1 still in the fight: MSN2026_SEAD comes back as MSN2026_SEAD_LATER, the rotation's next flight"
+--   "wait: waiting for SAM_VUOJ_SA10_1's SEAD flight to come back (MSN2026_SEAD_LATER, at 05:36); looking again at 05:58"
+--   "cancel: SAM_KOSH_SA10_1 still in the fight after a second SEAD flight" (or "after three SEAD flights")
 --   "cancel: SAM_KOSH_SA10_1's SEAD flight MSN2030_SEAD was cancelled"
 --   "cancel: not needed: SAM_KOSH_SA10_1 already out of the fight"
 --   "cancel: not needed: SAM_BANA_SA11_1 already destroyed (4 of 5 critical)"
@@ -58,6 +74,9 @@ local _waits = {}        -- flight id → looks so far while waiting for a SEAD 
 local _bySite = {}       -- coalition → threat id → the SEAD flight that takes it
 local _rotation = {}     -- coalition → the rotation's SEAD flight ids, in order
 local _rotationUp = {}   -- coalition → the rotation flight (or its second try) in the air
+local _comeBack = {}     -- flight id → { at, done } its third try: due at mission time `at`
+local _comesBack = {}    -- coalition → the flights whose sites come back: the rotation's, then those of sites it needs
+local _waitingForComeBack = {}   -- flight id → the come-back's time (or true, not set yet) while it waits for one (the rotation goes on past it)
 
 local function liveUnit(name)
     local o = Unit.getByName(name) or StaticObject.getByName(name)
@@ -120,6 +139,13 @@ local function threatCleared(id)
     return not liveGroup(id)
 end
 
+-- The same test for the rest of the controller: a site out of the fight no longer counts
+-- as a kill zone (2026-10-04, after the 2026-10-03 14:15 run: with both Patriot tracking
+-- radars dead, MSN7035_DEAD still broke off 4 fights for the Patriot's kill zone, and Red
+-- refused scrambles "under enemy SAM cover" of it, while the gate had already launched
+-- MSN7035 because the Patriot was out of the fight).
+DecideLaunches.outOfTheFight = threatCleared
+
 local function openThreats(ids)
     local open = {}
     for _, id in ipairs(ids or {}) do
@@ -154,19 +180,24 @@ local function say(m, id, decision, text) ControlAirFlights.say(m.coalition, id,
 
 -- ── the rotation ────────────────────────────────────────────────
 
--- The rotation flight the copy `id` (<id>_AGAIN) or the flight itself stands for.
+-- The rotation flight the copy `id` (<id>_AGAIN, <id>_LATER) or the flight itself stands for.
 local function rotationId(id)
-    return (id:gsub("_AGAIN$", ""))
+    return (id:gsub("_AGAIN$", ""):gsub("_LATER$", ""))
 end
 
--- The rotation's next flight after `id` still waiting to fly, asked about now.
+-- The rotation's next flight after `id` still waiting to fly, asked about now (its first
+-- when `id` isn't a rotation flight: a come-back that held the rotation's place). One
+-- that waits for a site's come-back is passed over: the rotation goes on meanwhile.
 local function pullForward(c, id)
     local S = ScheduleAirTaskingOrders
-    local list, after = _rotation[c] or {}, false
+    local list, after = _rotation[c] or {}, true
+    for _, rid in ipairs(list) do
+        if rid == id then after = false end
+    end
     for _, rid in ipairs(list) do
         if after then
             local rec = S.record(rid)
-            if rec and not settled(rec) then
+            if rec and not settled(rec) and not _waitingForComeBack[rid] then
                 S.lookAgainAt(rid, timer.getTime() + 1)
                 return
             end
@@ -177,18 +208,126 @@ local function pullForward(c, id)
 end
 
 local function cancel(plan, id, text)
+    _waitingForComeBack[id] = nil
     ScheduleAirTaskingOrders.note(id, "cancelled")
     say(plan, id, "cancel", text)
     if plan.rotation then pullForward(plan.coalition, id) end
 end
 
--- A copy of SEAD flight `by` flying again now (its second try); nil when no spots are free.
-local function flyAgain(by)
-    local copy = ScheduleAirTaskingOrders.flyAgain(by)
+-- A copy of SEAD flight `by` flying again now: its second try, or with `comeBack` its
+-- third (a site's come-back into the rotation, which holds the rotation's place while it
+-- flies); nil when no spots are free.
+local function flyAgain(by, comeBack)
+    local copy = ScheduleAirTaskingOrders.flyAgain(by, comeBack)
     if not copy then return nil end
     ControlAirFlights.watch(copy)
-    if copy.rotation then _rotationUp[copy.coalition] = copy.id end
+    if copy.rotation or comeBack then _rotationUp[copy.coalition] = copy.id end
     return copy
+end
+
+-- ── coming back later ───────────────────────────────────────────
+
+-- The flights whose sites come back into the rotation (rotation order first, then the
+-- other site-table flights on a site some rotation flight needs, by id), worked out once.
+local function comesBack(c)
+    if _comesBack[c] then return _comesBack[c] end
+    local S = ScheduleAirTaskingOrders
+    local list, inList, needed = {}, {}, {}
+    for _, rid in ipairs(_rotation[c] or {}) do
+        list[#list + 1], inList[rid] = rid, true
+        local p = S.planned(rid)
+        for _, t in ipairs(p and p.requires_cleared or {}) do needed[t] = true end
+    end
+    local others = {}
+    for site, by in pairs(_bySite[c] or {}) do
+        if needed[site] and not inList[by] then others[#others + 1] = by end
+    end
+    table.sort(others)
+    for _, by in ipairs(others) do list[#list + 1] = by end
+    _comesBack[c] = list
+    return list
+end
+
+-- Whether flight `by`'s site comes back into the rotation after its second try.
+local function siteComesBack(c, by)
+    for _, id in ipairs(comesBack(c)) do
+        if id == by then return true end
+    end
+    return false
+end
+
+-- Whether flight `rid`'s come-back would still be back before the window ends, flown
+-- from mission time `at`.
+local function comeBackFits(rid, at)
+    local p = ScheduleAirTaskingOrders.planned(rid)
+    return at + (p.end_s - p.start_s) <= AIR_TASKING_TIMING.window_s + 1800
+end
+
+-- Flight `rid`'s second try is down with its site still in the fight: when the site comes
+-- back into the rotation (siteComesBack), its come-back is due come_back_after_s from now
+-- (said once; "won't come back" when it would not be back before the window ends).
+local function planComeBack(rid)
+    local S = ScheduleAirTaskingOrders
+    local p = S.planned(rid)
+    local rec = S.record(rid)
+    if not (p and rec) or _comeBack[rid] or rec.later or threatCleared(p.target) then return end
+    if not siteComesBack(p.coalition, rid) then return end
+    local at = timer.getTime() + AIR_PACKAGE.come_back_after_s
+    if not comeBackFits(rid, at) then
+        _comeBack[rid] = { at = at, done = true }
+        say(p, rid, "come back", string.format("%s still in the fight after %s and %s; no come-back: it would not be back before the mission window ends",
+            p.target, rid, rec.again))
+        return
+    end
+    _comeBack[rid] = { at = at }
+    say(p, rid, "come back", string.format("%s still in the fight after %s and %s: it comes back into the rotation at %s",
+        p.target, rid, rec.again, clockText(at)))
+    timer.scheduleFunction(function()
+        local ok, err = pcall(DecideLaunches.comeBackNow, p.coalition)
+        if not ok then Log.warn(string.format("%s: come-back failed: %s", rid, tostring(err))) end
+    end, nil, at)
+end
+
+-- A come-back of the coalition that is due now flies, unless a rotation flight is up (it
+-- goes when that one is down) or no spots are free (looked at again shortly). One at a
+-- time; true when one flew.
+function DecideLaunches.comeBackNow(c)
+    local S = ScheduleAirTaskingOrders
+    local now = timer.getTime()
+    for _, rid in ipairs(comesBack(c)) do
+        local cb = _comeBack[rid]
+        if cb and not cb.done and cb.at <= now then
+            local p = S.planned(rid)
+            if threatCleared(p.target) then
+                cb.done = true
+                say(p, rid, "come back", string.format("not needed: %s out of the fight", p.target))
+            else
+                local up = _rotationUp[c]
+                if up and not isDown(up) then return false end
+                local copy = flyAgain(rid, true)
+                if not copy then
+                    timer.scheduleFunction(function() pcall(DecideLaunches.comeBackNow, c) end, nil, now + AIR_PACKAGE.wait_for_room_s)
+                    return false
+                end
+                cb.done = true
+                say(p, rid, "retry", string.format("%s still in the fight: %s comes back as %s, the rotation's next flight",
+                    p.target, rid, copy.id))
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Whether SEAD flight `by` (record `sf`) will still come back for its site: one whose
+-- site comes back into the rotation, whose second try isn't down yet, or whose come-back
+-- is still to fly in the window. Returns its come-back (or nil while not yet known) and
+-- true; false otherwise.
+local function comingBack(by, sf)
+    if not (sf.again and siteComesBack(sf.mission.coalition, by)) or sf.later then return nil, false end
+    local cb = _comeBack[by]
+    if cb then return cb, not cb.done end
+    return nil, not isDown(sf.again) and comeBackFits(by, timer.getTime() + AIR_PACKAGE.come_back_after_s)
 end
 
 -- The rotation's owed second try, before rotation flight `id` (plan `plan`) flies: the
@@ -245,6 +384,7 @@ local function launch(plan, id, now)
         end
     end
     if m then
+        _waitingForComeBack[id] = nil
         ControlAirFlights.watch(m)
         if plan.rotation then _rotationUp[plan.coalition] = id end
     end
@@ -284,6 +424,12 @@ function DecideLaunches.due(id)
             S.lookAgainAt(id, now + AIR_PACKAGE.wait_for_room_s)
             return
         end
+        -- a site's come-back that is due goes first
+        if DecideLaunches.comeBackNow(c) then
+            S.note(id, "delayed")
+            S.lookAgainAt(id, now + AIR_PACKAGE.wait_for_room_s)
+            return
+        end
         if owedRetry(plan, id) then return end
     end
     local open = openThreats(plan.requires_cleared)
@@ -292,13 +438,21 @@ function DecideLaunches.due(id)
         -- yet (wait for it), its second try spent, cancelled (so is this), or done (fly it
         -- once more; a player's SEAD tasking, flown or not, is flown again by the AI)
         local waitFor, send, cancelled = nil, {}, nil
+        local comeBack, thirdTry   -- a site's come-back to wait for; a site that had all three tries
         for _, t in ipairs(open) do
             local by = (_bySite[c] or {})[t]
             local sf = by and S.record(by)
             if not sf then
                 cancelled = cancelled or string.format("%s has no SEAD flight", t)
+            elseif sf.later then
+                if stillOnAttack(sf.later) then waitFor = sf.later else thirdTry = true end
             elseif sf.again then
-                if stillOnAttack(sf.again) then waitFor = sf.again end
+                local cb, coming = comingBack(by, sf)
+                if stillOnAttack(sf.again) then
+                    waitFor = sf.again
+                elseif coming then
+                    comeBack = comeBack or { site = t, by = by, at = cb and cb.at }
+                end
             elseif sf.note == "cancelled" then
                 cancelled = cancelled or string.format("%s's SEAD flight %s was cancelled", t, by)
             elseif sf.mission.flown_by == "human" then
@@ -328,6 +482,25 @@ function DecideLaunches.due(id)
             S.lookAgainAt(id, at)
             return
         end
+        -- a site coming back into the rotation: wait for it (looked at again after the
+        -- come-back's planned salvo, or every strike_after_suppression_s until it is set)
+        if not waitFor and comeBack and now < AIR_TASKING_TIMING.window_s then
+            local sp = S.planned(comeBack.by)
+            local at = comeBack.at and math.max(now, comeBack.at) + (sp.tot_s - sp.start_s) + AIR_PACKAGE.strike_after_suppression_s
+                or now + AIR_PACKAGE.strike_after_suppression_s
+            -- said when it starts waiting, and again once the come-back's time is set
+            local before = _waitingForComeBack[id]
+            local first = not before
+            S.note(id, "delayed")
+            if before ~= (comeBack.at or true) then
+                say(plan, id, "wait", string.format("waiting for %s's SEAD flight to come back (%s_LATER%s); looking again at %s",
+                    comeBack.site, comeBack.by, comeBack.at and (", at " .. clockText(comeBack.at)) or "", clockText(at)))
+            end
+            _waitingForComeBack[id] = comeBack.at or true
+            S.lookAgainAt(id, at)
+            if plan.rotation and first then pullForward(c, id) end   -- the rotation goes on meanwhile
+            return
+        end
         local names, back = {}, now
         local bys = {}
         for by in pairs(send) do bys[#bys + 1] = by end
@@ -342,7 +515,8 @@ function DecideLaunches.due(id)
             end
         end
         if #names == 0 then
-            cancel(plan, id, string.format("%s still in the fight after a second SEAD flight", table.concat(open, ", ")))
+            cancel(plan, id, string.format("%s still in the fight after %s", table.concat(open, ", "),
+                thirdTry and "three SEAD flights" or "a second SEAD flight"))
             return
         end
         local at = back + AIR_PACKAGE.strike_after_suppression_s
@@ -357,14 +531,22 @@ function DecideLaunches.due(id)
 end
 
 -- Every jet of flight `id` is down (landed, lost or removed on the ramp): a rotation
--- flight's place goes to the next one, now.
+-- flight's place (or a come-back's, which held it) goes to the next one, now.
 function DecideLaunches.flightDown(id)
     local S = ScheduleAirTaskingOrders
     local rec = S.record(id)
     local m = rec and (rec.mission_flown or rec.mission)
-    if not (m and m.rotation) then return end
-    if _rotationUp[m.coalition] == id then _rotationUp[m.coalition] = nil end
-    pullForward(m.coalition, rotationId(id))
+    if not m then return end
+    local c = m.coalition
+    local heldPlace = _rotationUp[c] == id
+    if heldPlace then _rotationUp[c] = nil end
+    -- a second try down with its site still in the fight: the site comes back later (a
+    -- rotation site, or one the rotation needs: planComeBack decides)
+    if id:match("_AGAIN$") then planComeBack(rotationId(id)) end
+    if not (m.rotation or heldPlace) then return end
+    -- a come-back that is due takes the place first
+    if DecideLaunches.comeBackNow(c) then return end
+    pullForward(c, rotationId(id))
 end
 
 function DecideLaunches.start(plan)
