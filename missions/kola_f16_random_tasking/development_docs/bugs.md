@@ -288,21 +288,6 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ---
 
-## 47. Blue's second (southern) E-3A flies its race-track down to the edge of the map
-
-**Status:** open (John, 2026-10-04: seen often). Log only, no fix yet.
-
-**Seen:** the southern Blue AWACS's race-track runs down to the very southern edge of the map. It doesn't need to go that far south, and much of its radar coverage is wasted on empty space past the fight. Example, John's test roll of 2026-10-04 14:20 (`Saved Games\DCS\kola_last_plan.lua`): `MSN2002_AEW` on `AEW_EVEN_2`, race-track `{ -288144, -275, -239448, -11621 }` (x north, z east); the first E-3A, `MSN2001_AEW` on `AEW_BODO_1`, orbits far to the north (`{ 121343, -193604, 191788, -155690 }`).
-
-**Cause (suspected, from the design, not checked in code):** the AWACS placement (bug 42, `orbitCandidates` / `earlyWarningPoints` in `stages/plan_air_tasking.lua`) picks the second orbit by how much of the fight the first leaves unseen within `early_warning_coverage_km` (250), from own-airspace candidates at least 150 km from every enemy fighter base and 80 km from the contested airspace, with the legs laid across the line to the nearest enemy fighter base. Nothing keeps the race-track away from the map edge, nothing prefers the end of the track that faces the fight, and the legs' direction can run the track north-south, away from what it should watch.
-
-**Proposed (decide with John):**
-- Lay the race-track's legs so the whole track stays on the side facing the fight: the far end no farther from the front than the near end plus a little, or legs parallel to the front.
-- Keep the race-track a margin inside the map's edge.
-- Score a candidate by the fight it sees from the race-track's far end too, not only its centre, so a track that drifts away loses.
-
----
-
 ## 50. The radar picture's first-detection ranges are far beyond the 250 km the coverage call assumes
 
 **Status:** open (found 2026-10-04, same log). Log only, no fix yet. Goes with the "AWACS and low flyers" item in `plan.md` (*Still to watch*) and Darkstar's coverage call (bug 42).

@@ -429,6 +429,12 @@ HUMAN_TASKING = {
 --   early_warning_second_gain  weight unseen and it would see at least this share
 --   early_warning_tries        best orbits tried in turn when one can't be flown
 --   early_warning_leg_km       length of its race-track
+--   early_warning_map_margin_km  the whole race-track stays this far inside the map's
+--                              edges (AIRSPACE.map_bounds_m; 2026-10-05, bug 47: orbits on
+--                              the map edge spent half their radar on nothing)
+--   early_warning_near_best    among the orbits that see at least (1 - this) of the best
+--                              one's share of the fight, the one nearest the fight it sees
+--                              (its weighted centre): as far forward as the standoffs allow
 --   early_warning_legacy_standoff_km  the old orbit's distance from every enemy base, for a
 --                              coalition with no orbit clear of the standoffs above
 --
@@ -521,6 +527,8 @@ AIR_DEFENSE = {
     early_warning_tries        = 5,
     early_warning_clearance_km = 30,
     early_warning_leg_km       = 80,
+    early_warning_map_margin_km = 60,
+    early_warning_near_best    = 0.1,
     early_warning_legacy_standoff_km = 200,
 
     alert_posture_planned = true,

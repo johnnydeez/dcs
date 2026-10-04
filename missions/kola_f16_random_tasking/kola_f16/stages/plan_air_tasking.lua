@@ -230,7 +230,8 @@ function PlanAirTasking.validate()
                          "early_warning_coverage_km", "early_warning_fighter_base_km", "early_warning_front_km",
                          "early_warning_step_km", "early_warning_second_share",
                          "early_warning_second_gain", "early_warning_tries", "early_warning_legacy_standoff_km",
-                         "early_warning_clearance_km", "early_warning_leg_km",
+                         "early_warning_clearance_km", "early_warning_leg_km", "early_warning_map_margin_km",
+                         "early_warning_near_best",
                          "alert_aircraft_per_base", "scramble_turnaround_s", "scramble_cooldown_s", "scramble_warning_min",
                          "scramble_inbound_rounds", "scramble_reserve_aircraft", "scramble_takeoff_s",
                          "scramble_min_leg_km", "scramble_killzone_margin_km", "scramble_tail_chase_deg",
@@ -2336,29 +2337,38 @@ local function earlyWarningPoints(ctx)
     return pts
 end
 
+-- Whether q lies at least margin_m inside the map's edges (AIRSPACE.map_bounds_m).
+local function insideMap(q, margin_m)
+    local b = AIRSPACE.map_bounds_m
+    return q.x >= b.min_x + margin_m and q.x <= b.max_x - margin_m
+       and q.z >= b.min_z + margin_m and q.z <= b.max_z - margin_m
+end
+
 -- Where an AWACS may orbit: own (not contested) airspace on own held ground, the whole
--- race-track clear of enemy kill zones by early_warning_clearance_km, at least
--- early_warning_fighter_base_km from every enemy fighter base and early_warning_front_km
--- from the contested airspace. Each { centre, ends = { a, b } }, the legs across the line
--- to the nearest enemy fighter base.
+-- race-track clear of enemy kill zones by early_warning_clearance_km and
+-- early_warning_map_margin_km inside the map's edges (the airspace grid reaches past
+-- them), at least early_warning_fighter_base_km from every enemy fighter base and
+-- early_warning_front_km from the contested airspace. Each { centre, ends = { a, b } },
+-- the legs across the line to the nearest enemy fighter base.
 local function orbitCandidates(ctx, enemies)
     local D, a = AIR_DEFENSE, ctx.plan.airspace
     local clearance, leg = D.early_warning_clearance_km * 1000, D.early_warning_leg_km * 1000
+    local edge = D.early_warning_map_margin_km * 1000
     local out = {}
     local every = math.max(1, round(D.early_warning_step_km * 1000 / a.cell_m))
     for i = 1, a.rows, every do
         for j = 1, a.cols, every do
             local q = { x = a.x0 + (i - 0.5) * a.cell_m, z = a.z0 + (j - 0.5) * a.cell_m }
             local toward, near = nearestBase(ctx, q, enemies)
-            if DivideAirspace.kindFor(a, q, ctx.coalition) == "own" and inOwnTerritory(ctx, q)
+            if insideMap(q, edge) and DivideAirspace.kindFor(a, q, ctx.coalition) == "own" and inOwnTerritory(ctx, q)
                and near >= D.early_warning_fighter_base_km * 1000
                and not DivideAirspace.nearestFront(a, q, D.early_warning_front_km * 1000)
                and clearOfThreats(ctx, q, clearance) then
                 local e1, e2 = raceTrack(q, q, ctx.plan.world.airbases[toward].pos, leg)
                 local ok = true
                 for _, e in ipairs({ e1, e2 }) do
-                    if not (DivideAirspace.kindFor(a, e, ctx.coalition) == "own" and inOwnTerritory(ctx, e)
-                            and clearOfThreats(ctx, e, clearance)) then ok = false end
+                    if not (insideMap(e, edge) and DivideAirspace.kindFor(a, e, ctx.coalition) == "own"
+                            and inOwnTerritory(ctx, e) and clearOfThreats(ctx, e, clearance)) then ok = false end
                 end
                 if ok then out[#out + 1] = { centre = { x = round(q.x), z = round(q.z) }, ends = { e1, e2 } } end
             end
@@ -2368,14 +2378,36 @@ local function orbitCandidates(ctx, enemies)
 end
 
 -- The weight of `pts` within early_warning_coverage_km of `centre`, counting only points
--- not in `seen` (a set of indices) when it is given.
+-- not in `seen` (a set of indices) when it is given; and the weighted centre of those
+-- points (the fight it sees), or nil.
 local function coverageOf(pts, centre, seen)
     local r2 = (AIR_DEFENSE.early_warning_coverage_km * 1000) ^ 2
-    local w = 0
+    local w, sx, sz = 0, 0, 0
     for i, p in ipairs(pts) do
-        if not (seen and seen[i]) and (p.x - centre.x) ^ 2 + (p.z - centre.z) ^ 2 <= r2 then w = w + p.w end
+        if not (seen and seen[i]) and (p.x - centre.x) ^ 2 + (p.z - centre.z) ^ 2 <= r2 then
+            w, sx, sz = w + p.w, sx + p.w * p.x, sz + p.w * p.z
+        end
     end
-    return w
+    return w, w > 0 and { x = sx / w, z = sz / w } or nil
+end
+
+-- Orders orbit candidates (each with score and fight from coverageOf) best first: those
+-- seeing at least (1 - early_warning_near_best) of the best score, nearest the fight they
+-- see first; then the rest by score. An orbit far back or on the map's edge that sees as
+-- much as a forward one loses to it: its radar is spent on empty space behind it.
+local function rankOrbits(candidates)
+    local best = 0
+    for _, c in ipairs(candidates) do best = math.max(best, c.score) end
+    local floor = best * (1 - AIR_DEFENSE.early_warning_near_best)
+    for _, c in ipairs(candidates) do
+        c.near_best = best > 0 and c.score >= floor and c.fight ~= nil
+        c.to_fight = c.near_best and Util.dist(c.centre, c.fight) or nil
+    end
+    table.sort(candidates, function(a, b)
+        if a.near_best ~= b.near_best then return a.near_best end
+        if a.near_best then return a.to_fight < b.to_fight end
+        return a.score > b.score
+    end)
 end
 
 -- The AWACS: one orbit where it sees the most of the fight (earlyWarningPoints) from
@@ -2404,8 +2436,8 @@ local function planEarlyWarning(ctx)
     local r2 = (D.early_warning_coverage_km * 1000) ^ 2
     local seen, planned = {}, {}
     for n = 1, D.early_warning_max[ctx.coalition] or 1 do
-        for _, c in ipairs(candidates) do c.score = coverageOf(pts, c.centre, seen) end
-        table.sort(candidates, function(a, b) return a.score > b.score end)
+        for _, c in ipairs(candidates) do c.score, c.fight = coverageOf(pts, c.centre, seen) end
+        rankOrbits(candidates)
         local unseen = 0
         for i, p in ipairs(pts) do if not seen[i] then unseen = unseen + p.w end end
         if n > 1 and (unseen / total <= D.early_warning_second_share
@@ -2438,8 +2470,14 @@ local function planEarlyWarning(ctx)
                 end
                 local after = 0
                 for i, p in ipairs(pts) do if not seen[i] then after = after + p.w end end
-                logFlight(ctx, m, string.format("  on station until the window ends; sees %.0f %% of the fight (%.0f %% unseen before, %.0f %% after)",
-                    100 * c.score / total, 100 * before / total, 100 * after / total))
+                local b = AIRSPACE.map_bounds_m
+                local edgeKm = math.huge
+                for _, q in ipairs({ c.ends[1], c.ends[2] }) do
+                    edgeKm = math.min(edgeKm, q.x - b.min_x, b.max_x - q.x, q.z - b.min_z, b.max_z - q.z)
+                end
+                logFlight(ctx, m, string.format("  on station until the window ends; sees %.0f %% of the fight (%.0f %% unseen before, %.0f %% after), %s km from the fight it sees, race-track %.0f km inside the map's edge",
+                    100 * c.score / total, 100 * before / total, 100 * after / total,
+                    c.fight and string.format("%.0f", Util.dist(c.centre, c.fight) / 1000) or "?", edgeKm / 1000))
                 planned[#planned + 1] = { m = m, station = station }
                 done = true
                 break

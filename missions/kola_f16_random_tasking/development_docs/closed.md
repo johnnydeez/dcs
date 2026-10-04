@@ -1141,3 +1141,22 @@ Every 10 s an on-screen line (and `dcs.log`, `[AWACS HSD TEST]`) says whether th
 **Seen:** `event_logs\2026-10-04_223922.log`: `leash stand down: MSN2017_CAP destroyed` (MSN7934_SCRAM, 05:55:04), though the F-15C had landed at Alakurtti at 05:51:47; `leash home: MSN2025_SEAD destroyed` (MSN7912) for a flight that had landed. The leash, the bandit call's `back on mission` and the scrambles' `stand down before launch` said "destroyed" for any group no longer there.
 
 **Fix:** `AssessFlightSituations.goneText`, from the scheduler's record: `… destroyed` (all lost), `… landed`, `… down (1 lost, 1 landed)`, or `… gone` (a group the scheduler doesn't keep: a player).
+
+---
+
+### Bug 47. Blue's second (southern) E-3A flies its race-track down to the edge of the map
+
+**Status:** fixed 2026-10-05, not flown (John: "the AWACS are often spawning right on the map edge … using half their capacity to scan off the map"; copied to DCS). The airspace grid the orbits are sampled on reaches 150 km past the outermost bases, past the map's edges, and the score (fight seen within 250 km) didn't care how much of the circle was empty. Built (`orbitCandidates`, `rankOrbits`, `stages/plan_air_tasking.lua`):
+- **Inside the map:** the whole race-track (centre and both ends) stays `early_warning_map_margin_km` (60) inside the Kola map's edges, `AIRSPACE.map_bounds_m` (from DCS's `Mods\terrains\Kola\MissionGenerator\nodesMap.lua`: x −285,184 … 393,216, z −557,056 … 884,736).
+- **Forward:** among the orbits that see at least 90 % of the best one's share (`early_warning_near_best` 0.1), the one nearest the fight it sees (the weighted centre of the points in its coverage) wins, so an orbit far back or at the edge that sees about as much as a forward one loses to it.
+- `dcs.log`'s AWACS line now gives "n km from the fight it sees, race-track n km inside the map's edge".
+- **Replay of the 22:39 roll** (three seeds): Red's A-50 was planned off Olenya with its race-track **26 km off the map's south edge** (x −303 km); now off Severomorsk-1, 250 km inside the edge, 114 km from the fight it sees (30 % of the fight against 34 % before: what the old orbit saw more lay at the edge). Blue's E-3A (off Evenes, 264 km inside) unchanged.
+
+**Seen:** the southern Blue AWACS's race-track runs down to the very southern edge of the map. It doesn't need to go that far south, and much of its radar coverage is wasted on empty space past the fight. Example, John's test roll of 2026-10-04 14:20 (`Saved Games\DCS\kola_last_plan.lua`): `MSN2002_AEW` on `AEW_EVEN_2`, race-track `{ -288144, -275, -239448, -11621 }` (x north, z east); the first E-3A, `MSN2001_AEW` on `AEW_BODO_1`, orbits far to the north (`{ 121343, -193604, 191788, -155690 }`).
+
+**Cause (suspected, from the design, not checked in code):** the AWACS placement (bug 42, `orbitCandidates` / `earlyWarningPoints` in `stages/plan_air_tasking.lua`) picks the second orbit by how much of the fight the first leaves unseen within `early_warning_coverage_km` (250), from own-airspace candidates at least 150 km from every enemy fighter base and 80 km from the contested airspace, with the legs laid across the line to the nearest enemy fighter base. Nothing keeps the race-track away from the map edge, nothing prefers the end of the track that faces the fight, and the legs' direction can run the track north-south, away from what it should watch.
+
+**Proposed (decide with John):**
+- Lay the race-track's legs so the whole track stays on the side facing the fight: the far end no farther from the front than the near end plus a little, or legs parallel to the front.
+- Keep the race-track a margin inside the map's edge.
+- Score a candidate by the fight it sees from the race-track's far end too, not only its centre, so a track that drifts away loses.
