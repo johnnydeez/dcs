@@ -1,0 +1,192 @@
+{
+  "_about": [
+    "What the AWACS controller says, as swappable pieces (phrase_bank_wording.py puts them together).",
+    "Each list holds alternatives: a plain string, or {text, weight, when}. weight (default 1) makes",
+    "an alternative more or less common; an empty text leaves the piece out; when names a condition",
+    "the alternative needs: one_group, several_groups, busy (4+ groups), close_hot (the first group",
+    "hot inside close_hot_nm), type_known, type_unknown, stale (not seen for stale_s), scattered.",
+    "Placeholders in {braces} are filled from the mission's facts; {pause} is a longer gap in the voice.",
+    "The order of the facts in a group (bearing, range, altitude, aspect, then who it is) is fixed:",
+    "only the words around them and the way a number is said vary. Recently used alternatives are",
+    "made less likely (a quarter of their weight last time, half the time before), never ruled out."
+  ],
+
+  "controller": { "callsign": "Darkstar", "voice": "Microsoft Zira Desktop", "rate": 1 },
+
+  "groups_in_full": 3,
+  "close_hot_nm": 40,
+  "stale_s": 60,
+
+  "pronounce": { "BRAA": "brah" },
+
+  "styles": {
+    "_about": "Chosen once per call, so one call never mixes two ways of saying the same thing.",
+    "range":    { "plain": 6, "digits": 2, "hundred": 1 },
+    "altitude": { "plain": 5, "digits": 2 },
+    "type":     { "nato": 7, "designation": 3 },
+    "label":    { "direction": 6, "number": 3 }
+  },
+
+  "picture": {
+    "opening": [
+      { "text": "{to}, {me}, picture", "weight": 10 },
+      { "text": "{to}, {me}. Picture", "weight": 4 },
+      { "text": "{me}, picture", "weight": 4 },
+      { "text": "{to}, {me}, updated picture", "weight": 3 },
+      { "text": "{to}, {me}, current picture", "weight": 2 },
+      { "text": "{to}, {me}, picture update", "weight": 2 },
+      { "text": "{to}, {me}, here's your picture", "weight": 2 },
+      { "text": "{to}, {me} with the picture", "weight": 2 },
+      { "text": "{to}, {me}, stand by. {pause} Picture", "weight": 2, "when": "busy" },
+      { "text": "{to}, {me}, busy picture", "weight": 2, "when": "busy" },
+      { "text": "{to}, {me}, it's getting busy. Picture", "weight": 1, "when": "busy" },
+      { "text": "{to}, {me}, heads up. Picture", "weight": 3, "when": "close_hot" },
+      { "text": "{to}, {me}, picture, be advised", "weight": 2, "when": "close_hot" }
+    ],
+    "count": [
+      { "text": "single group", "weight": 8, "when": "one_group" },
+      { "text": "single group only", "weight": 2, "when": "one_group" },
+      { "text": "one group", "weight": 1, "when": "one_group" },
+      { "text": "{group_count} groups", "weight": 8, "when": "several_groups" },
+      { "text": "I'm showing {group_count} groups", "weight": 2, "when": "several_groups" },
+      { "text": "holding {group_count} groups", "weight": 2, "when": "several_groups" },
+      { "text": "{group_count} groups on the scope", "weight": 1, "when": "several_groups" },
+      { "text": "{group_count} groups total", "weight": 1, "when": "several_groups" }
+    ],
+    "label": {
+      "_about": "One form is chosen per call. direction labels need every group in a different direction, else number labels are used.",
+      "direction": [ "{direction} group" ],
+      "number":    [ { "text": "group {number}", "weight": 2 }, "{ordinal} group" ]
+    },
+    "braa": [
+      { "text": "BRAA {bearing}, {range}, {altitude}, {aspect}", "weight": 6 },
+      { "text": "BRAA {bearing} for {range}, {altitude}, {aspect}", "weight": 3 },
+      { "text": "{bearing} for {range}, {altitude}, {aspect}", "weight": 2 },
+      { "text": "bearing {bearing}, {range} miles, {altitude}, {aspect}", "weight": 2 }
+    ],
+    "braa_no_range": [
+      { "text": "bearing {bearing}, range unknown, {altitude}, {aspect}", "weight": 3 },
+      { "text": "BRAA {bearing}, no range, {altitude}, {aspect}", "weight": 2 }
+    ],
+    "aspect": {
+      "hot":   [ "hot" ],
+      "flank": [ { "text": "flank {track}", "weight": 4 }, "flanking {track}" ],
+      "beam":  [ { "text": "beam {track}", "weight": 4 }, "beaming {track}" ],
+      "drag":  [ { "text": "drag {track}", "weight": 4 }, "dragging {track}", "cold, tracking {track}" ],
+      "slow":  [ "slow mover", "hovering" ]
+    },
+    "declare": [
+      { "text": "hostile, {type}", "weight": 6, "when": "type_known" },
+      { "text": "{type}, hostile", "weight": 2, "when": "type_known" },
+      { "text": "hostile, type {type}", "weight": 1, "when": "type_known" },
+      { "text": "hostile", "weight": 4, "when": "type_unknown" },
+      { "text": "hostile, type unknown", "weight": 2, "when": "type_unknown" },
+      { "text": "hostile, no type yet", "weight": 1, "when": "type_unknown" }
+    ],
+    "low_altitude": [ { "text": "low", "weight": 3 }, "very low", "down low" ],
+    "stale": [
+      { "text": "stale track", "weight": 3 },
+      { "text": "last painted {age_minutes} ago", "weight": 2 },
+      { "text": "old track, {age_minutes}", "weight": 1 }
+    ],
+    "more_groups": [
+      { "text": "plus {more_groups} {more_direction}, beyond {more_range}", "weight": 4 },
+      { "text": "{more_groups} {more_direction}, outside {more_range}", "weight": 3 },
+      { "text": "and {more_groups} to the {more_direction}, {more_range} and beyond", "weight": 2 },
+      { "text": "and {more_groups} out to the {more_direction}, beyond {more_range}", "weight": 2 },
+      { "text": "plus {more_groups} scattered, beyond {more_range}", "weight": 6, "when": "scattered" },
+      { "text": "{more_groups} spread out past {more_range}", "weight": 3, "when": "scattered" }
+    ],
+    "closing": [
+      { "text": "", "weight": 12 },
+      { "text": "{me}", "weight": 3 },
+      { "text": "nothing further", "weight": 1 },
+      { "text": "that's all I have", "weight": 1 },
+      { "text": "{me}, out", "weight": 1 },
+      { "text": "watch the {first_direction}", "weight": 3, "when": "close_hot" },
+      { "text": "will advise", "weight": 1 },
+      { "text": "{me} standing by", "weight": 1 },
+      { "text": "I'll keep you updated", "weight": 1 },
+      { "text": "more to follow", "weight": 2, "when": "busy" }
+    ]
+  },
+
+  "threat": {
+    "_about": "A hot hostile close in, called at once. The group itself is worded with the picture's lists (braa, aspect, declare).",
+    "opening": [
+      { "text": "{to}, {me}, threat", "weight": 8 },
+      { "text": "{to}, {me}, threat, {direction}", "weight": 3 },
+      { "text": "{to}, threat", "weight": 2 },
+      { "text": "{to}, {me}, heads up, threat", "weight": 2 },
+      { "text": "{to}, {me}, threat, single group", "weight": 1 },
+      { "text": "{to}, {me}, threat, threat", "weight": 1 }
+    ],
+    "closing": [
+      { "text": "", "weight": 8 },
+      { "text": "{me}", "weight": 2 },
+      { "text": "that's your threat", "weight": 1 },
+      { "text": "watch {direction}", "weight": 2 },
+      { "text": "will advise", "weight": 1 },
+      { "text": "{me} standing by", "weight": 1 }
+    ]
+  },
+
+  "picture_clean": [
+    { "text": "{to}, {me}, picture clean", "weight": 8 },
+    { "text": "{to}, {me}, clean", "weight": 4 },
+    { "text": "{me}, picture clean", "weight": 3 },
+    { "text": "{to}, {me}, picture's clean", "weight": 3 },
+    { "text": "{to}, {me}, clean, no contacts", "weight": 2 },
+    { "text": "{to}, {me}, nothing showing. Picture clean", "weight": 2 },
+    { "text": "{to}, {me}, scope's quiet. Clean", "weight": 1 },
+    { "text": "{to}, {me}, clean picture, no factor traffic", "weight": 1 }
+  ],
+
+  "no_coverage": [
+    { "text": "{to}, {me}, no radar coverage your area", "weight": 6 },
+    { "text": "{to}, {me}, negative coverage your area, picture unknown", "weight": 3 },
+    { "text": "{to}, {me}, you're outside my coverage. Picture unknown", "weight": 3 },
+    { "text": "{to}, {me}, I've got no coverage at your position", "weight": 2 },
+    { "text": "{to}, {me}, you're below my coverage. Can't give you a picture", "weight": 1 },
+    { "text": "{to}, {me}, no picture your area, I can't see that far", "weight": 1 }
+  ],
+
+  "types": {
+    "_about": "DCS type name -> how the controller says it. nato = NATO reporting name or common name; designation = said as a model. A type not listed is spoken from its name (Su -> Sukhoi, MiG -> MiG ...).",
+    "Su-24M":   { "nato": "Fencer",       "designation": "Sukhoi twenty-four" },
+    "Su-24MR":  { "nato": "Fencer",       "designation": "Sukhoi twenty-four" },
+    "Su-25":    { "nato": "Frogfoot",     "designation": "Sukhoi twenty-five" },
+    "Su-25T":   { "nato": "Frogfoot",     "designation": "Sukhoi twenty-five" },
+    "Su-25TM":  { "nato": "Frogfoot",     "designation": "Sukhoi twenty-five" },
+    "Su-17M4":  { "nato": "Fitter",       "designation": "Sukhoi seventeen" },
+    "Su-27":    { "nato": "Flanker",      "designation": "Sukhoi twenty-seven" },
+    "Su-30":    { "nato": "Flanker",      "designation": "Sukhoi thirty" },
+    "Su-33":    { "nato": "Flanker",      "designation": "Sukhoi thirty-three" },
+    "Su-34":    { "nato": "Fullback",     "designation": "Sukhoi thirty-four" },
+    "MiG-21Bis":{ "nato": "Fishbed",      "designation": "MiG twenty-one" },
+    "MiG-23MLD":{ "nato": "Flogger",      "designation": "MiG twenty-three" },
+    "MiG-25PD": { "nato": "Foxbat",       "designation": "MiG twenty-five" },
+    "MiG-29A":  { "nato": "Fulcrum",      "designation": "MiG twenty-nine" },
+    "MiG-29S":  { "nato": "Fulcrum",      "designation": "MiG twenty-nine" },
+    "MiG-31":   { "nato": "Foxhound",     "designation": "MiG thirty-one" },
+    "Tu-22M3":  { "nato": "Backfire",     "designation": "Tupolev twenty-two" },
+    "Tu-95MS":  { "nato": "Bear",         "designation": "Tupolev ninety-five" },
+    "Tu-142":   { "nato": "Bear",         "designation": "Tupolev one forty-two" },
+    "Tu-160":   { "nato": "Blackjack",    "designation": "Tupolev one sixty" },
+    "A-50":     { "nato": "Mainstay",     "designation": "A fifty" },
+    "IL-76MD":  { "nato": "Candid",       "designation": "Ilyushin seventy-six" },
+    "IL-78M":   { "nato": "Midas",        "designation": "Ilyushin seventy-eight" },
+    "Mi-8MT":   { "nato": "Hip",          "designation": "Mil eight" },
+    "Mi-24P":   { "nato": "Hind",         "designation": "Mil twenty-four" },
+    "Ka-50":    { "nato": "Hokum",        "designation": "Kamov fifty" },
+    "F-15C":    { "nato": "Eagle",        "designation": "F fifteen" },
+    "F-15ESE":  { "nato": "Strike Eagle", "designation": "F fifteen E" },
+    "F-16C_50": { "nato": "Viper",        "designation": "F sixteen" },
+    "FA-18C_hornet": { "nato": "Hornet",  "designation": "F eighteen" },
+    "F-14B":    { "nato": "Tomcat",       "designation": "F fourteen" },
+    "B-1B":     { "nato": "Bone",         "designation": "B one" },
+    "E-3A":     { "nato": "Sentry",       "designation": "E three" },
+    "Tornado IDS": { "nato": "Tornado",   "designation": "Tornado" },
+    "unknown helicopter": { "nato": "rotary wing", "designation": "helicopter" }
+  }
+}

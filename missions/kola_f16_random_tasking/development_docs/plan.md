@@ -42,6 +42,7 @@
 - **Red's attack jets carry R-77s** (2026-10-01): every Su-34 loadout has 2× R-77 (*Stages 5–6*, Loadouts).
 - **Kill zones depend on height above the ground** (`lib/sam_reach.lua`): the low-altitude reach up to 300 m, the full ring from 3,000 m (bug 27, fixed 2026-10-02: was 3,000 / 7,000 m above sea level; at the 00:57 run's pop-ups the sites reached nearly their full envelope); no AI flight launches from a base inside an enemy SAM's low-altitude kill zone. The SEAD launch point stays cleared of the other sites' low reach only; the pop-up and the press-on leg are accepted exposure: go cold and a fight's break-off ignore every ring there while missiles are aboard. Outside it a SEAD flight's fight is broken off for any kill zone at its height, its own target's included. Enemy airfield Tors / Pantsirs / Rolands count at 85 % of their full reach at any height (bug 41, 2026-10-02, not flown).
 - **Air picture for players** (roadmap item 5, built 2026-10-02, flown in the 00:57 run; `closed.md`): every 2 min, for 14 s, each player gets their coalition's radar picture as a BRAA list from their own position (magnetic), highest threat first (*Air picture calls*).
+- **Darkstar on the radio** (roadmap item 7 MVP, built and flown 2026-10-05; *Radio calls*): the picture calls and immediate threat calls (a hot hostile inside 40 nm) spoken in a Windows voice with a radio sound, by our own player and helper in `radio_calls/`, which the mission starts itself. Bearings now grid-based magnetic as the F-16 shows them, stale tracks no longer called (bug 61, fixed 2026-10-05, not flown).
 - **The player's HSD** (bug 25, confirmed in Kola 2026-10-02): friendly AI flights show as datalink contacts and the medium and long-range SAM rings show (the recipe: *DCS facts learned the hard way*). The AWACS's enemy tracks reach it too, as yellow (unknown) contacts (bug 26, closed after the test mission, 2026-10-02).
 - **SEAD retuned after the 00:57 run** (2026-10-02; bugs 27, 28, 30; its launch point and pop-up numbers were changed again since, see the doctrine line above): go cold the moment the last anti-radiation missile leaves; attack tasks hold the planned altitude (the AI flew its attacks low); the bandit call keeps a fighter that just fired at the flight.
 - **Bug round 2026-10-02 (session 15, not flown; each fix in `closed.md`, the guards for 6 and 13 in `bugs.md`):**
@@ -114,7 +115,9 @@
 
 **Next (2026-10-05, morning):** built today, none flown, all copied to DCS, all in `closed.md` (John closed them before a run; bug 51 too): bugs 48, 49 (DEAD from out of reach instead of SEAD on a target whose radar can't see the press-on point), 52, 53, 54, 55. John flies Kola again. Check: `>>orphan<<` endings and `land: … still in the air` (bug 52); `breaking off:` / `go cold:` / `leash home:` lines naming a wingman (bug 53); `come back` for a site a non-rotation flight takes (bug 54); in `dcs.log` `DEAD from out of its reach`, and that DEAD's `SHOT` (Kh-59M range) and the waiting attack (bug 49); `landed` / `down` in leash lines (bug 55); where both AWACS orbit (`dcs.log`: "… km inside the map's edge", bug 47, also built 2026-10-05).
 
-**Also 2026-10-05: roadmap item 7 (AI radio calls, LLM) is being planned, no code yet.** MVP: Darkstar's picture calls spoken. SRS was tried and dropped (its sender's audio crackles); next is our own small radio player (a local port, a radio filter, played to John's headphones), then a call end to end. Decisions and steps: `roadmap.md`, item 7.
+**Also 2026-10-05: Darkstar speaks (roadmap item 7 MVP; *Radio calls*).** Flown the same afternoon, John on the ramp: "working, and is awesome". Found: bug 61 (bearings a few degrees off against the F10 map; parked, its `dcs.log` check line on), and "that's all I have" far too often (the repeat avoidance flattened the weights; fixed, not heard yet). Still to see: a threat call (`PICTURE_CALL.*threat`) and how late it comes; whether the start-up `os.execute` causes any stutter. Next steps: `roadmap.md`, item 7.
+
+**Bug 61 closed 2026-10-05 evening** (`event_logs\2026-10-05_185934.log`, John's test flight on HUD 050 from Kallax): DCS's magnetic is grid minus variation, so Darkstar's bearings were off by the grid's convergence. Fixed (grid-based bearings, tracks and airfield brief; the true age; stale tracks not called; the DEBUG and bearing-check lines removed), copied to DCS, not flown; `closed.md`. Check in the next run: Darkstar's bearings against the HSD east of Rovaniemi, and no call of a contact that's gone.
 
 **Next (2026-10-02 late, after session 18):** built in session 18, none flown: the orphaned-wingman removal (`>>orphan<<`, bug 19), DEAD from out of a short-range site's reach (Kh-59M / JSOW, bug 4), the AWACS placed where its coalition fights and Darkstar's "no radar coverage your area" (bug 42), contact ranges in `CONTACT` lines.
 1. ~~John flies `awacs_hsd_test.miz`~~ (done 2026-10-02: the AWACS's tracks reach the HSD with Kola's spawn as it is, as yellow / unknown; bug 26 closed, `closed.md`).
@@ -166,7 +169,7 @@
 | `>>orphan<<` | bug 19's wingmen (`CONTROL` lines): `possibly orphaned` (still in the air when a jet of its flight landed), then how it ended: `not orphaned: landed … after`, `removed: by the controller` (8 min on, counted as landed), or `lost`. Count them run to run to see whether it gets worse or better |
 | `UNIT_AWAKE`, `UNIT_ASLEEP`, `LATE_WAKE`, `AWAKE_COUNT`, `(asleep)` | sleeping ground units: a base's short-reach defenses waking and sleeping, an enemy within 10 km of a sleeping base (never expected), the 5-min count; hits and deaths of a sleeping unit end in `(asleep)` |
 | `PLAYER_IN`, `PLAYER_OUT` | players |
-| `PICTURE_CALL` | the air picture shown to a player every 2 min: how many groups, and the first (highest threat) line; `no radar coverage` when no sensor of the coalition reaches the player |
+| `PICTURE_CALL` | the air picture shown to a player every 2 min: how many groups, and the first (highest threat) line; `no radar coverage` when no sensor of the coalition reaches the player; `threat: …` a spoken threat call (a hot group inside 40 nm, roadmap item 7). What was said: `radio_calls/speak_mission_calls.log` |
 | `== Mission end` | the summary: flights launched, losses by cause, ground losses, each flight's outcome |
 
 `dcs.log` keeps planning and debugging (grep `[KOLA]`):
@@ -297,8 +300,8 @@ Then:
 6. `ScheduleAirTaskingOrders.start`.
 7. `TrackRadarPicture.start` (after the scheduler, before anything that reads the picture).
 8. `ControlAirFlights.start` (the controller, scrambles included), then `SleepGroundUnits.start`.
-9. `DrawAirTaskingOrders`.
-10. `BriefAirTasking.start` (comms menu).
+9. `DrawAirTaskingOrders`, then `CallAirPicture.start` (the air picture) and `SendRadioCalls.start` (Darkstar on the radio: empties the calls file, starts the radio player and helper).
+10. `CreateAirfieldsBrief.start`, `BriefAirTasking.start` (comms menu).
 11. Build summary to `dcs.log`.
 12. `BriefAirTasking.showStart` (start text, 3 min).
 
@@ -824,10 +827,37 @@ Built 2026-10-02 (roadmap item 5, text first; `closed.md`), first flown in the 0
   Type (once any sensor identified it, else `unknown`) - magnetic bearing / range (`?` when no sensor knows it, e.g. a jammer), altitude in thousands (`low` under 1,000 ft), aspect from the contact's heading against the line to the player (hot ≤ 30°, flank ≤ 70°, beam ≤ 110°, else drag; flank, beam and drag carry the contact's track as N / NE / …; `slow` under 20 m/s), and how old the position is (seconds since a radar last saw it: under 30 while tracked, more once stale). At most `max_groups` (10) lines, then "+N more"; `clean` when the picture is empty. Header callsign per coalition (`DARKSTAR` / `OVERLORD`).
 - **Threat order:** range × `threat_range_factor` by aspect (hot 1, flank 1.5, beam 2, drag 3), smallest first.
 - **Coverage** (2026-10-02 session 18, bug 42, not flown): a player outside every live sensor's reach gets `DARKSTAR: no radar coverage your area, picture unknown` (or `…, 3 groups; no radar coverage your area`) instead of a picture that only looks clean (`PICTURE_CALL … nothing; no radar coverage`). Reach at the player's height above the ground (`AIR_PICTURE_CALLS.coverage`): an AWACS 250 km, a patrol or scramble 80 km, a ground radar its type's `detection_m` (at most 300 km), each no farther than the radar horizon (4.12 × (√h₁ + √h₂) km, a ground antenna 10 m up). Tune from the `CONTACT` lines, which now say how far away the first sensor saw each contact ("seen by awacs MSN2001_AEW 212 km away").
-- **Bearings:** true from the two positions' lat/lon (the map grid is skewed from true north toward its edges), then magnetic with DCS's `magvar` module (`require "magvar"`, `get_mag_decl(lat_deg, lon_deg)` in radians, `init(month, year)`: what the mission editor and the DTC use). In `luae` it loads but answers 0, so a start-up self-test at Rovaniemi drops it when it answers near 0 and uses the approximate table by longitude (`fallback_magnetic_variation`: Bodø +5° … Murmansk +16°). `dcs.log` (grep `air picture`) says which one is used, and both values at Rovaniemi.
-- **Facts and text apart** (`describe` vs the text functions), so the AI radio calls (item 7) can speak the same facts later.
+- **Bearings:** magnetic as DCS works it out: the grid bearing (map x / z) minus the variation at the player (bug 61, 2026-10-05: the F-16's HUD and the F10 ruler take grid north as true north; our earlier bearing from true north was off by the grid's convergence, ~1° at Kallax, ~6° near Ivalo, ~9° toward Murmansk). The contacts' tracks and the airfield brief's wind and runway numbers the same way. No per-map setting: the convergence only grows with distance from the map's central meridian. Variation from DCS's `magvar` module (`require "magvar"`, `get_mag_decl(lat_deg, lon_deg)` in radians, `init(month, year)`: what the mission editor and the DTC use). In `luae` it loads but answers 0, so a start-up self-test at Rovaniemi drops it when it answers near 0 and uses the approximate table by longitude (`fallback_magnetic_variation`: Bodø +5° … Murmansk +16°). `dcs.log` (grep `air picture`) says which one is used, and both values at Rovaniemi.
+- **Facts and text apart** (`describe` vs the text functions): `SendRadioCalls` speaks the same facts (*Radio calls*); each call hands its groups to `SendRadioCalls.picture`, and `CallAirPicture.pictureFor(side, unit, quiet)` is open to it for threat calls.
+- **Tracked contacts only, and their true age** (bug 61, 2026-10-05): a stale track (no radar has seen it for `RADAR_PICTURE.stale_after_s`, 60 s) isn't called, on screen or on the radio (John: no reason to hear 5 min old contacts; they were often jets already shot down or landed). The age said runs from when a radar read the position (`pos_seen_at`), not from the round's end (it was ~27 s short).
 - **Event log:** `PICTURE_CALL`, one line per player per call: the number of groups and the first one's line.
 - **To check in the first run:** that magvar works in the game (`dcs.log`), bearings and ranges against the F-16's HSD, whether 14 s is long enough to read the list.
+
+### Radio calls (`consumers/send_radio_calls.lua`, `data/radio_calls.lua`, `radio_calls/`)
+
+Built and flown 2026-10-05 (roadmap item 7's MVP; John: "working, and is awesome"). Darkstar speaks: the air picture's calls and immediate threat calls, phrased from a phrase bank, in a Windows voice, with a radio sound, played to Windows' default output. Blue only, one frequency, every player "Snake one one" (`RADIO_CALLS.player_callsign`) until slots carry callsigns. The on-screen list is unchanged. How to start, watch and test it: the repo's `README.md`, *Kola radio calls*.
+
+```
+mission (Lua) --JSON line--> helper -----------> phrase bank --> Windows voice --> radio player ----> headphones
+send_radio_calls.lua  mission_calls.jsonl  speak_mission_calls.py  (Zira, SSML)   127.0.0.1:47110
+```
+
+- **In the mission** (`SendRadioCalls`):
+  - **picture:** every on-screen picture (every 2 min, `CallAirPicture`) is also written as a call: `picture` with up to 10 groups' facts (type, magnetic bearing, range nm, range known, altitude ft, aspect, track, seconds since seen), or `picture_clean`, or `no_coverage`;
+  - **threat:** on each radar-picture round (30 s), per player, the highest-threat group that is hot with a known range inside `threat_nm` (40) is called at once; the same group to the same player again only after `threat_repeat_s` (180). Event log `PICTURE_CALL … threat: <type>, <brg>/<nm>nm, <ft> ft, hot`;
+  - each call is one JSON line (`call`, `to`, `player_group`, `groups`, `mission_time_s`) in `RADIO_CALLS.calls_file` (`radio_calls/mission_calls.jsonl`, git-ignored), emptied at mission start; the mission never waits on anything outside DCS;
+  - at start: `os.execute('start "" /min "…\radio_calls\start_radio_calls.cmd"')` (returns at once); `RADIO_CALLS.enabled = false` turns it all off.
+- **The helper** (`speak_mission_calls.py`): reads new complete lines every 0.2 s (starts over when the file is emptied; a file untouched for 60 s at start is a past mission's and skipped); words each call (`phrase_bank_wording.py`), speaks it (`windows_voice.py`), sends it to the player. One copy at a time (holds port 47111); `--exit-with-dcs` closes it once `DCS.exe` is gone. Logs every call's words and wording / voice time to its window and `speak_mission_calls.log` (rewritten each start). Reads `awacs_phrases.json` once, at start.
+- **The radio player** (`radio_player.py`): 127.0.0.1:47110; a call = one TCP connection, a JSON header line (`speaker`, `frequency`, `audio_bytes`, `sent_at`, `urgent`, `replaces`, `expires_s`) then the WAV. Plays one at a time with `winsound`. Threat calls are `urgent` (before anything waiting), a picture `replaces` the same player's older picture not yet played, `expires_s` drops old news (picture 90 s, threat 30 s). One copy at a time; `--exit-with-dcs`.
+- **The radio sound** (`radio_sound.py`, every number in `radio_sound_settings.json`, read fresh per call): mono at 11,025 Hz, band-pass 300–3,000 Hz (2 stages), +4 dB at 1,800 Hz, soft-clip drive 3, hiss, a key-up click and squelch tail, volume 0.4 (0.8 until 2026-10-05 evening; John: a little too loud, halved). ~0.4 s for a 13 s call. John: "sounds great".
+- **The voice** (`windows_voice.py`): PowerShell System.Speech → WAV, ~0.3–0.5 s a call; SSML, `{pause}` = 400 ms. Only David and Zira are open to System.Speech (Mark is a OneCore voice). Darkstar: Zira, rate 1 (`awacs_phrases.json`, `controller`).
+- **The wording** (`phrase_bank_wording.py` + `awacs_phrases.json`):
+  - **Fixed in code (brevity):** a group is always bearing, range, altitude, aspect, then who it is; bearings digit by digit with "niner" (000 is "three six zero"); ranges over 100 nm to the nearest 5; never "angels" for an enemy (thousands, or "low" under 1,000 ft); the first `groups_in_full` (3) groups in full, the rest summed up by count, direction and nearest range ("plus three more groups northeast, beyond one hundred", "scattered" when spread over 60°); direction labels ("northeast group") only when every group has its own direction, else numbers.
+  - **From the data:** every flavour piece is a weighted list (openings, counts, labels, BRAA forms, aspect words, declarations, stale tracks, more groups, closings, clean, no coverage, threat openings and closings) with optional conditions (`one_group`, `several_groups`, `busy` 4+, `close_hot` the first group hot inside 40 nm, `type_known`, `type_unknown`, `stale` 60 s, `scattered`); styles chosen once per call so a call never mixes them (range "one twenty" / "one two zero" / "a hundred twenty", altitude "twenty-five thousand" / "two five thousand", NATO name / designation, direction / number labels); NATO names per DCS type (a type not listed is spoken from its name: Su → Sukhoi …); `pronounce` (BRAA → "brah").
+  - **Repeats:** a phrase used last time keeps a quarter of its weight, the time before half; saying nothing is never held back (before the fix, recent phrases were barred, which flattened the weights: "that's all I have" came 17 % of the time, meant 6 %).
+  - **Checked at load:** every placeholder and condition; a typo stops the helper at start, not mid-call.
+- **Tests without DCS** (`radio_calls/`): `play_sample_awacs_calls.py` (seven made-up calls through Zira and the player; `--repeat`, `--only`, `--text-only`), `send_radio_call.py` (any text or WAV), `phrase_bank_wording.py` (checks the file, prints samples).
+- **Multiplayer (not built):** over ZeroTier; the host words each player's calls, the friend's PC runs only the radio player (roadmap item 7).
 
 ### Event log (`consumers/write_event_log.lua`, `data/event_log.lua`)
 
@@ -1001,6 +1031,7 @@ The runtime can read the mission's weather, time and date, but can't change them
 | `python kola_data_tools/cloud_presets.py` | after a DCS update |
 | the footprint survey (`CONFIG.SURVEY_FOOTPRINTS`) | after a Kola map update |
 | `python desanitize_dcs.py` (repo root, admin shell) + full DCS restart | after every DCS update |
+| `python radio_calls/phrase_bank_wording.py`, then `radio_calls/play_sample_awacs_calls.py` (player running) | after changing `awacs_phrases.json` |
 
 - **Python versions:** `python` on PATH is a pyenv 3.7 shim; Python 3.10 is at `AppData\Local\Programs\Python\Python310`.
 - **Offline test harness:** DCS ships Lua 5.1 as `DCS World\bin\luae.exe`. Stub the mission API and run the real `init.lua`, or one stage on real geometry from `kola_last_plan.lua`, before handing a change to John.
@@ -1018,7 +1049,8 @@ The runtime can read the mission's weather, time and date, but can't change them
 - **It climbs the same way, and counts a waypoint reached a few km early.** A pop-up with its altitude only on the launch point was a third of the way up there (bug 40); a waypoint at full altitude right after the climb's start makes it climb hard.
 - **SAMs reload, slowly, and only from a supply truck** (checked 2026-10-04): a launcher rearms from a supply truck within ~600 ft (~183 m; John measured the circle in the mission editor, 2026-10-04): a unit with `GT.warehouse = true`, drawn with a supply circle in the mission editor; only some truck variants are (John). The ones that reload: **"Truck Ural-4320"** for Red (type string `Ural-375`, as our SA-10, SA-11 and SA-6 recipes carry) and **"Truck M939 Heavy"** for Blue (type `M 818`, as our Patriot and Hawk recipes). Not to be confused with the `Ural-4320-31` ("Arm'd") or `Ural-4320T` ED's own templates also use. Reload times from DCS's own unit files: S-300PS launchers (HeavyMetal) 7,200 s, so 2 h; Currenthill Pantsir 900/12 s and Tor M2 900/16 s, IRIS-T SLM 1,800/8 s, TechWeaponPack NASAMS 300 s per missile (`reload_time` is per package, so the per-missile reading of the Currenthill numbers isn't certain). The Patriot's, SA-11's and other base-DCS times are in the encrypted database. On the 2026-10-03 roll 10 launchers on 8 sites lay 184-230 m from their nearest truck, out of reach (the trucks went on the site's `edge`, launchers out to 95 % of the footprint), and NASAMS, IRIS-T, SA-8, SA-15 and the base-defense SAMs had no truck. **Since 2026-10-04 every SAM gets supply trucks** (`SAM_SITE_SUPPLY`, `Placement.supplyTruckPoints`): each SAM site (not early warning) gets its coalition's `supply_truck` placed last, where every launcher and its escort are within 165 m (183 - an 18 m margin), a second truck only if one can't reach all; each base-defense SAM group (radar and infrared missile launchers, MANPADS teams: `supply_truck = true` in `BASE_DEFENSE_PLACEMENT`) gets one in a group of its own, `<id>_supply` (so a live truck never keeps a dead SAM group alive; not slept, not a sensor, no map mark of its own). The edge trucks that used to be the supply trucks are gone from the recipes. Replayed on the 2026-10-03 world over 4 seeds (terrain stubbed open): 0 launchers out of reach, farthest 164 m; ~55 SAM-site trucks and ~70 base-defense trucks per roll. Not flown yet: John's test mission. The NASAMS, IRIS-T, SA-8 and SA-15 recipes and the base-defense Tors / Pantsirs have no truck and never reload. In the 2026-10-03 14:15 run both SA-10s emptied all 20 interceptors on the first salvo and fired none at the second, 15-21 min later: the second salvo got through (Vuojarvi's 64H6E; the Patriot's two tracking radars to the second Kh-31P salvo, though it still had a few missiles).
 - **The AI fires an anti-radiation missile only at a radar it detects** (`getDetectedTargets(RWR)`): no ping, no shot, whatever its orders (bug 36). A site's radar may not be on the flight yet at the launch point; an `EngageGroup` fires the moment it is.
-- **`os.execute` from DCS Lua silently runs nothing past ~260 characters:** use a `.cmd`.
+- **DCS's magnetic is grid-based** (bug 61, 2026-10-05): the F-16's HUD heading (and the F10 ruler's M) = the map's grid heading minus the magvar module's variation; grid north is treated as true north. A direction worked out from true north (lat / lon) is off by the grid's convergence (Kola: ~1° at 22° E, ~6° near Ivalo). Anything a player compares with the jet's instruments: grid direction − variation.
+- **`os.execute` from DCS Lua silently runs nothing past ~260 characters:** use a `.cmd`. It waits for the command; `start "" /min "<cmd>"` returns at once (the radio calls start their programs that way).
 - **Airbase queries return empty at T+0:** gather runs a few seconds in.
 - **Harmless log noise:** "livery not found" (CJTF with no `livery_id`), missing wreck models (`Ural-375_p_1`, `MOBILE_GENERATOR_CRASH`).
 
@@ -1144,6 +1176,7 @@ kola_f16\
     airspace.lua                 -- airspace grid settings
     radar_picture.lua            -- radar picture settings: polling, stale / drop times, sensor kinds, inbound
     air_picture_calls.lua        -- the players' air picture: period, aspect bands, threat order, callsigns, magnetic variation
+    radio_calls.lua              -- Darkstar on the radio: on / off, player callsign, threat range and repeat, calls file, start command
     air_control.lua              -- the controller: directives per mission type, their settings, intent priorities
     event_log.lua                -- event log settings: folder, write interval, hold and fold windows, positions
     ground_unit_sleep.lua        -- which base defenses sleep; wake and reach distances, check interval
@@ -1175,11 +1208,14 @@ kola_f16\
     brief_air_tasking.lua        -- start text + comms menu
     create_airfields_brief.lua   -- comms menu Airfield info: every Blue base's wind, runway in use, next flights, alert jets
     call_air_picture.lua         -- every 2 min the radar picture to each player: BRAA from them, highest threat first
+    send_radio_calls.lua         -- Darkstar's picture and threat calls as JSON lines for the radio helper outside DCS; starts it
     draw_airspace.lua  draw_base_defenses.lua  draw_sam_sites.lua  draw_fixed_ground_targets.lua
     draw_convoys.lua  draw_air_tasking_orders.lua    -- F10 map marks (all ToAll(-1) until fog of war)
   survey\                        -- one-off in-sim measurements, behind CONFIG flags or in the zone mission
     survey_airbase_footprints.lua  survey_zone_terrain.lua  probe_parked_aircraft_spawn.lua
 ```
+Outside DCS, in the mission folder: `radio_calls\` (the radio player, the helper, the phrase bank; Python, never copied to Scripts; *Radio calls*).
+
 Load order: `lib\*` → `data\*` → `stages\*` → `consumers\*`, then the run sequence.
 
 **Naming and ids.** Every spawnable plan entry has a unique `id`, used verbatim as the DCS group name, so events map straight back to plan entries.

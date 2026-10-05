@@ -1,0 +1,15 @@
+{
+  "sample_rate_hz": 11025,
+  "high_pass_hz": 300,
+  "low_pass_hz": 3000,
+  "filter_stages": 2,
+  "presence_hz": 1800,
+  "presence_gain_db": 4,
+  "drive": 3,
+  "hiss_level": 0.04,
+  "key_up_ms": 120,
+  "click_level": 0.5,
+  "squelch_tail_ms": 180,
+  "squelch_tail_level": 0.35,
+  "volume": 0.4
+}

@@ -12,11 +12,15 @@
 --
 -- bearing (magnetic) / range, altitude in thousands of feet ("low" under 1,000 ft),
 -- aspect (with the contact's direction of travel), and how old the position is (seconds
--- since a radar last saw it: under 30 s while tracked, more once stale).
--- Bearing: true north from the two positions' lat/lon (the map's grid north is off true
--- north by several degrees toward its edges), then magnetic with DCS's own magvar module
--- (as the mission editor and the DTC use it); an approximate table by longitude
--- (AIR_PICTURE_CALLS.fallback_magnetic_variation) if it can't be loaded or answers 0.
+-- since a radar read it). Only tracked contacts are called: a stale track (no radar has
+-- seen it for RADAR_PICTURE.stale_after_s) is left out (John, 2026-10-05: no reason to
+-- hear 5 min old contacts).
+-- Bearing: magnetic as DCS works it out, grid bearing minus the variation at the player
+-- (bug 61, 2026-10-05: the F-16's HUD and the F10 ruler take the map's grid north as true
+-- north; a bearing from true north was off by the grid's convergence, ~6° near Ivalo).
+-- Variation from DCS's own magvar module (as the mission editor and the DTC use it); an
+-- approximate table by longitude (AIR_PICTURE_CALLS.fallback_magnetic_variation) if it
+-- can't be loaded or answers 0.
 -- Aspect is the angle between the contact's heading and the line from it to the player.
 -- Threat order: range × a factor per aspect (AIR_PICTURE_CALLS.threat_range_factor).
 -- A contact whose range no sensor knows (a jammer) reads "135/?nm".
@@ -59,15 +63,6 @@ local function latLon(pos)
     return coord.LOtoLL({ x = pos.x, y = 0, z = pos.z })
 end
 
--- Initial great-circle bearing from (lat1, lon1) to (lat2, lon2), degrees true.
-local function trueBearing(lat1, lon1, lat2, lon2)
-    local p1, p2 = math.rad(lat1), math.rad(lat2)
-    local dl = math.rad(lon2 - lon1)
-    local y = math.sin(dl) * math.cos(p2)
-    local x = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
-    return norm(math.deg(math.atan2(y, x)))
-end
-
 -- Grid bearing (map x north, z east), degrees.
 local function gridBearing(a, b)
     return norm(math.deg(math.atan2(b.z - a.z, b.x - a.x)))
@@ -108,6 +103,7 @@ end
 
 -- Magnetic variation at lat/lon, degrees east, for other consumers (the airfield brief's
 -- wind and runway numbers). DCS's magvar once CallAirPicture.start has loaded it.
+-- Subtract it from a grid direction, not a true one (DCS's magnetic is grid-based).
 function CallAirPicture.magneticVariation(lat, lon)
     return variation(lat, lon)
 end
@@ -133,11 +129,9 @@ end
 -- { contact, bearing (magnetic), range_nm, range_known, altitude_ft, aspect, track (the
 --   contact's heading as a compass point, magnetic), type, age_s, threat }.
 local function describe(c, own)
-    local cLat, cLon = latLon(c.pos)
-    local trueDeg = trueBearing(own.lat, own.lon, cLat, cLon)
-    -- the grid's offset from true north here, for the contact's heading (grid) → true
-    local convergence = trueDeg - gridBearing(own.pos, c.pos)
-    local trackMagnetic = norm(c.heading_deg + convergence - own.variation)
+    -- magnetic = grid - variation, as the F-16 shows it (bug 61)
+    local bearingMagnetic = norm(gridBearing(own.pos, c.pos) - own.variation)
+    local trackMagnetic = norm(c.heading_deg - own.variation)
     -- aspect: the contact's heading against the line from it to the player (grid frame)
     local toPlayer = gridBearing(c.pos, own.pos)
     local off = angleBetween(c.heading_deg, toPlayer)
@@ -149,12 +143,13 @@ local function describe(c, own)
     local now = timer.getTime()
     return {
         contact = c,
-        bearing = round(norm(trueDeg - own.variation)) % 360,
+        bearing = round(bearingMagnetic) % 360,
         range_nm = rangeNm, range_known = c.range_known,
         altitude_ft = c.altitude_m * FEET_PER_METRE,
         aspect = aspect, track = cardinal(trackMagnetic),
         type = c.type or (c.category == "helicopter" and "unknown helicopter" or "unknown"),
-        age_s = math.max(0, round(now - c.last_seen)),
+        -- from when a radar read the position, not the round's end (bug 61: was ~27 s short)
+        age_s = math.max(0, round(now - (c.pos_seen_at or c.last_seen))),
         threat = rangeNm * (P.threat_range_factor[aspect] or P.threat_range_factor.drag),
     }
 end
@@ -235,13 +230,14 @@ local function covered(sideName, own)
 end
 
 -- The list for one player unit: the text, the groups in threat order, and whether the
--- coalition's radars cover the player.
+-- coalition's radars cover the player. SendRadioCalls reads it too (threat calls).
 local function pictureFor(sideName, unit)
     local own = ownFrom(unit)
     local inCoverage = covered(sideName, own)
     local groups = {}
     for _, c in ipairs(TrackRadarPicture.contacts(sideName)) do
-        if c.pos and c.heading_deg then groups[#groups + 1] = describe(c, own) end
+        -- tracked only: a stale track is old news, often a jet already down or landed
+        if c.pos and c.heading_deg and c.state ~= "stale" then groups[#groups + 1] = describe(c, own) end
     end
     table.sort(groups, function(a, b)
         if a.threat ~= b.threat then return a.threat < b.threat end
@@ -260,6 +256,8 @@ local function pictureFor(sideName, unit)
     if #groups > P.max_groups then lines[#lines + 1] = string.format("+%d more", #groups - P.max_groups) end
     return table.concat(lines, "\n"), groups, inCoverage
 end
+
+CallAirPicture.pictureFor = pictureFor
 
 local function airborne(unit)
     local ok, yes = pcall(function() return unit:inAir() end)
@@ -281,6 +279,7 @@ local function callAll()
                 done[groupId] = true
                 local text, groups, inCoverage = pictureFor(sideName, unit)
                 trigger.action.outTextForGroup(groupId, text, P.show_s, false)
+                SendRadioCalls.picture(sideName, group:getName(), groups, inCoverage)   -- spoken too
                 if P.log_calls then
                     local first = groups[1]
                     WriteEventLog.add(sideName, "PICTURE_CALL", group:getName(), string.format("to %s: %s%s",

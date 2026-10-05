@@ -54,6 +54,7 @@ if not load("data\\air_tasking.lua")              then return end
 if not load("data\\airspace.lua")                 then return end
 if not load("data\\radar_picture.lua")            then return end
 if not load("data\\air_picture_calls.lua")        then return end
+if not load("data\\radio_calls.lua")              then return end
 if not load("data\\air_control.lua")              then return end
 if not load("data\\event_log.lua")                then return end
 if not load("data\\ground_unit_sleep.lua")        then return end
@@ -91,6 +92,7 @@ if not load("consumers\\sleep_ground_units.lua")  then return end
 if not load("consumers\\draw_air_tasking_orders.lua") then return end
 if not load("consumers\\brief_air_tasking.lua")   then return end
 if not load("consumers\\call_air_picture.lua")    then return end
+if not load("consumers\\send_radio_calls.lua")    then return end
 if not load("consumers\\create_airfields_brief.lua") then return end
 if CONFIG.SURVEY_FOOTPRINTS and not load("survey\\survey_airbase_footprints.lua") then return end
 if CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN and not load("survey\\probe_parked_aircraft_spawn.lua") then return end
@@ -187,6 +189,9 @@ local function run()
     -- their own position, highest threat first (event log: PICTURE_CALL). Before the
     -- airfield brief, which reads the magnetic variation it loads.
     CallAirPicture.start(plan)
+    -- Darkstar's calls spoken (roadmap item 7): the picture calls above, and threat calls
+    -- at once; started here with the radio player and helper outside DCS (radio_calls\)
+    SendRadioCalls.start()
     -- comms menu, top first: Airfield info (every Blue base: wind, runway in use, next
     -- flights, alert jets), then the human taskings and the air tasking order
     CreateAirfieldsBrief.start(plan)

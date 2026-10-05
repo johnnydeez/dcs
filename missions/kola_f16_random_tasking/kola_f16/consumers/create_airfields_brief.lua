@@ -56,21 +56,10 @@ local function at(t) return Weather.hhmm(_plan.world.time.start_local + t) end
 
 -- ── directions ──────────────────────────────────────────────────
 
--- How far true north is from grid north at pos, degrees: a grid heading + this = true.
--- (The map's grid north is off true north by several degrees toward its edges.)
-local function gridToTrue(pos)
-    local lat1, lon1 = coord.LOtoLL({ x = pos.x, y = 0, z = pos.z })
-    local lat2, lon2 = coord.LOtoLL({ x = pos.x + 1000, y = 0, z = pos.z })
-    local p1, p2 = math.rad(lat1), math.rad(lat2)
-    local dl = math.rad(lon2 - lon1)
-    local y = math.sin(dl) * math.cos(p2)
-    local x = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
-    return math.deg(math.atan2(y, x))
-end
-
--- A grid heading at the base → magnetic, degrees 0–360.
+-- A grid heading at the base → magnetic, degrees 0–360. Grid minus the variation, as
+-- DCS's own magnetic (the F-16's HUD, the F10 ruler) works it out (bug 61).
 local function magnetic(gridDeg, field)
-    return norm(gridDeg + field.grid_to_true - field.variation)
+    return norm(gridDeg - field.variation)
 end
 
 -- A magnetic heading → its runway number, 1–36.
@@ -92,7 +81,6 @@ local function fieldFacts(name)
         class = AIRBASE_CLASS[name],
         echelon = _plan.territory.bases[name] and _plan.territory.bases[name].echelon,
         elevation_m = land.getHeight({ x = pos.x, y = pos.z }),
-        grid_to_true = gridToTrue(pos),
         variation = CallAirPicture.magneticVariation(lat, lon),
         runways = {},
     }

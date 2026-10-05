@@ -200,6 +200,7 @@ end
 local function locate(p, c, coalitionName, sighting)
     local pt, v = sighting.point, sighting.velocity
     c.pos = { x = pt.x, z = pt.z }
+    c.pos_seen_at = sighting.seen_at   -- when that point was read (the age the air picture says)
     c.altitude_m = pt.y
     c.speed_mps = math.sqrt(v.x * v.x + v.z * v.z)
     local heading = math.deg(math.atan2(v.z, v.x))
@@ -265,7 +266,7 @@ local function poll(p, sensor)
                 local s = p.sightings[groupName]
                 if not s then
                     s = { type_known = false, range_known = false, seen_by = {}, point = point, velocity = velocity,
-                          category = category }
+                          category = category, seen_at = timer.getTime() }
                     p.sightings[groupName] = s
                 end
                 s.type_name = typeName
