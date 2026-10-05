@@ -2348,7 +2348,8 @@ end
 -- race-track clear of enemy kill zones by early_warning_clearance_km and
 -- early_warning_map_margin_km inside the map's edges (the airspace grid reaches past
 -- them), at least early_warning_fighter_base_km from every enemy fighter base and
--- early_warning_front_km from the contested airspace. Each { centre, ends = { a, b } },
+-- early_warning_front_km from the contested airspace (the centre and both ends since
+-- 2026-10-05, bug 59: only the centre was held to them). Each { centre, ends = { a, b } },
 -- the legs across the line to the nearest enemy fighter base.
 local function orbitCandidates(ctx, enemies)
     local D, a = AIR_DEFENSE, ctx.plan.airspace
@@ -2367,8 +2368,11 @@ local function orbitCandidates(ctx, enemies)
                 local e1, e2 = raceTrack(q, q, ctx.plan.world.airbases[toward].pos, leg)
                 local ok = true
                 for _, e in ipairs({ e1, e2 }) do
+                    local _, eNear = nearestBase(ctx, e, enemies)
                     if not (insideMap(e, edge) and DivideAirspace.kindFor(a, e, ctx.coalition) == "own"
-                            and inOwnTerritory(ctx, e) and clearOfThreats(ctx, e, clearance)) then ok = false end
+                            and inOwnTerritory(ctx, e) and clearOfThreats(ctx, e, clearance)
+                            and eNear >= D.early_warning_fighter_base_km * 1000
+                            and not DivideAirspace.nearestFront(a, e, D.early_warning_front_km * 1000)) then ok = false end
                 end
                 if ok then out[#out + 1] = { centre = { x = round(q.x), z = round(q.z) }, ends = { e1, e2 } } end
             end

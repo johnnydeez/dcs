@@ -32,6 +32,8 @@
 --   self_defence  attack flights: a bandit hot on the flight is called at once; a flight
 --                 with radar missiles engages it, then carries on with its mission; one
 --                 without leaves (goes home)
+--   fuel          patrols, scrambles, AWACS: home at bingo, when a jet's fuel is down to what it needs
+--                 to fly straight home plus a reserve; a fight on the way home is broken off
 --
 -- New directives are one more entry here and one more name in
 -- AIR_CONTROL.directives_by_mission_type.
@@ -108,6 +110,9 @@ DIRECTIVES.suppression = {
         if not mem.arms_at_start then mem.arms_at_start = arms end
         if mem.arms_at_start > 0 and arms == 0 then return { kind = "home", why = "every anti-radiation missile fired" } end
         local now = timer.getTime()
+        -- the last time a missile left (this check runs 0.5 s after each one)
+        if mem.arms_seen and arms < mem.arms_seen then mem.last_shot_at = now end
+        mem.arms_seen = arms
         -- the flight goes cold together: once one jet has fired its last, the others get
         -- salvo_time_s to finish (bug 40, 2026-10-02: MSN2024_SEAD_2 fired one HARM at a
         -- time for 76 s after its lead was empty, inside the SA-10's envelope, and died)
@@ -128,12 +133,14 @@ DIRECTIVES.suppression = {
         local p = { x = s.pos.x, z = s.pos.z }
         if a.site and a.launch then
             -- pressed on past where it may go: its press-on point (bug 36), or its launch
-            -- point on a plan without one; its jet closest to the site counts
+            -- point on a plan without one; its jet closest to the site counts. Not while the
+            -- salvo is going: press_after_shot_s after each missile (bug 58)
             local limit = a.press_on or a.launch
             local closest = math.huge
             for _, j in ipairs(s.jets) do closest = math.min(closest, Util.dist({ x = j.pos.x, z = j.pos.z }, a.site)) end
             local pressed = Util.dist(limit, a.site) - closest
-            if pressed > R.press_km * 1000 then
+            local firing = mem.last_shot_at and now < mem.last_shot_at + R.press_after_shot_s
+            if pressed > R.press_km * 1000 and not firing then
                 return { kind = "home", why = string.format("%.0f km past its %s toward %s", pressed / 1000,
                     a.press_on and "press-on point" or "launch point", a.groups and a.groups[1] or "its site") }
             end
@@ -176,6 +183,46 @@ DIRECTIVES.suppression = {
                 a.groups and a.groups[1] or "its site", arms))
         end
         return nil
+    end,
+}
+
+-- ── fuel (bingo) ────────────────────────────────────────────────
+
+-- Bingo for one jet: the reserve plus what it burns flying straight home, km / its
+-- profile's combat radius × home_fraction_per_radius (a jet uses about half its fuel
+-- flying its combat radius one way). The jet with the least
+-- to spare decides for the flight (bug 60, 2026-10-05: the MiG-31 patrol MSN7016_CAP
+-- fought on from 19 % and went down with empty tanks, "no killer recorded").
+local function bingo(s)
+    local F = AIR_CONTROL.fuel
+    local p = AIRCRAFT_PROFILE[s.mission.aircraft_type]
+    local radius = p and p.combat_radius_km or F.default_combat_radius_km
+    local worst, worstSpare
+    for _, j in ipairs(s.fuel) do
+        local need = F.reserve_fraction + F.home_fraction_per_radius * j.km / radius
+        local spare = j.fraction - need
+        if spare <= 0 and (not worstSpare or spare < worstSpare) then
+            worst, worstSpare = { name = j.name, fraction = j.fraction, km = j.km, need = need }, spare
+        end
+    end
+    return worst
+end
+
+DIRECTIVES.fuel = {
+    clock = "picture",
+    on_task_only = false,
+    check = function(w, s)
+        if not s.airborne then return nil end
+        local b = bingo(s)
+        if not b then return nil end
+        local why = string.format("bingo fuel: %s at %.0f %%, %.0f km from %s (needs %.0f %%)",
+            #s.jets > 1 and b.name or s.mission.id, b.fraction * 100, b.km, s.mission.landing_base, b.need * 100)
+        if w.state == "going_home" then
+            -- already going home: only a fight on the way is broken off
+            if w.defending then return { kind = "resume", why = why } end
+            return nil
+        end
+        return { kind = "home", why = why }
     end,
 }
 

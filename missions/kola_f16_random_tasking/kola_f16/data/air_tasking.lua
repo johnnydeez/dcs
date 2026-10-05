@@ -317,6 +317,11 @@ AIR_TASKING_SKILL = { "Average", "Good", "High" }
 --                       site it needs out of the fight
 --   wait_for_room_s     at run time, a flight that would put the coalition over its cap
 --                       (a late or early one) waits this long and looks again
+--   retry_after_s       a SEAD flight done (sent home, landed or lost) with its site still
+--                       in the fight is flown again no sooner than this after it came off
+--                       its task, and the site looked at again first (2026-10-05: a retry
+--                       spawned 1 s after the first flight's last jet died, while its
+--                       HARMs were still in the air, and they took the site's radar)
 --   come_back_after_s   a rotation site still in the fight after its SEAD flight and that
 --                       flight's second try comes back into the rotation once more, this
 --                       long after the second try is down (<id>_LATER, the same plan
@@ -327,6 +332,7 @@ AIR_PACKAGE = {
     suppression_lead_s = { 180, 300 },
     strike_after_suppression_s = 600,
     wait_for_room_s = 120,
+    retry_after_s = 300,
     come_back_after_s = 3600,
 }
 
@@ -419,8 +425,12 @@ HUMAN_TASKING = {
 --   early_warning_coverage_km  how far an orbit counts as seeing (a planning figure: the
 --                              E-3A's first detections came at 120-210 km for jets low
 --                              down, session 11; farther for jets high up)
---   early_warning_fighter_base_km  the orbit stays this far from every enemy fighter base
---   early_warning_front_km     and this far from the contested airspace, in own (not
+--   early_warning_fighter_base_km  the whole race-track stays this far from every enemy
+--                              fighter base (2026-10-05, bug 59: 150 until then, checked
+--                              at the centre only; the E-3A orbited 191 km from Alakurtti
+--                              and Kuusamo scrambled at it six times in 90 min; an AWACS
+--                              that close would be hunted and shot down)
+--   early_warning_front_km     and this far from the contested airspace (80 until bug 59), in own (not
 --                              contested) airspace on own ground, the whole race-track
 --                              outside every enemy kill zone by early_warning_clearance_km
 --   early_warning_step_km      the grid the orbit and the front are sampled on
@@ -518,8 +528,8 @@ AIR_DEFENSE = {
     early_warning_start_s      = 5,
     early_warning_weights      = { front = 1, target = 1, enemy_fighter_base = 3 },
     early_warning_coverage_km  = 250,
-    early_warning_fighter_base_km = 150,
-    early_warning_front_km     = 80,
+    early_warning_fighter_base_km = 250,
+    early_warning_front_km     = 120,
     early_warning_step_km      = 20,
     early_warning_max          = { blue = 2, red = 1 },   -- Russia has few A-50s
     early_warning_second_share = 0.3,

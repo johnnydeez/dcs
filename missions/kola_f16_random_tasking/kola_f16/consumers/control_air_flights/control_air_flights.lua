@@ -71,11 +71,13 @@ local DECISION = {
     self_defence = { defend = "defend", resume = "back on mission", home = "leave" },
     handover = { home = "handover" },
     landing = { land = "land" },
+    fuel = { home = "bingo" },
 }
 
 local _plan
 local _watched = {}        -- flight id → watch entry (below)
 local _wakeScheduled = {}  -- coalition → true while a fast check is already on its way
+local _offTaskAt = {}      -- flight id → mission time it came off its task (sent home, landed, lost); kept after the watch ends
 
 local A = AssessFlightSituations
 
@@ -122,6 +124,7 @@ local function act(w, s, intent)
         if GiveOrders.home(w, g, s.pos) then
             log(w, intent, string.format("%s (%s)", intent.why, where(w, s.pos)))
             w.state, w.defending = "going_home", nil   -- setTask replaced any fight
+            _offTaskAt[m.id] = _offTaskAt[m.id] or now
         end
     elseif intent.kind == "land" then
         local mem = w.memo.landing
@@ -131,6 +134,7 @@ local function act(w, s, intent)
             log(w, intent, string.format("%s; sent to land at %s%s (%s)", intent.why, m.landing_base,
                 perJet and ", each jet in the air on its own order" or "", where(w, s.pos)))
             w.state, w.defending = "going_home", nil
+            _offTaskAt[m.id] = _offTaskAt[m.id] or now
             mem.closest = nil   -- measured again from here
         end
     elseif intent.kind == "remove" then
@@ -181,6 +185,7 @@ local function check(coalition, clock)
         local s = g and A.build(w, g)
         if not g then
             _watched[id] = nil   -- shot down or gone: the scheduler has logged it
+            _offTaskAt[id] = _offTaskAt[id] or timer.getTime()
         elseif s then
             if s.airborne then w.airborne_once = true end
             -- landed: none of it in the air any more, and none still waiting to take off
@@ -188,6 +193,7 @@ local function check(coalition, clock)
             -- watch, and the wingman flew its whole SEAD with no go cold or bandit call)
             if w.airborne_once and not s.airborne and not A.waitingToTakeOff(s) then
                 _watched[id] = nil
+                _offTaskAt[id] = _offTaskAt[id] or timer.getTime()
             else
                 watched[#watched + 1] = w
                 local intents = {}
@@ -374,6 +380,12 @@ end
 function ControlAirFlights.onTask(id)
     local w = _watched[id]
     return w ~= nil and w.state == "on_task"
+end
+
+-- The mission time flight `id` came off its task (sent home, landed, lost; the first of
+-- these), or nil while it's still on it or the controller hasn't seen it end yet.
+function ControlAirFlights.offTaskSince(id)
+    return _offTaskAt[id]
 end
 
 -- Every watched flight's watch entry (for facts that look across flights: a patrol's

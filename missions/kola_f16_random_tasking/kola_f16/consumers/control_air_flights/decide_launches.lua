@@ -41,12 +41,20 @@
 -- it survived both tries and every rotation flight behind it was cancelled): its flight
 -- comes back into the rotation as <id>_LATER, and takes the rotation's place while it flies.
 --
+-- No second try straight away (2026-10-05, after the 10:31 run, where MSN2029_SEAD_AGAIN
+-- spawned 1 s after MSN2029's last jet died, while its HARMs were still in the air; they
+-- took the site's radar 51 s later and the copy flew a whole sortie for nothing): a SEAD
+-- flight's site is looked at again AIR_PACKAGE.retry_after_s after the flight came off
+-- its task (sent home, landed or lost), and only then flown again; the same wait before
+-- deciding a site's come-back.
+--
 -- A flight launched late (it waited, or the clock passed its start) or early (pulled
 -- forward) flies a copy on spots free now, once there is room under the cap, while the
 -- mission window lasts.
 --
 -- Event log lines (word CONTROL):
 --   "wait: waiting for MSN2030_SEAD, still on its attack; looking again at 10:42"
+--   "wait: SAM_KOSH_SA11_2 still in the fight after MSN2029_SEAD; looking at it again at 04:50 before a second try"
 --   "retry: SAM_KOSH_SA10_1 still in the fight: MSN2030_SEAD flies again as MSN2030_SEAD_AGAIN; waiting until 11:25"
 --   "retry: SAM_KOSH_SA10_1 still in the fight after MSN2030_SEAD: it flies again as MSN2030_SEAD_AGAIN, the rotation's next flight"
 --   "come back: SAM_VUOJ_SA10_1 still in the fight after MSN2026_SEAD and MSN2026_SEAD_AGAIN: it comes back into the rotation at 05:36"
@@ -77,6 +85,9 @@ local _rotationUp = {}   -- coalition → the rotation flight (or its second try
 local _comeBack = {}     -- flight id → { at, done } its third try: due at mission time `at`
 local _comesBack = {}    -- coalition → the flights whose sites come back: the rotation's, then those of sites it needs
 local _waitingForComeBack = {}   -- flight id → the come-back's time (or true, not set yet) while it waits for one (the rotation goes on past it)
+local _seenDone = {}     -- SEAD flight id → mission time this first saw it done, when the controller didn't
+local _retryWaitSaid = {}   -- SEAD flight id → true once its "looking at it again" line is written
+local _comeBackPending = {} -- flight id → true while its come-back is still to be decided (retry_after_s after its second try is down)
 
 local function liveUnit(name)
     local o = Unit.getByName(name) or StaticObject.getByName(name)
@@ -169,6 +180,26 @@ local function isDown(id)
     if not (rec and rec.spawned) then return false end
     local m = rec.mission_flown or rec.mission
     return rec.lost + rec.landed + (rec.removed or 0) >= m.count or not liveGroup(id)
+end
+
+-- The mission time SEAD flight `id` (done: off its attack or down) may be flown again:
+-- retry_after_s after it came off its task, so missiles still in the air have landed
+-- and the site's state is known.
+local function retryAt(id)
+    local since = ControlAirFlights.offTaskSince(id)
+    if not since then
+        _seenDone[id] = _seenDone[id] or timer.getTime()
+        since = _seenDone[id]
+    end
+    return since + AIR_PACKAGE.retry_after_s
+end
+
+-- "wait: <site> still in the fight after <by>; looking at it again at …", once per SEAD flight.
+local function sayRetryWait(plan, by, site, at)
+    if _retryWaitSaid[by] then return end
+    _retryWaitSaid[by] = true
+    ControlAirFlights.say(plan.coalition, plan.id, "wait", string.format("%s still in the fight after %s; looking at it again at %s before a second try",
+        site, by, clockText(at)))
 end
 
 -- A planned flight no longer waiting to fly: launched, or cancelled / not needed.
@@ -327,6 +358,7 @@ local function comingBack(by, sf)
     if not (sf.again and siteComesBack(sf.mission.coalition, by)) or sf.later then return nil, false end
     local cb = _comeBack[by]
     if cb then return cb, not cb.done end
+    if _comeBackPending[by] then return nil, true end
     return nil, not isDown(sf.again) and comeBackFits(by, timer.getTime() + AIR_PACKAGE.come_back_after_s)
 end
 
@@ -340,6 +372,13 @@ local function owedRetry(plan, id)
         local rec = S.record(rid)
         local earlier = S.planned(rid)
         if rec and rec.spawned and not rec.again and isDown(rid) and not threatCleared(earlier.target) then
+            local at = retryAt(rid)
+            if timer.getTime() < at then
+                sayRetryWait(plan, rid, earlier.target, at)
+                S.note(id, "delayed")
+                S.lookAgainAt(id, at + 1)
+                return true
+            end
             local copy = flyAgain(rid)
             if copy then
                 say(earlier, rid, "retry", string.format("%s still in the fight after %s: it flies again as %s, the rotation's next flight; %s waits",
@@ -438,6 +477,7 @@ function DecideLaunches.due(id)
         -- yet (wait for it), its second try spent, cancelled (so is this), or done (fly it
         -- once more; a player's SEAD tasking, flown or not, is flown again by the AI)
         local waitFor, send, cancelled = nil, {}, nil
+        local notBefore, notBeforeSite, notBeforeBy   -- a done SEAD flight's site, looked at again later
         local comeBack, thirdTry   -- a site's come-back to wait for; a site that had all three tries
         for _, t in ipairs(open) do
             local by = (_bySite[c] or {})[t]
@@ -465,7 +505,12 @@ function DecideLaunches.due(id)
                 -- the rotation flies one at a time: its second try waits for the one up
                 waitFor = _rotationUp[c]
             else
-                send[by] = true
+                local at = retryAt(by)
+                if now < at then
+                    if not notBefore or at > notBefore then notBefore, notBeforeSite, notBeforeBy = at, t, by end
+                else
+                    send[by] = true
+                end
             end
         end
         if cancelled then
@@ -480,6 +525,13 @@ function DecideLaunches.due(id)
             say(plan, id, "wait", string.format("waiting for %s, %s; looking again at %s", waitFor,
                 S.record(waitFor).spawned and "still on its attack" or "not launched yet", clockText(at)))
             S.lookAgainAt(id, at)
+            return
+        end
+        -- a SEAD flight done but not yet retry_after_s ago: its site is looked at again then
+        if not waitFor and notBefore and now < AIR_TASKING_TIMING.window_s then
+            S.note(id, "delayed")
+            sayRetryWait(plan, notBeforeBy, notBeforeSite, notBefore)
+            S.lookAgainAt(id, notBefore + 1)
             return
         end
         -- a site coming back into the rotation: wait for it (looked at again after the
@@ -542,7 +594,15 @@ function DecideLaunches.flightDown(id)
     if heldPlace then _rotationUp[c] = nil end
     -- a second try down with its site still in the fight: the site comes back later (a
     -- rotation site, or one the rotation needs: planComeBack decides)
-    if id:match("_AGAIN$") then planComeBack(rotationId(id)) end
+    if id:match("_AGAIN$") then
+        local rid = rotationId(id)
+        _comeBackPending[rid] = true
+        timer.scheduleFunction(function()
+            _comeBackPending[rid] = nil
+            local ok, err = pcall(planComeBack, rid)
+            if not ok then Log.warn(string.format("%s: come-back failed: %s", rid, tostring(err))) end
+        end, nil, timer.getTime() + AIR_PACKAGE.retry_after_s)
+    end
     if not (m.rotation or heldPlace) then return end
     -- a come-back that is due takes the place first
     if DecideLaunches.comeBackNow(c) then return end

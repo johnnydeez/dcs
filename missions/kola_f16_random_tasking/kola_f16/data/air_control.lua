@@ -62,6 +62,17 @@
 -- holding pattern and flew a straight line, ignoring landing orders; the latest wingman
 -- that did land came down 7.5 min after its lead).
 
+-- fuel: patrols, scrambles and the AWACS go home at bingo (bug 60, 2026-10-05: the MiG-31 patrol
+-- MSN7016_CAP fought on from 19 % and went down with empty tanks; DCS's own return at
+-- bingo didn't bring it home). Bingo for a jet is reserve_fraction plus what it burns
+-- flying straight to its landing base: km / its combat radius (AIRCRAFT_PROFILE) ×
+-- home_fraction_per_radius. The jet with the least to spare decides for the flight. A
+-- flight already going home that is fighting a bandit breaks the fight off instead.
+-- Checked on the picture's round (30 s). "bingo: bingo fuel: MSN7016_CAP at 19 %, 110 km
+-- from Koshka Yavr (needs 17 %)". Not attack flights for now: they are planned out to
+-- their combat radius (a Su-34 at 677 of 700 km), so the same rule could turn a strike
+-- back short of its target; they fly their route and DCS brings them home.
+
 -- self_defence: the controller calls a bandit as soon as the coalition's radar picture
 -- shows it coming for an attack flight, and decides at once (John, 2026-10-01: "you
 -- would tell them immediately a fighter is inbound"). A bandit is an enemy airplane the
@@ -100,6 +111,10 @@
 -- missile, the others get salvo_time_s, then the flight goes cold with whatever is left
 -- ("salvo over"; bug 40: a wingman firing one HARM at a time for 76 s inside an SA-10's
 -- envelope died).
+-- While the salvo is going, pressing past press_km doesn't send it home: not for
+-- press_after_shot_s after each anti-radiation missile the flight fires (bug 58,
+-- 2026-10-05: with no press-on point the limit is the launch point + 5 km, which the
+-- Su-34s passed 10 s into their salvo; twice the lead went home with all 4 aboard).
 
 AIR_CONTROL = {
     check_every_s = 5,
@@ -109,9 +124,9 @@ AIR_CONTROL = {
         airfield_strike             = { "self_defence", "landing" },
         destruction_of_air_defenses = { "self_defence", "landing" },
         suppression_of_air_defenses = { "suppression", "self_defence", "landing" },
-        interception                = { "leash", "landing" },
-        combat_air_patrol           = { "handover", "landing" },
-        airborne_early_warning      = { "landing" },
+        interception                = { "leash", "fuel", "landing" },
+        combat_air_patrol           = { "handover", "fuel", "landing" },
+        airborne_early_warning      = { "fuel", "landing" },
     },
 
     intent_priority = { remove = 6, stand_down = 5, land = 4, home = 3, resume = 2, defend = 1 },
@@ -125,9 +140,15 @@ AIR_CONTROL = {
         killzone_fraction  = 0.85,
         no_shot_after_s    = 120,
         salvo_time_s       = 20,     -- once one jet is empty, the rest of the flight gets this long (bug 40)
+        press_after_shot_s = 30,     -- press_km doesn't count this long after each anti-radiation missile fired (bug 58)
     },
     handover = {
         on_station_km      = 15,
+    },
+    fuel = {
+        reserve_fraction         = 0.10,   -- of internal fuel, left on landing
+        home_fraction_per_radius = 0.5,    -- fuel to fly home one combat radius (a MiG-31 burned ~1 % per 17 km cruising)
+        default_combat_radius_km = 600,    -- a type with no profile
     },
     landing = {
         away_km            = 20,

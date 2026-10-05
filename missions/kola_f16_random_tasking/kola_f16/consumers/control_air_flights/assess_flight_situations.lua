@@ -23,6 +23,8 @@
 --                        controller's DCS event handler), or false
 --   units                every live jet of the flight: { name, pos, airborne }
 --   landing_base_pos     { x, z } of its landing base, or false
+--   fuel                 every airborne jet's fuel: { name, fraction (of internal fuel;
+--                        over 1 with external tanks), km (straight to its landing base) }
 --   relief               patrols: the next patrol of its station, on station now
 --                        ({ id, km from the race-track }), or false
 -- Fair-knowledge rule (as the radar picture's): an enemy group's exact position and
@@ -357,6 +359,18 @@ FACTS.units = function(s)
             end
         end
     end)
+    return list
+end
+
+-- Every airborne jet's fuel and how far it is from its landing base.
+FACTS.fuel = function(s)
+    local list, base = {}, s.landing_base_pos
+    for _, j in ipairs(s.jets) do
+        local ok, f = pcall(function() return j.unit:getFuel() end)
+        if ok and f then
+            list[#list + 1] = { name = j.name, fraction = f, km = base and Util.dist(j.pos, base) / 1000 or 0 }
+        end
+    end
     return list
 end
 

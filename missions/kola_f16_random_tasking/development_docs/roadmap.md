@@ -6,7 +6,7 @@ What's coming after session 10 (2026-09-30), when the mission became playable by
 
 Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means Red unless it says otherwise.
 
-**Order (John, 2026-09-30; items 10–12 added 2026-10-01; item 5 pulled forward and built 2026-10-02; item 13, airfield info, added and built 2026-10-02 outside the order; item 14, every mission type for players, and item 15, airfield traffic, added 2026-10-03 with no place in the order yet):** ~~radar functions → scrambles → event log~~ → ~~performance in VR~~ (done for now, 2026-10-01) (all in `closed.md`) → ~~every run-time flight decision under the controller (item 11)~~ → ~~SEAD ingress doctrine (item 10)~~ (both in `closed.md`) → **SEAD against the air defenses: a standing rotation, rolling them back outside-in (item 12, top priority; designed 2026-10-01, reworked with John and built 2026-10-02, to fly)** → AI behaviour logic (item 4, the controller's further directives) → ~~AWACS calls (text)~~ (item 5, in `closed.md`) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war. CAP visibility (making patrol routes and times easy to see) was cut on 2026-09-30: John can see the dotted station lines on the map fine for now. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Five optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, the threat picture on the map for players (after fog of war), and a Wild Weasel wingman for SEAD flights (added 2026-10-02).
+**Order (John, 2026-09-30; items 10–12 added 2026-10-01; item 5 pulled forward and built 2026-10-02; item 13, airfield info, added and built 2026-10-02 outside the order; item 14, every mission type for players, and item 15, airfield traffic, added 2026-10-03 with no place in the order yet; item 7, AI radio calls, pulled forward for planning 2026-10-05; item 16, SEAD that meets fighters, added 2026-10-05 with no place in the order yet):** ~~radar functions → scrambles → event log~~ → ~~performance in VR~~ (done for now, 2026-10-01) (all in `closed.md`) → ~~every run-time flight decision under the controller (item 11)~~ → ~~SEAD ingress doctrine (item 10)~~ (both in `closed.md`) → **SEAD against the air defenses: a standing rotation, rolling them back outside-in (item 12, top priority; designed 2026-10-01, reworked with John and built 2026-10-02, to fly)** → AI behaviour logic (item 4, the controller's further directives) → ~~AWACS calls (text)~~ (item 5, in `closed.md`) → cruise missiles → AI radio calls (LLM / cloud) → Skynet IADS → fog of war. CAP visibility (making patrol routes and times easy to see) was cut on 2026-09-30: John can see the dotted station lines on the map fine for now. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Five optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, the threat picture on the map for players (after fog of war), and a Wild Weasel wingman for SEAD flights (added 2026-10-02).
 
 ---
 
@@ -141,6 +141,19 @@ Traffic: 1 taking off, 2 landing, 3 taxiing
 
 ---
 
+## 16. SEAD that meets fighters: clear the way, or go elsewhere (John, 2026-10-05)
+
+**Goal:** a SEAD flight that keeps dying to enemy fighters in contested airspace gets help, or its effort moves somewhere less hot, instead of the same flight being sent down the same corridor again. John: "A SEAD fail to fighters in contested airspace should call in a CAP or SCRAM or send out a search and destroy mission from a base to clear the way. And rotating flights to other less hot regions also makes sense." A bigger change; a todo item, no place in the order yet.
+
+**Seen** (`event_logs\2026-10-05_103126.log`, 1 h 46 min, no player flying): three tries at the Koshka Yavr SA-10 (MSN2026_SEAD, `_AGAIN`, `_LATER`, all 2x F/A-18C from Kirkenes on the same route) cost 6 Hornets and destroyed no radar. 3 of the 6 died to fighters: two to Red's Su-34 strike flights (R-77s) and one to a Su-27 patrol, all in the Kirkenes-Koshka Yavr corridor, which is also Red's busiest (strikes out of Koshka Yavr and Murmansk, the MiG-31 station). Two more died to the SA-10 and the Luostari SA-8. Blue's whole rotation waits behind that one site. Red lost 4 Su-34s the same way on the Rovaniemi SA-10 (one Kh-31P got through).
+
+**Ideas (decide with John when it comes up):**
+- **Clear the way:** a SEAD flight lost to fighters (or `press on` / `defend` calls on its run-in) marks its corridor as fighter-contested; the next try waits for a patrol commit there (item 4d), a scramble at the fighters seen, or a planned sweep ("search and destroy") from the nearest fighter base, timed ahead of it.
+- **Go elsewhere:** the rotation moves on to sites in a quieter region (by the picture's fighter contacts or losses there) and comes back to the hot one later; goes with bug 35 (no immediate retry into what just killed the first flight) and the come-back (bug 46).
+- **Not the lever** (John, 2026-10-05): tuning the SEAD flight's own fight (the 25 km commit). "Some jets are going to fly into a zone and kill other jets. It's DCS, not real life." The lever is not sending SEAD unsupported into a corridor full of enemy CAP.
+
+---
+
 ## 4. AI behaviour logic: conditional orders to flights in the air
 
 **Goal:** fewer, more meaningful losses (air denial), by having the script give AI flights conditional orders while they fly, instead of only a plan at spawn. John (2026-09-30): "the only way we will reduce losses is to start using our AI logic to begin giving conditional in-game commands to flights." It won't be perfect, because the DCS AI is built to fight; the aim is the best scenario we can make.
@@ -261,52 +274,79 @@ MSN2025 lost both jets:
 
 ## 7. AI radio calls: flights announce their intentions (LLM / cloud)
 
-**Goal:** AI flights say what they're doing, so the air war can be followed by ear: "Viper 2-1, airborne Rovaniemi, heading for the station", "Hornet 1-1, SEAD, pushing", "Eagle 3-1, bingo, RTB". The words come from an LLM, so calls sound natural and varied instead of canned.
+**Status:** planning, no code (John, 2026-10-05: "lots of planning first, no code"). Pulled forward from its place in the order. Next: build our own radio player (below), then the MVP.
 
-**Long-term goal (John, 2026-09-30):** the AWACS and all AI pilots use LLM / cloud for **audio callouts only**, with no on-screen text once this works. **It's a goal with an unknown:** what's possible and what it costs hasn't been worked out yet. So this item starts with a feasibility and cost study, and nothing gets built until that's done.
+**Goal:** the air war can be followed by ear. The AWACS and AI pilots talk on the radio: "Darkstar, picture, two groups…", "Viper 2-1, airborne Rovaniemi, heading for the station", "Hornet 1-1, Magnum". The words come from an LLM **live**, so every call is phrased fresh (John, 2026-10-05: a kind of variety and immersion nothing in DCS has today; recorded voices stay on the table as the fallback if this fails or is too complicated).
 
-**Feasibility and cost study (first step):**
-- **Moving parts to price and test separately:**
-  - **Phrasing:** an LLM turns each event into a radio call.
-  - **Voice:** text-to-speech, cloud or local.
-  - **Transmission:** SRS plays it on the right frequency.
-- **Volume:** measure how many calls a real session would make. Count the scheduler's state changes and the AWACS calls from one logged mission, e.g. N calls × ~100 characters each. Every cost follows from that number.
-- **Rough scale, to be checked with current prices:**
-  - Phrasing a short call is a few hundred tokens. With a small, fast model that's likely cents per session, not dollars.
-  - Cloud text-to-speech is priced per character. A few hundred short calls is tens of thousands of characters per session, likely well under a dollar.
-  - A local voice (Windows speech, or a local neural voice) costs nothing but sounds flatter.
-  - These are orders of magnitude only; the study replaces them with real numbers.
-- **What to test:**
-  - Latency: an LLM plus TTS round trip must be a couple of seconds at most, or "pushing" arrives after the push.
-  - Does SRS's external audio tool (`DCS-SR-ExternalAudio.exe`) take the cloud voice we'd pick?
-  - How the helper runs next to the DCS server.
-  - What happens when the network drops.
-- **Fallback to compare against:** fixed phrase templates plus the same text-to-speech, with no LLM. It's cheaper and predictable but repetitive; the study shows whether the LLM's variety is worth its cost and latency.
+**Long-term goal (John, 2026-09-30):** audio callouts only, with no on-screen text once it works.
 
-**Where it stands:**
-- Nothing built.
-- `consumers/schedule_air_tasking_orders.lua` already knows each flight's state changes (planned / airborne / landed / lost); the loss log line says who killed it and where.
-- AI flights have no player-facing callsigns yet (`plan.md`, Design: callsign policy).
+### Decided (John, 2026-10-05)
 
-**Approach (proposed), in three parts:**
-- **In the mission (Lua):**
-  - Callsigns for every AI flight (the callsign policy in `plan.md`).
-  - On each state change the scheduler sees (takeoff, on station, pushing, weapons away, RTB, lost), write a small structured event: flight, callsign, type, mission, state, position, and the bullseye / BRAA facts. The mission can't call the internet itself, so it hands events to a helper outside DCS: a file it appends to, or a local socket (the mission is de-sanitized, so `io` and possibly LuaSocket are available).
-- **The helper (outside DCS, on the server machine):**
-  - Reads the events and asks an LLM to phrase each one as a radio call, in brevity code, per callsign.
-  - Speaks it on the right frequency through SRS text-to-speech (`DCS-SR-ExternalAudio.exe`), or sends the text back to the mission to show on screen.
-- **Guard rails:**
-  - The LLM only phrases facts it's given; it never invents contacts or positions.
-  - Rate-limited, so up to 32 AI aircraft don't flood the channel.
-  - Each coalition hears only its own flights.
-  - If the helper or the cloud is down, the mission plays normally without calls.
+- **LLM live,** not phrase banks or canned clips. Canned or pre-generated audio is the fallback.
+- **MVP: Darkstar only,** the Blue AWACS's picture calls (item 5, `consumers/call_air_picture.lua`) spoken.
+- **Blue only, one frequency** for now; split by role later (AWACS, strike, tower).
+- **Wanted later, not yet:** AI jets announcing taxi, takeoff, approach, final and landing.
+- **The on-screen text stays** for now; maybe removed later.
+- **Latency doesn't need to be perfect** ("it's a game after all"); a bandit call is the exception (a minute late is too long). To explore with real numbers.
+- **Voices:** ~12 distinct voices. Cost matters.
+- **Service-agnostic:** wording and voice are each one swappable adapter, to compare cost, speed and quality. No local LLM now (John's PC is maxed out by DCS in VR); a local LLM or voice later on a stronger PC.
+- **First adapters:** OpenAI for wording (John pays for ChatGPT and under-uses it, and keeps Claude for development; the API is billed apart from the subscription), Google Cloud Text-to-Speech and OpenAI for voices, and Windows' own voices (free).
+- **Kola-only for now.** Much of Kola's code moves to a shared folder once the Afghanistan mission starts (it will want LLM interactions too), but not yet.
+- **No mods or third-party code in DCS's game files, and no new dependencies** (John: mods bring dependencies, break on updates, can crash the game). Everything is our own code. Nothing extra in John's start-up routine.
+- **Our own radio player, not SRS** (below).
+- **Callsigns:** undecided. DCS's AI flights are silent in John's game today, so no DCS voice clashes with ours.
 
-**Open:**
-- Which LLM and service: a cloud API (cost per session, latency of a second or two, an API key on the server) or a local model?
-- Voice goes through SRS, so every player needs SRS running (decided: audio only).
-- Which events are worth a call: all state changes, or only the ones that matter to a player (package pushing, station gaps, losses)?
-- Everything to every Blue player, or only flights near the player or in their package?
-- The AWACS calls (item 5) move to this voice channel once it works (John's goal); decide then whether the text version stays as a backup.
+### Why not SRS or DCS's radio
+
+- **DCS's radio** (`trigger.action.radioTransmission`) only plays sound files packed into the `.miz`, never audio made while the mission runs; DCS's voice chat has no scripting interface.
+- **SRS** (its `DCS-SR-ExternalAudio.exe` sender) worked end to end, but its audio crackles, and it couldn't be fixed (2026-10-05): not the voice (clean when played locally), not John's SRS settings or effects, not CPU load, and the crackle is in SRS's own recording of what it received. Its sender is a fixed program, so there was nothing left to change. (A `flat` SRS settings profile with every effect off stays in John's SRS client for tests.)
+
+### Our own radio player
+
+A small program of ours, standard-library Python, no SRS:
+1. **listens on a local port** for calls (speaker, frequency, the audio);
+2. **puts a radio sound on them:** a band-pass (~300–3,000 Hz), a little compression and hiss, a squelch click at the start and end; tuned to taste;
+3. **plays them to John's headphones** (Windows' default output, `winsound`, WAV), one call at a time, from a queue.
+
+Played locally the voices were clean (2026-10-05). It may be the same program as the helper, or separate if the "radio" is to be reused for Afghanistan.
+
+- **Version 1:** no cockpit link. Every call plays, on the one frequency. Volume is set in the player (and Windows' mixer).
+- **Later, optional:** cockpit-aware, calls heard only when a radio is tuned to their frequency, at that radio's volume knob. SRS gets this from a script in DCS's export system (`Saved Games\DCS\Scripts\Export.lua` loading SRS's `DCS-SRS` scripts) that reads the radios and sends them over a local port. Ours would be our own code, but would run inside DCS's export system: John's call when we get there.
+- **Only John hears it:** other players in multiplayer wouldn't (fine for a solo, Blue-only feature).
+
+### The whole chain
+
+```
+mission (Lua) ──event──► helper ──► wording ──► voice ──► radio player ──► John's headphones
+ Darkstar's facts                   LLM         cloud /    radio filter,
+                                    adapter     Windows    queue
+```
+
+- **The mission** writes the facts already worked out for the text call (`CallAirPicture.describe`) as one small event per call, to a file or a local port, and never waits on the helper. If the helper is down, the mission plays as today.
+- **The helper** (Python, in this mission folder for now) is started by the mission (`os.execute` through a `.cmd`, *DCS facts*), so John does nothing. It reads each event, asks the wording adapter for the call and the voice adapter for audio (WAV), and hands it to the radio player.
+- **Measured on every call** (a helper log): time from the event to the wording, to the audio, to played; characters and tokens used.
+- **Guard rails:** the LLM phrases only the facts it's given (bearings, ranges, altitudes are never invented); one call at a time; a newer picture replaces an older one not yet spoken; calls too old to matter are dropped.
+
+### Voices and cost
+
+- **Windows voices** (free, no delay): David, Mark (male) and Zira (female), US English, installed; more accents free in Windows Settings (Speech → Add voices: UK, Australia, Canada, India, Ireland). John, 2026-10-05: "definitely workable", a little stiff. Windows 11's natural Narrator voices aren't open to other programs without an add-on.
+- **Cloud voices** (per million characters, 2026 comparison sites, to confirm on the providers' pages): Google Neural2 / Chirp 3 HD $16 / $30 (many English voices and accents), OpenAI $15 / $30 (~10 voices), Azure $15 / $22, ElevenLabs $50–100 (the most natural).
+- **Rough cost per 6-hour session:** ~300 calls of ~200 characters: voice ~$1 (Google), wording well under $1 with a small fast model. Roughly **$1–3 a session**.
+
+### Steps
+
+1. **The radio player:** play a WAV from the local port with the radio filter; John tunes the sound. Then Windows voices through it.
+2. **One call end to end, outside DCS:** a Darkstar picture from an event log → OpenAI → a voice → the player; time each step.
+3. **Compare** wording models and voices on the same calls: speed, cost, sound.
+4. **The MVP in Kola:** the mission's events, the helper started by the mission, Darkstar on the radio.
+
+### Open
+
+- **What Darkstar says on the radio:** the text list read out (a two-group picture took 16 s to say), or calls written for the ear (a short picture, then threat calls as things change, like a real controller)?
+- **Callsigns** for the AI flights and the player, once more than Darkstar talks (`plan.md`, *Design*: callsign policy; the optional fun-callsigns item).
+- **The bandit-call delay:** how late is too late; measure, then decide.
+- **Which events after the MVP:** the airfield calls (taxi, takeoff, approach, final, landing) are wanted next.
+- Red's voice (Russian?) once Red talks; a split by frequency later.
 
 ---
 

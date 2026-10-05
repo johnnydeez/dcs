@@ -305,3 +305,65 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 **Seen again, farther** (`event_logs\2026-10-04_223922.log`): an F/A-18C scramble (MSN2910) "saw" a contact at 536 km and a low one (2,327 ft) at 486 km; the Su-30 patrol MSN7004 at 433 km; the Su-30 patrol MSN7003 John's F-16 at 516 km, and Red scrambled MSN7927 on it. No fighter radar reaches that far, so cause 2 (contacts shared across the coalition) is now the likely one; it would also feed bug 3's churn (a near all-seeing picture).
 
 **Proposed (decide with John):** a test mission: an AI E-3A / A-50 and a MiG-31 alone on the map (no other friendly sensors), a target flown out at several heights and ranges, logging `getDetectedTargets(RADAR)` with each entry's `distance` / `visible` / `type` flags every 10 s; then a second run with other friendly aircraft up, to see whether their contacts appear in the lone sensor's list. Then set the coverage figures (and, if 2 is true, filter shared contacts out of the picture).
+
+---
+
+## 57. A SEAD retry spawned 1 s after the first flight was down, with its HARMs still in the air
+
+**Status:** fix built 2026-10-05, not flown (John: "a dumb retry after 5 minutes and look at the target state again"; copied to DCS).
+
+**Seen:** `event_logs\2026-10-05_103126.log`, grep `MSN2029_SEAD`. MSN2029's last jet died at 04:45:25; `MSN2029_SEAD_AGAIN` spawned at 04:45:26. MSN2029's HARMs destroyed the SA-11's search radar (its only critical radar) at 04:46:17, so the site was out of the fight 51 s later, but the copy flew the whole sortie and went home `no shot`. Every retry this run came 1 s after the flight before it was down (MSN2026, MSN7023).
+
+**Fix:** a SEAD flight done (sent home, landed or lost) with its site still in the fight is flown again no sooner than `AIR_PACKAGE.retry_after_s` (300) after it came off its task, and the site is looked at again first (`ControlAirFlights.offTaskSince`; `decide_launches.lua`: the rotation's owed retry and the gate's retry). The come-back decision after a second try waits the same 5 min. New line: `CONTROL … wait: SAM_KOSH_SA11_2 still in the fight after MSN2029_SEAD; looking at it again at 04:50 before a second try`. Check: that line, then either a `retry` or the rotation's next flight launching because the site is out.
+
+---
+
+## 58. Red SEAD flights went cold 10 s into their salvo, the lead with all 4 aboard
+
+**Status:** fix built 2026-10-05, not flown (copied to DCS; checked with stubbed situations).
+
+**Seen:** same log, grep `MSN7024_SEAD`. Both tries on the Kirkenes IRIS-T: the wingman fired 1 Kh-31P at 49 km, then 3 at 43 km; 10 s later `go cold: 5 km past its launch point toward SAM_KIRK_IRISTSLM_1` (and `6 km past` on the retry). The lead never fired either time.
+
+**Cause:** that site's flights have no press-on point (no point on the track clear of the other sites), so the "pressed too far" limit is the launch point + `press_km` (5). After the pop-up the `EngageGroup` flies the Su-34s on toward the site, past that limit in about 20 s.
+
+**Fix:** pressing past the limit doesn't send the flight home within `AIR_CONTROL.suppression.press_after_shot_s` (30) of any anti-radiation missile it fires; `salvo over` (20 s after one jet is empty) still ends it. Whether the lead then fires is up to the DCS AI (only one jet fired in several salvoes on both sides: the optional Wild Weasel item).
+
+---
+
+## 59. Kuusamo scrambled six times at Blue's E-3A
+
+**Status:** fix built 2026-10-05, not flown (John: "an AWAC that vulnerable would be scrambled and shot down, it's probably too close to the front. fix it."; copied to DCS).
+
+**Seen:** same log, grep `MSN2001_AEW`. MSN7901, 7903, 7905, 7906, 7907, 7908, every ~17 min: "scramble: … after MSN2001_AEW (E-3A), enemy airspace, 14 min from SAM_ALAK_SA6_1; intercept 60 km out", each stood down on the ramp 3 min later, "back over its own airspace, heading away". The E-3A's race-track (centre 191 km from Alakurtti, 210 km from Koshka Yavr and Luostari, 254 km from Kuusamo) had a leg pointing at Alakurtti.
+
+**Cause:** the orbit is chosen as far forward as the standoffs allow (`early_warning_near_best`), and the standoffs (150 km from every enemy fighter base, 80 km from the contested airspace) were checked at the race-track's centre only.
+
+**Fix:** `early_warning_fighter_base_km` 250, `early_warning_front_km` 120, held for the centre and both ends (`orbitCandidates`). On this roll's airspace (a rough check, not the planner): Blue still has ~1,190 orbit cells, the best seeing ~35 % of the contested airspace within the 250 km planning reach (was ~46 %), so Blue's second E-3A (`early_warning_max` 2) is now more likely to be planned; Red's A-50 ~32 % (was ~58 %). Not checked: whether Red still scrambles at it (its trigger is "inbound on an asset within 15 min"). Check `dcs.log` "sees n % of the fight" and grep `after MSN2001_AEW` in the next run.
+
+---
+
+## 60. A MiG-31 patrol fought on low on fuel and went down with empty tanks
+
+**Status:** fix built 2026-10-05, not flown (John: "add a fuel watch to the controller"; copied to DCS; checked with stubbed situations).
+
+**Seen:** same log, grep `MSN7016_CAP`. About 1 % a minute on station; 19 % at 04:43, when it took on MSN2029_SEAD (killed both Hornets, R-33 and R-40R down to 1,850 ft); 9 % at 04:45, 1 % from 04:50, `DESTROYED … no killer recorded, 1,847 ft` at 04:54. DCS's own return at bingo didn't bring it home.
+
+**Fix:** a new directive `fuel` for patrols, scrambles and the AWACS (`AIR_CONTROL.fuel`): home (`CONTROL … bingo: bingo fuel: MSN7016_CAP at 16 %, 100 km from Koshka Yavr (needs 17 %)`) when a jet's fuel is down to `reserve_fraction` (0.10) + km straight home / its combat radius × `home_fraction_per_radius` (0.5); the jet with the least to spare decides for the flight. A flight already going home that is fighting breaks the fight off (`back on way home: bingo fuel …`). Not attack flights for now: they are planned out to their combat radius, so the same rule could turn a strike back short of its target.
+
+---
+
+## 56. SA-10 rings missing from the F-16's HSD, inconsistently
+
+**Status:** open, parked (John, 2026-10-05: "a problem for another day"). Log only.
+
+**Seen:** the 2026-10-04 22:39 run (`event_logs\2026-10-04_223922.log`): no SA-10 ring on John's HSD, though smaller rings (presumably SA-11 / SA-6) showed. John has seen SA-10 rings in earlier runs, "but not all of them. It seems very inconsistent."
+
+**What the roll had:** 25 Red sites spawned with `hiddenOnMFD = false` (4 SA-10, 21 SA-11 / SA-6; `init.lua` → `SpawnGroundGroups.run`, `show_on_mfd`), against ~11 on the 2026-10-02 roll where rings first worked. Spawn order of the ring sites: Monchegorsk, Kilpyavr and Murmansk SA-10s 1st–3rd, Rovaniemi SA-10 11th of 25.
+
+**Suspects (not proven):**
+1. **The HSD's threat limit:** a forum report says the F-16's HSD shows ~16 threats at most since the 12 May 2026 update (`plan.md`, *Still to watch*). 25 is well over. But neither "first 16 spawned" nor "nearest 16" would have dropped the Rovaniemi SA-10, so the HSD would have to pick its 16 some other way (by type or ring size?).
+2. **Something about the SA-10 group:** since 2026-10-04 every SAM group carries a supply truck (a Ural-375 last in each Red SA-10 group). The SA-11s got one too and their rings showed, so the truck alone doesn't explain it, but it changed since the runs where SA-10 rings showed.
+
+**Proposed (decide with John):**
+- A test mission (like the 2026-10-02 HSD tests, script-built, comms-menu steps): an SA-10 as Kola spawns it (with truck), one without the truck, an SA-11 as control, then a step adding 20 more SA-11s to see whether the limit exists and which rings drop past it.
+- Whatever the cause: turn rings on for at most ~15 sites per coalition, chosen on purpose (long-range first, then those covering the front), so the HSD's limit never picks for us.
