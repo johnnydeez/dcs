@@ -1674,6 +1674,7 @@ local function commitFlight(ctx, f)
         may_jettison = f.mt.may_jettison == true,
         success = t.success, critical_names = t.critical_names,
     }
+    FlightCallsigns.assign(ctx.out.callsign_numbers, mission)   -- "Weasel 3", until it lands
     -- a DEAD flight finishes its site: its own success (radars, command post, launchers),
     -- not the radars-only "out of the fight" the SEAD gate uses (catalog_targets.lua)
     if f.mission_type == DESTRUCTION and t.destruction then
@@ -1685,8 +1686,8 @@ local function commitFlight(ctx, f)
 end
 
 local function logFlight(ctx, m, extra)
-    Log.info(string.format("  %-13s %-4s %s%-27s %dx %-13s %-22s → %-34s %4d km (%d flown, %d in enemy airspace, target %d km past contested)  start %s  TOT %s  back %s%s",
-        m.id, ctx.coalition:upper(), m.flown_by == "human" and "HUMAN " or "", m.mission_type, m.count,
+    Log.info(string.format("  %-13s %-10s %-4s %s%-27s %dx %-13s %-22s → %-34s %4d km (%d flown, %d in enemy airspace, target %d km past contested)  start %s  TOT %s  back %s%s",
+        m.id, FlightCallsigns.text(m) or "", ctx.coalition:upper(), m.flown_by == "human" and "HUMAN " or "", m.mission_type, m.count,
         m.aircraft_type, m.launch_base, m.target,
         m.distance_km, m.route_km, m.enemy_airspace_km or 0, m.target_depth_km or 0,
         clock(m.start_s), clock(m.tot_s), clock(m.end_s), extra))
@@ -2882,6 +2883,7 @@ function PlanAirTasking.run(plan)
     for _, coalition in ipairs(COALITIONS) do
         local per = AIR_TASKING_PER_COALITION[coalition]
         local res = { missions = {}, suppression_by_site = {}, suppression_rotation = {},
+                      callsign_numbers = {},   -- callsign name → last number given (lib/flight_callsigns.lua)
                       summary = { missions = 0, suppression_flights = 0, rotation_flights = 0, order_steps = 0,
                                   sites_not_attacked = 0, flights = 0, by_type = {},
                                   not_planned = 0, failures = {}, patrols = 0, stations = 0,

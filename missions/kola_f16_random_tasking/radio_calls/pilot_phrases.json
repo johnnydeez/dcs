@@ -1,0 +1,123 @@
+{
+  "_about": [
+    "What AI pilots say on the mission and AWACS channels (flight_phrase_wording.py puts it together).",
+    "Each call is a list of parts said in order; each part a list of alternatives: a plain string, or",
+    "{text, weight, when}. weight (default 1) makes an alternative more or less common; an empty text",
+    "leaves the part out; when names a condition (the call's flags, listed per call in",
+    "flight_phrase_wording.py, CALLS). Placeholders: {callsign} the jet talking (Weasel three one),",
+    "{flight} its flight (Weasel three), {awacs} the controller (Darkstar), {pause}, and each call's",
+    "own facts (CALLS). Add as many alternatives as you like: the file is checked when the helper starts.",
+    "Brevity: Fox one / two / three = semi-active radar / infrared / active radar air-to-air missile;",
+    "Magnum = anti-radiation missile; Rifle = air-to-ground missile; Splash = a kill."
+  ],
+
+  "voices": {
+    "_about": [
+      "A voice per flight, picked by its callsign so a flight always sounds the same. Never Darkstar's",
+      "voice (Zira). pitch plays the voice a little faster and higher (over 1) or slower and lower, so",
+      "flights sharing a Windows voice sound like different people. A voice not installed is skipped;",
+      "add more from Windows Settings, Time & language, Speech, Add voices."
+    ],
+    "list": [
+      { "voice": "Microsoft David Desktop", "rate": 1, "pitch": 1.0 },
+      { "voice": "Microsoft David Desktop", "rate": 1, "pitch": 0.92 },
+      { "voice": "Microsoft David Desktop", "rate": 2, "pitch": 1.07 },
+      { "voice": "Microsoft David Desktop", "rate": 0, "pitch": 0.96 },
+      { "voice": "Microsoft Mark", "rate": 1, "pitch": 1.0 },
+      { "voice": "Microsoft Mark", "rate": 2, "pitch": 0.93 },
+      { "voice": "Microsoft Mark", "rate": 1, "pitch": 1.07 },
+      { "voice": "Microsoft Mark", "rate": 0, "pitch": 0.97 },
+      { "voice": "Microsoft George", "rate": 1, "pitch": 1.0 },
+      { "voice": "Microsoft James", "rate": 1, "pitch": 1.0 }
+    ]
+  },
+
+  "pronounce": { "SEAD": "seed", "DEAD": "dead", "CAP": "cap" },
+
+  "calls": {
+    "airborne": [
+      [ "{awacs}, {callsign}", { "text": "{awacs}, {flight}", "weight": 0.6 } ],
+      [ "airborne {base}", "off {base}", { "text": "checking in", "weight": 0.7 }, { "text": "checking in as fragged", "weight": 0.5 } ],
+      [ { "text": "two ship", "when": "two_ship" }, { "text": "flight of {count}", "when": "two_ship", "weight": 0.5 },
+        { "text": "single ship", "when": "single" }, { "text": "", "weight": 0.6 } ],
+      [ { "text": "SEAD, en route to {target}", "when": "sead" }, { "text": "SEAD", "when": "sead", "weight": 0.5 },
+        { "text": "en route to the target", "when": "attack" }, { "text": "{mission}, en route", "when": "attack" },
+        { "text": "{mission} on {target}", "when": "has_target", "weight": 0.4 },
+        { "text": "en route to station", "when": "patrol" }, { "text": "CAP, heading for station", "when": "patrol" } ]
+    ],
+
+    "on_station": [
+      [ "{awacs}, {callsign}", "{awacs}, {flight}" ],
+      [ "on station", "on CAP", { "text": "on station, {station}", "weight": 0.4 } ]
+    ],
+
+    "pushing": [
+      [ "{flight}", "{callsign}" ],
+      [ "pushing", "fence in, pushing", { "text": "pushing, {target}", "when": "has_target", "weight": 0.5 },
+        { "text": "pushing, going low", "when": "sead", "weight": 0.7 } ]
+    ],
+
+    "fox": [
+      [ "{callsign}" ],
+      [ { "text": "Fox one", "when": "fox_one" }, { "text": "Fox two", "when": "fox_two" }, { "text": "Fox three", "when": "fox_three" } ],
+      [ { "text": "{target_type}", "when": "target_known", "weight": 0.6 }, "" ]
+    ],
+
+    "magnum": [
+      [ "{callsign}" ],
+      [ "Magnum", "Magnum, Magnum", { "text": "Magnum, {target}", "when": "has_target", "weight": 0.6 } ]
+    ],
+
+    "rifle": [
+      [ "{callsign}" ],
+      [ "rifle", { "text": "rifle, {target}", "when": "has_target", "weight": 0.5 } ]
+    ],
+
+    "bombs": [
+      [ "{callsign}" ],
+      [ "bombs away", "pickle, pickle", "weapons away", { "text": "bombs away, {target}", "when": "has_target", "weight": 0.4 } ]
+    ],
+
+    "splash": [
+      [ "{callsign}" ],
+      [ { "text": "splash one {kill_type}", "when": "type_known" }, "splash one", { "text": "splash, {kill_type} down", "when": "type_known", "weight": 0.5 } ]
+    ],
+
+    "defending": [
+      [ "{callsign}" ],
+      [ { "text": "defending SAM", "when": "sam" }, { "text": "SAM launch, defending", "when": "sam" },
+        { "text": "missile, defending", "when": "air" }, { "text": "spiked, defending", "when": "air" },
+        { "text": "defending", "weight": 0.5 } ]
+    ],
+
+    "jet_down": [
+      [ "{callsign}", "{flight}" ],
+      [ "{down} is down", "{down}'s hit", "lost {down}" ],
+      [ { "text": "good chute", "when": "ejected" }, { "text": "I see a chute", "when": "ejected", "weight": 0.6 }, { "text": "", "weight": 0.5 } ]
+    ],
+
+    "winchester": [
+      [ "{callsign}" ],
+      [ "Winchester", "Winchester, RTB" ]
+    ],
+
+    "bingo": [
+      [ "{callsign}" ],
+      [ "bingo", "bingo fuel" ],
+      [ "RTB {base}", "RTB", "heading home" ]
+    ],
+
+    "off_target": [
+      [ "{flight}", "{callsign}" ],
+      [ { "text": "off target", "when": "attack" }, { "text": "off target", "when": "sead" },
+        { "text": "off, egressing", "when": "attack" }, { "text": "egressing", "when": "sead" },
+        { "text": "off station", "when": "patrol" } ],
+      [ "RTB", "RTB {base}", { "text": "", "weight": 0.4 } ]
+    ],
+
+    "check_out": [
+      [ "{awacs}, {flight}", "{awacs}, {callsign}" ],
+      [ "checking out", "checking out, RTB {base}", "RTB {base}, checking out" ]
+    ]
+  }
+}

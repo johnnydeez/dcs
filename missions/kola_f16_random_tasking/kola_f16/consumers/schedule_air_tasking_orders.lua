@@ -314,7 +314,10 @@ end
 function ScheduleAirTaskingOrders.flyAgain(by, comeBack)
     local s = aiVersion(_byId[by])
     local copy = later(s, timer.getTime() + 1 - s.start_s, s.id .. (comeBack and "_LATER" or "_AGAIN"))
-    if not copy or not SpawnAircraftGroups.spawn(copy) then return nil end
+    if not copy then return nil end
+    -- a new sortie: the same callsign name, a new number ("Weasel 3" flies again as "Weasel 5")
+    FlightCallsigns.assignNow(copy, s.callsign)
+    if not SpawnAircraftGroups.spawn(copy) then return nil end
     _flights[copy.id] = { mission = copy, spawned = true, spawned_at = timer.getTime(), destroyed = 0, lost = 0, landed = 0 }
     if comeBack then _flights[by].later = copy.id else _flights[by].again = copy.id end
     return copy

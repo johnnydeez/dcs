@@ -24,7 +24,7 @@
 
 ---
 
-## Where we are — pick up here  *(2026-10-02, session 16, evening: SEAD flights now fire and kill radars)*
+## Where we are — pick up here  *(2026-10-05, late: the radio talks — Darkstar, AI pilots and airfields, on channels the jet tunes)*
 
 **Status:** the whole pipeline runs in DCS and the mission is playable by one human player.
 - **Stage 1:** territory roll, 37 airfields.
@@ -42,7 +42,7 @@
 - **Red's attack jets carry R-77s** (2026-10-01): every Su-34 loadout has 2× R-77 (*Stages 5–6*, Loadouts).
 - **Kill zones depend on height above the ground** (`lib/sam_reach.lua`): the low-altitude reach up to 300 m, the full ring from 3,000 m (bug 27, fixed 2026-10-02: was 3,000 / 7,000 m above sea level; at the 00:57 run's pop-ups the sites reached nearly their full envelope); no AI flight launches from a base inside an enemy SAM's low-altitude kill zone. The SEAD launch point stays cleared of the other sites' low reach only; the pop-up and the press-on leg are accepted exposure: go cold and a fight's break-off ignore every ring there while missiles are aboard. Outside it a SEAD flight's fight is broken off for any kill zone at its height, its own target's included. Enemy airfield Tors / Pantsirs / Rolands count at 85 % of their full reach at any height (bug 41, 2026-10-02, not flown).
 - **Air picture for players** (roadmap item 5, built 2026-10-02, flown in the 00:57 run; `closed.md`): every 2 min, for 14 s, each player gets their coalition's radar picture as a BRAA list from their own position (magnetic), highest threat first (*Air picture calls*).
-- **Darkstar on the radio** (roadmap item 7 MVP, built and flown 2026-10-05; *Radio calls*): the picture calls and immediate threat calls (a hot hostile inside 40 nm) spoken in a Windows voice with a radio sound, by our own player and helper in `radio_calls/`, which the mission starts itself. Bearings now grid-based magnetic as the F-16 shows them, stale tracks no longer called (bug 61, fixed 2026-10-05, not flown).
+- **The radio** (roadmap item 7; *Radio calls*): Darkstar's picture and threat calls (MVP, flown 2026-10-05), and since 2026-10-05 late the AI pilots too: every AI flight has a callsign for the whole mission; flights check in and out with Darkstar and make their mission calls (pushing, Fox, Magnum, Splash, defending, off target) from what they actually do (a watcher beside the controller); AI traffic at Blue fields calls taxi, departing, inbound, final and clear on the field's tower frequency. Channels: AWACS UHF 262.000, mission VHF 140.000, each field its tower VHF; our export script reads the F-16's two radios (one line in `Export.lua`, as SRS does), so a call is heard only when tuned. Spoken in Windows voices (Darkstar Zira; pilots David and Mark variants) by our own player and helper in `radio_calls/`, which the mission starts itself. John's first test, 2026-10-05 late: "insanely cool so far, probably needs a few fixes". Bearings grid-based magnetic as the F-16 shows them, stale tracks no longer called (bug 61, fixed 2026-10-05).
 - **The player's HSD** (bug 25, confirmed in Kola 2026-10-02): friendly AI flights show as datalink contacts and the medium and long-range SAM rings show (the recipe: *DCS facts learned the hard way*). The AWACS's enemy tracks reach it too, as yellow (unknown) contacts (bug 26, closed after the test mission, 2026-10-02).
 - **SEAD retuned after the 00:57 run** (2026-10-02; bugs 27, 28, 30; its launch point and pop-up numbers were changed again since, see the doctrine line above): go cold the moment the last anti-radiation missile leaves; attack tasks hold the planned altitude (the AI flew its attacks low); the bandit call keeps a fighter that just fired at the flight.
 - **Bug round 2026-10-02 (session 15, not flown; each fix in `closed.md`, the guards for 6 and 13 in `bugs.md`):**
@@ -117,6 +117,8 @@
 
 **Also 2026-10-05: Darkstar speaks (roadmap item 7 MVP; *Radio calls*).** Flown the same afternoon, John on the ramp: "working, and is awesome". Found: bug 61 (bearings a few degrees off against the F10 map; parked, its `dcs.log` check line on), and "that's all I have" far too often (the repeat avoidance flattened the weights; fixed, not heard yet). Still to see: a threat call (`PICTURE_CALL.*threat`) and how late it comes; whether the start-up `os.execute` causes any stutter. Next steps: `roadmap.md`, item 7.
 
+**Radio calls, next iteration built 2026-10-05 late** (roadmap item 7, steps 5–9; *Radio calls*): callsigns for every AI flight, a reworked queue, channels with real frequencies, our export script reading the F-16's radios (one line in `Export.lua`, added by the radio player: **restart DCS once**), AI flights' mission calls from a watcher beside the controller, airfield traffic calls. Harness-tested, copied to DCS, not flown.
+
 **Bug 61 closed 2026-10-05 evening** (`event_logs\2026-10-05_185934.log`, John's test flight on HUD 050 from Kallax): DCS's magnetic is grid minus variation, so Darkstar's bearings were off by the grid's convergence. Fixed (grid-based bearings, tracks and airfield brief; the true age; stale tracks not called; the DEBUG and bearing-check lines removed), copied to DCS, not flown; `closed.md`. Check in the next run: Darkstar's bearings against the HSD east of Rovaniemi, and no call of a contact that's gone.
 
 **Next (2026-10-02 late, after session 18):** built in session 18, none flown: the orphaned-wingman removal (`>>orphan<<`, bug 19), DEAD from out of a short-range site's reach (Kh-59M / JSOW, bug 4), the AWACS placed where its coalition fights and Darkstar's "no radar coverage your area" (bug 42), contact ranges in `CONTACT` lines.
@@ -170,6 +172,7 @@
 | `UNIT_AWAKE`, `UNIT_ASLEEP`, `LATE_WAKE`, `AWAKE_COUNT`, `(asleep)` | sleeping ground units: a base's short-reach defenses waking and sleeping, an enemy within 10 km of a sleeping base (never expected), the 5-min count; hits and deaths of a sleeping unit end in `(asleep)` |
 | `PLAYER_IN`, `PLAYER_OUT` | players |
 | `PICTURE_CALL` | the air picture shown to a player every 2 min: how many groups, and the first (highest threat) line; `no radar coverage` when no sensor of the coalition reaches the player; `threat: …` a spoken threat call (a hot group inside 40 nm, roadmap item 7). What was said: `radio_calls/speak_mission_calls.log` |
+| `RADIO_CALL` | an AI pilot's radio call: what (`airborne`, `pushing`, `fox`, `magnum`, `splash`, `defending`, `jet_down`, `off_target`, `check_out`, `taxi`, `departing`, `inbound`, `final`, `clear`, …), on which channel (with an airfield's frequency and runway), by which jet's callsign. Compare with the flight's own lines to see that each call matches what it did; the words: `radio_calls/speak_mission_calls.log`; heard or not (tuned, too old, dropped): the radio player's window |
 | `== Mission end` | the summary: flights launched, losses by cause, ground losses, each flight's outcome |
 
 `dcs.log` keeps planning and debugging (grep `[KOLA]`):
@@ -185,6 +188,8 @@
 | `destroyed on the ramp` | a `RAMP_LOSS` |
 | `picture:`, `Scrambles:` | the radar sensors found and the alert bases, at start |
 | `WARN`, `ERROR` | anything that went wrong, including a failed event-log line |
+| `KOLA-RADIOS` (not `[KOLA]`) | the export script reading the jet's radios for the radio player ("sending the jet's radios to 127.0.0.1:47112"), or why it couldn't load |
+| `Radio calls:`, `Flight calls:`, `Airfield calls:` | the radio's start lines: channels and frequencies, the calls file |
 
 ---
 
@@ -300,8 +305,8 @@ Then:
 6. `ScheduleAirTaskingOrders.start`.
 7. `TrackRadarPicture.start` (after the scheduler, before anything that reads the picture).
 8. `ControlAirFlights.start` (the controller, scrambles included), then `SleepGroundUnits.start`.
-9. `DrawAirTaskingOrders`, then `CallAirPicture.start` (the air picture) and `SendRadioCalls.start` (Darkstar on the radio: empties the calls file, starts the radio player and helper).
-10. `CreateAirfieldsBrief.start`, `BriefAirTasking.start` (comms menu).
+9. `DrawAirTaskingOrders`, then `CallAirPicture.start` (the air picture) and `SendRadioCalls.start` (the radio: empties the calls file, starts the radio player and helper). `FlightCallsigns.start` runs before the scheduler (step 6), so run-time callsigns carry on from the plan's.
+10. `CreateAirfieldsBrief.start`, `BriefAirTasking.start` (comms menu), then `AnnounceFlightActivity.start` and `TrackAirfieldTraffic.start` (the AI pilots' and airfield calls; after the airfield brief, whose runways they use).
 11. Build summary to `dcs.log`.
 12. `BriefAirTasking.showStart` (start text, 3 min).
 
@@ -835,7 +840,7 @@ Built 2026-10-02 (roadmap item 5, text first; `closed.md`), first flown in the 0
 
 ### Radio calls (`consumers/send_radio_calls.lua`, `data/radio_calls.lua`, `radio_calls/`)
 
-Built and flown 2026-10-05 (roadmap item 7's MVP; John: "working, and is awesome"). Darkstar speaks: the air picture's calls and immediate threat calls, phrased from a phrase bank, in a Windows voice, with a radio sound, played to Windows' default output. Blue only, one frequency, every player "Snake one one" (`RADIO_CALLS.player_callsign`) until slots carry callsigns. The on-screen list is unchanged. How to start, watch and test it: the repo's `README.md`, *Kola radio calls*.
+Built and flown 2026-10-05 (roadmap item 7's MVP; John: "working, and is awesome"). Darkstar speaks: the air picture's calls and immediate threat calls, phrased from a phrase bank, in a Windows voice, with a radio sound, played to Windows' default output. Blue only, every player "Snake one one" (`RADIO_CALLS.player_callsign`) until slots carry callsigns. The AI pilots and the airfields joined later the same day, on their own channels (below, *AI pilots and airfields talk*); this first part describes Darkstar's calls and the programs as the MVP built them, with the changes noted there. The on-screen list is unchanged. How to start, watch and test it: the repo's `README.md`, *Kola radio calls*.
 
 ```
 mission (Lua) --JSON line--> helper -----------> phrase bank --> Windows voice --> radio player ----> headphones
@@ -858,6 +863,20 @@ send_radio_calls.lua  mission_calls.jsonl  speak_mission_calls.py  (Zira, SSML) 
   - **Checked at load:** every placeholder and condition; a typo stops the helper at start, not mid-call.
 - **Tests without DCS** (`radio_calls/`): `play_sample_awacs_calls.py` (seven made-up calls through Zira and the player; `--repeat`, `--only`, `--text-only`), `send_radio_call.py` (any text or WAV), `phrase_bank_wording.py` (checks the file, prints samples).
 - **Multiplayer (not built):** over ZeroTier; the host words each player's calls, the friend's PC runs only the radio player (roadmap item 7).
+
+**AI pilots and airfields talk, on channels the jet tunes** (roadmap item 7, steps 5–9; built 2026-10-05 late, harness-tested, copied to DCS, not flown). The design and John's decisions: `roadmap.md`, item 7, *Flights and airfields talk*.
+- **Callsigns** (`lib/flight_callsigns.lua`, `data/flight_callsigns.lua`): every AI flight gets one when planned (`commitFlight`: `m.callsign`, `m.callsign_number`), a scramble when decided, a SEAD retry (`_AGAIN`, `_LATER`) when flown: the same name with a new number. Names by mission type (Blue SEAD "Weasel", AWACS "Darkstar") or aircraft type (Viper, Hornet, Eagle, Dude, Bone, Hawg; Red: Sokol, Berkut, Rubin …), numbers 1–9 per name then the next name; the numbers given are kept per coalition in `air_tasking_orders[c].callsign_numbers`, carried on at run time (`FlightCallsigns.start`). Shown with the id ("MSN2025_SEAD Weasel 1") in the brief, the air tasking order menus, the map labels, *Airfield info*, the event log's `SPAWNED` and plan lines, `dcs.log`'s flight list. Players have none (still "Snake one one").
+- **Channels** (`RADIO_CALLS.channels`): AWACS UHF 262.000 (Darkstar, check-in / out), mission VHF 140.000 (tactical calls), each Blue field its tower VHF from the map (`data/airfield_frequencies.lua`, generated by `kola_data_tools/airfield_frequencies.py` from `Mods\terrains\Kola\radio.lua`, keyed by airbase id; 35 fields, the rest 122.800). Every call carries `channel`, `frequency_mhz`, `priority` and `expires_s` (`RADIO_CALLS.kinds`). Frequencies in the start text, the frag (`RADIO` line) and *Airfield info* ("Traffic calls: VHF 128.200").
+- **The watcher** (`consumers/announce_flight_activity.lua`, `AnnounceFlightActivity`): beside the controller, reads only. DCS events: takeoff → `airborne` (AWACS); shot → `fox` (1 / 2 / 3 by guidance: semi-active / IR / active), `magnum` (radar-passive), `rifle` (other air-to-ground missiles), `bombs`, folded per flight (`fold_s`); a missile fired at a jet → that jet `defending` (SAM or missile); kill of an aircraft → `splash`; a jet lost → `jet_down` by a jet still flying (`ejected`). Its waypoints: `pushing` (the ingress waypoint reached; a SEAD flight's first low-level or descent one). Every `watch_every_s` (5): `on_station` (patrol within 20 km of its race-track), `winchester` (no weapons left once it had some), `bingo` (fuel ≤ 15 % and ≥ 60 km from home), `off_target` (mission) + `check_out` (AWACS) when seen heading home (within 35° of the bearing to its landing base, closing ≥ 0.5 km a look, ≥ 15 km nearer than its farthest point; a patrol only once it has left its station). Players' and AWACS flights don't talk. Event log `RADIO_CALL`.
+- **Airfield traffic** (`consumers/track_airfield_traffic.lua`, `TrackAirfieldTraffic`): AI flights at Blue fields, one call per flight per phase by its first jet: `taxi` (a jet born on the ramp moving ≥ 3 m/s; runway in use for the wind), `departing` (takeoff; runway from its heading, bound for its first leg), `inbound` (≥ 5 min after takeoff, coming back to land: seen heading home or ≤ 130 m/s and ≤ 1,500 m; heading for its landing base inside 10 nm), `final` (after inbound; inside 9 km, ≤ 700 m above the field, ≤ 110 m/s, within 20° of a runway end, the field ahead), `clear` (25 s after its first touchdown). Only with a player within `airfield_range_nm` (40) of the field. Runways from `CreateAirfieldsBrief.runwayFor` / `runwayInUse` (grid − variation, as the F-16). A retry's or scramble's taxi isn't called (its record comes after its birth event). Event log `RADIO_CALL`.
+- **The helper** routes each call: Darkstar's kinds to `phrase_bank_wording.py`; pilot and airfield kinds to `flight_phrase_wording.py` with `pilot_phrases.json` / `airfield_phrases.json` (each call kind a list of parts, each a weighted, conditional list; the placeholders and conditions per kind in `CALLS`, checked at load; callsigns digit by digit, runways "three two", SAM names "S A ten"). A pilot's voice from `pilot_phrases.json` `voices`, picked by the jet's callsign (`crc32`), never Darkstar's; System.Speech ignores SSML pitch, so each voice entry has a `pitch` the radio sound applies by playing it faster / slower (`radio_sound.make_radio_call(pitch=…)`). Voices from both Windows engines (`windows_voice.py` speaks each through whichever lists it: System.Speech for "… Desktop", the newer Windows.Media.SpeechSynthesis, "OneCore", through PowerShell's WinRT for Mark and others, ~0.7 s a call): four David and four Mark variants for now (2026-10-05). John installed Ryan, Andrew, Prabhat, Sonia and Guy too: those are Windows' "natural" voices, Narrator's only, and neither engine offers them. The helper sets `event_at` when it reads a call; several calls read at once go most urgent first.
+- **The radio player:** waiting calls by priority (1 combat / threat, 2 airfield / Winchester / bingo, 3 routine), then arrival; over `MAX_BACKLOG_S` (20 s) of audio waiting, the lowest priority goes, oldest first; a call's age from `event_at`; never two at once. **The jet's radios:** `radio_calls/export_cockpit_radios.lua`, run by DCS's export system, sends the F-16's UHF (device 36, volume knob 430) and VHF (device 38, knob 431) frequency, on / off and volume twice a second over UDP 127.0.0.1:47112 (chained like SRS's `LuaExportActivityNextEvent`, so SRS keeps working); while reports are fresh (3 s) a call plays only on a radio on and tuned within 10 kHz, at that knob's volume; otherwise everything plays. At start the player adds the one line loading it to `Saved Games\DCS\Scripts\Export.lua` (and `DCS.openbeta`) if missing (or corrects its path), touching nothing else; DCS needs one restart to load it. README *Your jet's radios* has the steps for John's friend.
+- **Checked:** a luae harness with stubbed DCS ran one SEAD flight from taxi to clear (all 15 calls, folding, the jet-down speaker, no double call on ejection + crash), then the helper worded each; the player's queue, radio filter and the Export.lua edit (on a copy of John's file) in Python; the export script in luae with a stubbed cockpit (SRS's function still called every time); the brief, *Airfield info* and the air tasking order menu on a re-planned roll.
+- **First test, 2026-10-05 21:02** (`event_logs\2026-10-05_210257.log`, John on the ramp at Rovaniemi, listening; John: "really good and really helps to know what is going on with all the flights"). 34 `RADIO_CALL`s; taxi, airborne, Magnum, Fox, splash, jet down (Weasel 1-1 for 1-2), off target, check-out, inbound and clear all matched what the flights did. **Every call was heard whatever the radios were set to:** expected the first time. The radio player added the Export.lua line when the mission started it (14:04 UTC), after DCS had read Export.lua at its own start (14:00), so the export script never ran (`dcs.log`: SRS's export line, no `KOLA-RADIOS`); from the next DCS start it does. **The load is fine:** with every channel heard at once it wasn't too many calls (John). Fixed the same night (harness-checked, copied to DCS, not flown):
+  - **"Pushing" one second after takeoff:** Rovaniemi lies in contested airspace, so "out of own airspace" was true on the runway. Now the flight reaching its ingress waypoint (a SEAD flight: its first low-level or descent waypoint), told by the waypoint's script command (`AnnounceFlightActivity.waypoint`, beside `WriteEventLog.waypoint` and `ControlAirFlights.waypoint`).
+  - **A false "final"** at Rovaniemi (Weasel 2 egressing low at ~450 kt past its own base, 5 min after takeoff), which used up the flight's final, so the real approach had none and "inbound" came after it. Now inbound only for a flight coming back to land (the watcher has seen it heading home, `AnnounceFlightActivity.headingHome`, or it is slow and low: ≤ 130 m/s, ≤ 1,500 m), and final only after that, at approach speed (≤ 110 m/s).
+  - **"Splash" by a jet that had ejected** (Weasel 1-2's AIM-120 killed a Su-34 a second after 1-2 was shot down): a call from a jet already down is said by a jet of its flight still flying, or not at all.
+- **To check in the first run** (after restarting DCS for the Export.lua line): the player's window "hearing the jet's radios from DCS: F-16C_50, UHF … VHF …"; calls heard only when tuned (AWACS UHF 262.000, mission VHF 140.000, the field's tower VHF); `RADIO_CALL` lines against what the flights did (a `pushing` at the ingress, `off_target` only on the way home, `final` only on a real approach); whether DCS's own ATC on the tower frequency talks over ours.
 
 ### Event log (`consumers/write_event_log.lua`, `data/event_log.lua`)
 
@@ -1176,7 +1195,9 @@ kola_f16\
     airspace.lua                 -- airspace grid settings
     radar_picture.lua            -- radar picture settings: polling, stale / drop times, sensor kinds, inbound
     air_picture_calls.lua        -- the players' air picture: period, aspect bands, threat order, callsigns, magnetic variation
-    radio_calls.lua              -- Darkstar on the radio: on / off, player callsign, threat range and repeat, calls file, start command
+    radio_calls.lua              -- the radio: on / off, channels and frequencies, call kinds (priority, expiry, folding), threat range, the watcher's and airfield calls' settings, calls file, start command
+    airfield_frequencies.lua     -- each airfield's tower VHF / UHF by airbase id (airfield_frequencies.py, from the Kola map)
+    flight_callsigns.lua         -- callsign names by mission type and aircraft type
     air_control.lua              -- the controller: directives per mission type, their settings, intent priorities
     event_log.lua                -- event log settings: folder, write interval, hold and fold windows, positions
     ground_unit_sleep.lua        -- which base defenses sleep; wake and reach distances, check interval
@@ -1208,13 +1229,15 @@ kola_f16\
     brief_air_tasking.lua        -- start text + comms menu
     create_airfields_brief.lua   -- comms menu Airfield info: every Blue base's wind, runway in use, next flights, alert jets
     call_air_picture.lua         -- every 2 min the radar picture to each player: BRAA from them, highest threat first
-    send_radio_calls.lua         -- Darkstar's picture and threat calls as JSON lines for the radio helper outside DCS; starts it
+    send_radio_calls.lua         -- every radio call as a JSON line (channel, frequency, priority) for the radio helper outside DCS; Darkstar's picture and threat calls; starts the helper
+    announce_flight_activity.lua -- the watcher beside the controller: AI flights' check-in / out and mission calls from what they do
+    track_airfield_traffic.lua   -- AI traffic at Blue fields: taxi, departing, inbound, final, clear on the field's frequency
     draw_airspace.lua  draw_base_defenses.lua  draw_sam_sites.lua  draw_fixed_ground_targets.lua
     draw_convoys.lua  draw_air_tasking_orders.lua    -- F10 map marks (all ToAll(-1) until fog of war)
   survey\                        -- one-off in-sim measurements, behind CONFIG flags or in the zone mission
     survey_airbase_footprints.lua  survey_zone_terrain.lua  probe_parked_aircraft_spawn.lua
 ```
-Outside DCS, in the mission folder: `radio_calls\` (the radio player, the helper, the phrase bank; Python, never copied to Scripts; *Radio calls*).
+Outside DCS, in the mission folder: `radio_calls\` (the radio player, the helper, the phrase banks, the voices, and `export_cockpit_radios.lua`, which DCS's export system runs from there through one line in `Saved Games\DCS\Scripts\Export.lua`; Python, never copied to Scripts; *Radio calls*). `lib\flight_callsigns.lua`: the flights' callsigns.
 
 Load order: `lib\*` → `data\*` → `stages\*` → `consumers\*`, then the run sequence.
 

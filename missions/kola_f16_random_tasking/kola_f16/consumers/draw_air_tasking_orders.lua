@@ -45,7 +45,8 @@ function DrawAirTaskingOrders.apply(plan)
                 -- patrols and the AWACS: one label per station, below
                 byStation[m.station] = byStation[m.station] or {}
                 table.insert(byStation[m.station], string.format("%s%s %s from %s, on station %s–%s",
-                    human and "HUMAN " or "", m.id, m.aircraft_type, m.launch_base, clock(m.tot_s), clock(m.attack.until_s)))
+                    human and "HUMAN " or "", FlightCallsigns.label(m), m.aircraft_type, m.launch_base, clock(m.tot_s),
+                    clock(m.attack.until_s)))
             else
             local sead = m.mission_type == "suppression_of_air_defenses"
             local detail = sead and string.format("%sengages: %s", m.rotation and "SEAD rotation\n" or "",
@@ -56,7 +57,7 @@ function DrawAirTaskingOrders.apply(plan)
                 detail = string.format("%s\nneeds down: %s", detail, table.concat(by, ", "))
             end
             local text = string.format("%s%s %s %s\n%dx %s from %s\nstart %s  TOT %s  back %s\n%s",
-                human and "HUMAN " or "", m.id, coalition:upper(), m.mission_type, m.count, m.aircraft_type, m.launch_base,
+                human and "HUMAN " or "", FlightCallsigns.label(m), coalition:upper(), m.mission_type, m.count, m.aircraft_type, m.launch_base,
                 clock(m.start_s), clock(m.tot_s), clock(m.end_s), detail)
             -- a SEAD flight is labelled at its launch point (a DEAD on the same site keeps the site)
             local at = m.target_pos

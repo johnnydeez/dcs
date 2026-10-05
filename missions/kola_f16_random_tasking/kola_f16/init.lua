@@ -24,6 +24,7 @@ if not load("lib\\weather.lua")            then return end
 if not load("lib\\placement.lua")          then return end
 if not load("lib\\threat_routing.lua")     then return end
 if not load("lib\\sam_reach.lua")          then return end
+if not load("lib\\flight_callsigns.lua")   then return end
 
 Log.info("============================================")
 Log.info("  Kola F-16 generator loading")
@@ -51,10 +52,12 @@ if not load("data\\convoy_recipes.lua")           then return end
 if not load("data\\aircraft_profiles.lua")        then return end
 if not load("data\\aircraft_loadouts.lua")        then return end
 if not load("data\\air_tasking.lua")              then return end
+if not load("data\\flight_callsigns.lua")         then return end
 if not load("data\\airspace.lua")                 then return end
 if not load("data\\radar_picture.lua")            then return end
 if not load("data\\air_picture_calls.lua")        then return end
 if not load("data\\radio_calls.lua")              then return end
+if not load("data\\airfield_frequencies.lua")     then return end
 if not load("data\\air_control.lua")              then return end
 if not load("data\\event_log.lua")                then return end
 if not load("data\\ground_unit_sleep.lua")        then return end
@@ -94,6 +97,8 @@ if not load("consumers\\brief_air_tasking.lua")   then return end
 if not load("consumers\\call_air_picture.lua")    then return end
 if not load("consumers\\send_radio_calls.lua")    then return end
 if not load("consumers\\create_airfields_brief.lua") then return end
+if not load("consumers\\announce_flight_activity.lua") then return end
+if not load("consumers\\track_airfield_traffic.lua") then return end
 if CONFIG.SURVEY_FOOTPRINTS and not load("survey\\survey_airbase_footprints.lua") then return end
 if CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN and not load("survey\\probe_parked_aircraft_spawn.lua") then return end
 
@@ -170,6 +175,8 @@ local function run()
     -- DCS events to the event log from here on: after the preload (its spawns aren't part
     -- of the story), before the first flight spawns
     WriteEventLog.start()
+    -- callsigns given at run time (scrambles, SEAD retries) carry on from the plan's numbers
+    FlightCallsigns.start(plan)
     -- the mission clock: each planned flight is due at its start time, and the controller
     -- decides then whether it launches
     ScheduleAirTaskingOrders.start(plan)
@@ -189,13 +196,18 @@ local function run()
     -- their own position, highest threat first (event log: PICTURE_CALL). Before the
     -- airfield brief, which reads the magnetic variation it loads.
     CallAirPicture.start(plan)
-    -- Darkstar's calls spoken (roadmap item 7): the picture calls above, and threat calls
-    -- at once; started here with the radio player and helper outside DCS (radio_calls\)
+    -- the radio calls (roadmap item 7): Darkstar's picture and threat calls, and the AI
+    -- pilots' calls below; started here with the radio player and helper outside DCS (radio_calls\)
     SendRadioCalls.start()
     -- comms menu, top first: Airfield info (every Blue base: wind, runway in use, next
     -- flights, alert jets), then the human taskings and the air tasking order
     CreateAirfieldsBrief.start(plan)
     BriefAirTasking.start(plan)
+    -- the AI pilots talk (roadmap item 7): mission calls from what each flight actually does
+    -- (a watcher beside the controller, never its orders), and airfield traffic calls at
+    -- Blue fields on each field's frequency; after the airfield brief, whose runways they use
+    AnnounceFlightActivity.start(plan)
+    TrackAirfieldTraffic.start(plan)
     -- the build summary goes to dcs.log; the screen shows only the weather and the human
     -- taskings (John, session 10)
     local text = Territory.summaryText(plan) .. "\n" .. DrawAirspace.summaryText(plan)

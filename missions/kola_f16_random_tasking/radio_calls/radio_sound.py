@@ -11,7 +11,9 @@ is heard on the next call without restarting the radio player):
   4. hiss under the voice (hiss_level), band-passed like the voice;
   5. squelch: a click and a short burst of hiss as the transmitter keys up (key_up_ms,
      click_level), and the squelch tail as it lets go (squelch_tail_ms, squelch_tail_level);
-  6. volume, then 16-bit mono WAV.
+  6. volume (times the cockpit radio's own volume knob, when the radio player knows it),
+     then 16-bit mono WAV.
+A speaker's pitch (a little faster and higher, or slower and lower) is applied in step 1.
 
 Levels are fractions of full scale (1.0 = the loudest a WAV can hold).
 """
@@ -139,11 +141,15 @@ def fade(samples, fade_in, fade_out):
     return samples
 
 
-def make_radio_call(wav_bytes, settings=None):
-    """A clean voice WAV's bytes -> the radio version's WAV bytes."""
+def make_radio_call(wav_bytes, settings=None, pitch=1.0, radio_volume=1.0):
+    """A clean voice WAV's bytes -> the radio version's WAV bytes.
+    pitch: the voice played this much faster and higher (1.05) or slower and lower (0.95), so
+    flights sharing one Windows voice sound like different people (System.Speech ignores SSML
+    pitch); radio_volume: the cockpit radio's volume knob, 0..1, on top of the settings' volume."""
     settings = settings or load_settings()
     frames, rate = read_wav(wav_bytes)
     radio_rate = int(settings["sample_rate_hz"])
+    rate = int(round(rate * pitch))
     if rate != radio_rate:
         frames, _ = audioop.ratecv(frames, 2, 1, rate, radio_rate, None)
     pcm = array.array("h")
@@ -174,8 +180,8 @@ def make_radio_call(wav_bytes, settings=None):
     # Let go: the squelch tail, falling away fast.
     closing = fade(noise(tail, settings["squelch_tail_level"], filters), int(3 * per_ms), tail // 2)
 
-    volume = float(settings["volume"])
-    call = [s * volume for s in fade(opening, int(2 * per_ms), 0) + body + closing]
+    volume = float(settings["volume"]) * max(0.0, min(1.0, radio_volume))
+    call =[s * volume for s in fade(opening, int(2 * per_ms), 0) + body + closing]
     return write_wav(call, radio_rate)
 
 

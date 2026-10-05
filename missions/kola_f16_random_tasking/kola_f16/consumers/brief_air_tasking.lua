@@ -199,9 +199,9 @@ local function samRingsNear(m, threats)
     return out
 end
 
--- One line per flight: "MSN2005 SEAD 2x F-16C_50 from Kallax, over target 08:37".
+-- One line per flight: "MSN2005_SEAD Weasel 2 SEAD 2x F-16C_50 from Kallax, T/O 08:12, TOT 08:37".
 local function flightLine(m, byId)
-    return string.format("%s%s %s %dx %s from %s, T/O %s, %s %s", m.id, m.flown_by == "human" and " (PLAYER)" or "",
+    return string.format("%s%s %s %dx %s from %s, T/O %s, %s %s", FlightCallsigns.label(m), m.flown_by == "human" and " (PLAYER)" or "",
         missionName(m.mission_type), m.count, m.aircraft_type, m.launch_base, at(m.takeoff_s),
         m.station and "on station" or "TOT", at(m.tot_s))
 end
@@ -214,7 +214,7 @@ local function needsDownLines(m, byId)
     local out = {}
     for i, n in ipairs(seadNeeded(m, byId)) do
         local who = n.sead and (n.sead.id == m.id and "yours"
-            or string.format("%s, %s", n.sead.id, ScheduleAirTaskingOrders.statusOf(n.sead.id))) or "no SEAD flight"
+            or string.format("%s, %s", FlightCallsigns.label(n.sead), ScheduleAirTaskingOrders.statusOf(n.sead.id))) or "no SEAD flight"
         out[#out + 1] = string.format("%s%s (%s)", i == 1 and "Needs down: " or "            ", n.threat, who)
     end
     return out
@@ -230,7 +230,7 @@ local function threatSection(m, byId, threats, lines)
         local who = ""
         if s then
             who = s.id == m.id and " — YOURS to suppress"
-                  or string.format(" — SEAD %s (%s), salvo %s", s.id, s.aircraft_type, at(s.tot_s))
+                  or string.format(" — SEAD %s (%s), salvo %s", FlightCallsigns.label(s), s.aircraft_type, at(s.tot_s))
         end
         lines[#lines + 1] = string.format("  %s: route %s%s", r.label,
             r.gap_m < 0 and string.format("crosses its ring (%d km inside)", round(-r.gap_m / 1000))
@@ -246,7 +246,7 @@ local function threatSection(m, byId, threats, lines)
                 shown[id] = true
                 local s = bySite[id] and byId[bySite[id]]
                 lines[#lines + 1] = string.format("  %s%s", t.label, (s and s.id == m.id) and " — YOURS to suppress"
-                    or s and string.format(" — SEAD %s", s.id) or "")
+                    or s and string.format(" — SEAD %s", FlightCallsigns.label(s)) or "")
                 listed = listed + 1
             end
         end
@@ -262,6 +262,8 @@ local function fragText(m)
     local lines = {
         string.format("%s  %s  (1x %s, PLAYER)", m.id, missionName(m.mission_type), m.aircraft_type),
         string.format("FROM  %s, slot %s (spot %s)", m.launch_base, m.player_slot.group, m.player_slot.spot),
+        string.format("RADIO  Darkstar %s, mission %s, %s traffic %s", SendRadioCalls.channelText("awacs"),
+            SendRadioCalls.channelText("mission"), m.launch_base, SendRadioCalls.channelText("airfield", m.launch_base)),
         string.format("TAKEOFF %s   %s %s   HOME ~%s   (mission start %s)", at(m.takeoff_s),
             m.station and "ON STATION" or "TOT", at(m.tot_s), at(m.end_s - AIR_TASKING_TIMING.landing_s),
             at(0)),
@@ -293,7 +295,7 @@ local function fragText(m)
         if #others > 0 then
             lines[#lines + 1] = "OTHER PATROLS ON THIS STATION"
             for _, o in ipairs(others) do
-                lines[#lines + 1] = string.format("  %s %s from %s, on station %s–%s", o.id, o.aircraft_type,
+                lines[#lines + 1] = string.format("  %s %s from %s, on station %s–%s", FlightCallsigns.label(o), o.aircraft_type,
                     o.launch_base, at(o.tot_s), at(o.attack.until_s))
             end
         end
@@ -421,7 +423,7 @@ local function missionText(m, byId)
         local waiting = waitingOn(m, byId)
         if #waiting > 0 then
             local ids = {}
-            for i, o in ipairs(waiting) do ids[i] = o.id end
+            for i, o in ipairs(waiting) do ids[i] = FlightCallsigns.label(o) end
             lines[#lines + 1] = "  opening the way for " .. table.concat(ids, ", ")
         end
     end
@@ -436,7 +438,7 @@ local function stationText(st, byId)
     end
     table.sort(flights, function(a, b) return a.tot_s < b.tot_s end)
     for _, m in ipairs(flights) do
-        lines[#lines + 1] = string.format("  %s%s %s from %s, on station %s–%s — %s", m.id,
+        lines[#lines + 1] = string.format("  %s%s %s from %s, on station %s–%s — %s", FlightCallsigns.label(m),
             m.flown_by == "human" and " (PLAYER)" or "", m.aircraft_type, m.launch_base, at(m.tot_s),
             at(m.attack.until_s), ScheduleAirTaskingOrders.statusOf(m.id))
     end
@@ -547,6 +549,8 @@ function BriefAirTasking.startText(plan)
         string.format("  %s°C, QNH %s inHg; %s", tostring(w.temp_c), tostring(w.qnh.inhg),
             (t.sun.sunrise or t.sun.sunset) and string.format("sunrise %s, sunset %s", t.sun.sunrise or "--", t.sun.sunset or "--")
             or (t.sun.polar or "no sunrise or sunset today")),
+        string.format("RADIO  Darkstar %s, mission %s, each field's traffic on its tower VHF (Airfield info)",
+            SendRadioCalls.channelText("awacs"), SendRadioCalls.channelText("mission")),
         "",
     }
     local ato = plan.air_tasking_orders
@@ -602,14 +606,14 @@ function BriefAirTasking.start(plan)
     for _, m in ipairs(res.missions) do
         if not m.station then
             local item = { nil, function() return missionText(m, byId) end, m.start_s }
-            local short = m.id:match("^MSN%d+") or m.id
+            local short = (m.id:match("^MSN%d+") or m.id) .. (m.callsign and (" " .. FlightCallsigns.text(m)) or "")
             if m.mission_type == SUPPRESSION then
                 item[1] = string.format("%s SEAD %s on %s", at(m.tot_s), short, m.target)
                 seads[#seads + 1] = item
             else
                 local after = {}
                 for _, n in ipairs(seadNeeded(m, byId)) do
-                    if n.sead then after[#after + 1] = n.sead.id:match("^MSN%d+") or n.sead.id end
+                    if n.sead then after[#after + 1] = FlightCallsigns.text(n.sead) or n.sead.id:match("^MSN%d+") or n.sead.id end
                 end
                 item[1] = string.format("%s %s %s%s", at(m.tot_s), missionName(m.mission_type), short,
                     #after > 0 and (" (after " .. table.concat(after, ", ") .. " SEAD)") or "")

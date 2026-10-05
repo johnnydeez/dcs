@@ -1,0 +1,52 @@
+{
+  "_about": [
+    "What AI pilots say on an airfield's own frequency, the way traffic at an uncontrolled field",
+    "announces itself: the field first, who, where and what, the runway, the field again",
+    "(flight_phrase_wording.py puts it together; the same rules as pilot_phrases.json).",
+    "Placeholders: {field} (Kallax), {callsign} (Viper one one), {flight} (Viper one), {runway}",
+    "(three one), and per call {distance} (miles, said as a number), {direction} (north, northeast, ...).",
+    "The runway is the one the jet actually uses (from its heading) for departing and final; for",
+    "taxi, inbound and clear it is the runway in use for the wind, when the mission knows it."
+  ],
+
+  "calls": {
+    "taxi": [
+      [ "{field} traffic" ],
+      [ "{flight}", { "text": "{flight}, flight of two", "when": "two_ship", "weight": 0.7 } ],
+      [ { "text": "taxiing to runway {runway}", "when": "runway_known" }, { "text": "taxiing to runway {runway} for departure", "when": "runway_known", "weight": 0.5 },
+        { "text": "taxiing for departure", "weight": 0.5 } ],
+      [ "{field}", { "text": "", "weight": 0.3 } ]
+    ],
+
+    "departing": [
+      [ "{field} traffic" ],
+      [ "{flight}", "{callsign}" ],
+      [ "departing runway {runway}", "rolling runway {runway}", "taking off runway {runway}" ],
+      [ "{direction}bound", "departing to the {direction}", { "text": "", "weight": 0.4 } ],
+      [ "{field}", { "text": "", "weight": 0.3 } ]
+    ],
+
+    "inbound": [
+      [ "{field} traffic" ],
+      [ "{flight}", "{callsign}" ],
+      [ "{distance} miles {direction}", "{distance} miles to the {direction}" ],
+      [ { "text": "inbound full stop, runway {runway}", "when": "runway_known" }, { "text": "inbound for runway {runway}", "when": "runway_known" },
+        { "text": "inbound full stop", "weight": 0.6 } ],
+      [ "{field}", { "text": "", "weight": 0.3 } ]
+    ],
+
+    "final": [
+      [ "{field} traffic" ],
+      [ "{callsign}", "{flight}" ],
+      [ "final, runway {runway}", "on final, runway {runway}", "short final runway {runway}", "final runway {runway}, full stop" ],
+      [ "{field}", { "text": "", "weight": 0.3 } ]
+    ],
+
+    "clear": [
+      [ "{field} traffic" ],
+      [ "{callsign}", "{flight}" ],
+      [ { "text": "clear of runway {runway}", "when": "runway_known" }, "clear of the active", "clear of the runway" ],
+      [ "{field}", { "text": "", "weight": 0.3 } ]
+    ]
+  }
+}

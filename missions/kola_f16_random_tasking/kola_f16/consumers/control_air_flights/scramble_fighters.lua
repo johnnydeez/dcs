@@ -288,6 +288,7 @@ local function launch(st, pick, raid, groups, id, number, refundToken)
         rules_of_engagement = mt.rules_of_engagement, loadout = AIRCRAFT_LOADOUT[aircraftType].interception,
         keeps_gun = true, may_jettison = true, afterburner = true, critical_names = {},
     }
+    FlightCallsigns.assignNow(m)
     TrackAlertJets.hold(c, b.base, spot.terminal_index)
     local grp = SpawnAircraftGroups.spawn(m)
     TrackAlertJets.release(c, b.base, spot.terminal_index)

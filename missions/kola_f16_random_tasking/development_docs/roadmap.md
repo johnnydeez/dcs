@@ -6,7 +6,7 @@ What's coming after session 10 (2026-09-30), when the mission became playable by
 
 Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means Red unless it says otherwise.
 
-**Order (John, 2026-09-30; items 10–12 added 2026-10-01; item 5 pulled forward and built 2026-10-02; item 13, airfield info, added and built 2026-10-02 outside the order; item 14, every mission type for players, and item 15, airfield traffic, added 2026-10-03 with no place in the order yet; item 7, AI radio calls, pulled forward 2026-10-05 and its MVP (Darkstar spoken) built and flown the same day; item 16, SEAD that meets fighters, added 2026-10-05 with no place in the order yet):** ~~radar functions → scrambles → event log~~ → ~~performance in VR~~ (done for now, 2026-10-01) (all in `closed.md`) → ~~every run-time flight decision under the controller (item 11)~~ → ~~SEAD ingress doctrine (item 10)~~ (both in `closed.md`) → **SEAD against the air defenses: a standing rotation, rolling them back outside-in (item 12, top priority; designed 2026-10-01, reworked with John and built 2026-10-02, to fly)** → AI behaviour logic (item 4, the controller's further directives) → ~~AWACS calls (text)~~ (item 5, in `closed.md`) → cruise missiles → AI radio calls (MVP done; the rest) → Skynet IADS → fog of war. CAP visibility (making patrol routes and times easy to see) was cut on 2026-09-30: John can see the dotted station lines on the map fine for now. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Five optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, the threat picture on the map for players (after fog of war), and a Wild Weasel wingman for SEAD flights (added 2026-10-02).
+**Order (John, 2026-09-30; items 10–12 added 2026-10-01; item 5 pulled forward and built 2026-10-02; item 13, airfield info, added and built 2026-10-02 outside the order; item 14, every mission type for players, and item 15, airfield traffic, added 2026-10-03 with no place in the order yet; item 7, AI radio calls, pulled forward 2026-10-05, its MVP (Darkstar spoken) built and flown the same day, and the AI pilots' and airfield calls built that night; item 16, SEAD that meets fighters, added 2026-10-05 with no place in the order yet):** ~~radar functions → scrambles → event log~~ → ~~performance in VR~~ (done for now, 2026-10-01) (all in `closed.md`) → ~~every run-time flight decision under the controller (item 11)~~ → ~~SEAD ingress doctrine (item 10)~~ (both in `closed.md`) → **SEAD against the air defenses: a standing rotation, rolling them back outside-in (item 12, top priority; designed 2026-10-01, reworked with John and built 2026-10-02, to fly)** → AI behaviour logic (item 4, the controller's further directives) → ~~AWACS calls (text)~~ (item 5, in `closed.md`) → cruise missiles → AI radio calls (MVP and pilots / airfields done; the rest) → Skynet IADS → fog of war. CAP visibility (making patrol routes and times easy to see) was cut on 2026-09-30: John can see the dotted station lines on the map fine for now. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Five optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, the threat picture on the map for players (after fog of war), and a Wild Weasel wingman for SEAD flights (added 2026-10-02).
 
 ---
 
@@ -274,7 +274,7 @@ MSN2025 lost both jets:
 
 ## 7. AI radio calls: flights announce their intentions
 
-**Status:** **MVP built and flown 2026-10-05** (John: "working, and is awesome"): Darkstar, Blue's AWACS, speaks its picture calls and immediate threat calls in a Windows voice through our own radio player. As built: `plan.md`, *Radio calls*. What's left of the item is the rest of the talking (more call types, AI pilots, callsigns, multiplayer), below. Pulled forward from its place in the order on 2026-10-05.
+**Status:** **MVP built and flown 2026-10-05** (John: "working, and is awesome"): Darkstar, Blue's AWACS, speaks its picture calls and immediate threat calls in a Windows voice through our own radio player. As built: `plan.md`, *Radio calls*. **The AI pilots and airfields talk** (designed with John 2026-10-05 evening, built the same night, steps 5–9 below; first tested by John 2026-10-05 late: "insanely cool so far, probably needs a few fixes"): AI flights' mission calls and airfield traffic calls, from a watcher beside the controller, on channels the jet's own radios tune (our export script, as SRS does), with callsigns and a reworked queue; *Flights and airfields talk* below. Next: the fixes from John's test, then Azure voices (step 10). Pulled forward from its place in the order on 2026-10-05.
 
 **Goal:** the air war can be followed by ear. The AWACS and AI pilots talk on the radio: "Darkstar, picture, two groups…", "Viper 2-1, airborne Rovaniemi, heading for the station", "Hornet 1-1, Magnum", each call phrased fresh rather than the same words every time (John, 2026-10-05: a kind of variety and immersion nothing in DCS has today).
 
@@ -285,9 +285,8 @@ MSN2025 lost both jets:
 - **Phrase bank, not an LLM, for now:** calls are put together from weighted, swappable phrases around the fixed technical facts, so they vary but always carry every fact. An LLM stays possible later as a second wording adapter (the API is billed apart from John's ChatGPT subscription, a few cents a session for wording; Codex signed in with the subscription is no way round that: OpenAI's terms forbid programmatic use outside the API, and each call would take seconds). A local LLM later on a stronger PC.
 - **Windows voices, free:** Zira is Darkstar's one voice, so John can tell it apart once flights talk too. Cloud voices (Google, OpenAI) remain an option for more voices.
 - **Darkstar:** the picture on the 2-min cycle of the on-screen list; **threat calls at once** (a hot contact inside 40 nm can't wait for the cycle). General picture calls to one player for now; per-jet BRAA for every player comes with multiplayer.
-- **Blue only, one frequency** for now; split by role later (AWACS, strike, tower).
+- **Blue only.** One frequency in the MVP; split into channels by the design below (2026-10-05 evening).
 - **The on-screen text stays** for now; maybe removed later.
-- **Wanted later, not yet:** AI jets announcing taxi, takeoff, approach, final and landing.
 - **Latency doesn't need to be perfect** ("it's a game after all"), except threat calls.
 - **Service-agnostic:** wording and voice are each one swappable piece (facts in, words out; words in, WAV out).
 - **Kola-only for now.** Much of it moves to a shared folder once the Afghanistan mission starts (it will want radio calls too).
@@ -300,7 +299,71 @@ MSN2025 lost both jets:
 
 - **DCS's radio** (`trigger.action.radioTransmission`) only plays sound files packed into the `.miz`, never audio made while the mission runs; DCS's voice chat has no scripting interface.
 - **SRS** (its `DCS-SR-ExternalAudio.exe` sender) worked end to end, but its audio crackles, and it couldn't be fixed (2026-10-05): not the voice (clean when played locally), not John's SRS settings or effects, not CPU load, and the crackle is in SRS's own recording of what it received. Its sender is a fixed program, so there was nothing left to change. (A `flat` SRS settings profile with every effect off stays in John's SRS client for tests.)
-- **Cockpit-aware later, optional:** calls heard only when a radio is tuned to their frequency, at that radio's volume. SRS gets this from a script in DCS's export system (`Saved Games\DCS\Scripts\Export.lua`); ours would be our own code but would run inside DCS's export system: John's call when we get there.
+- **Cockpit-aware:** decided 2026-10-05 evening, our own export script (below), the way SRS does it.
+
+### Flights and airfields talk: the design (John, 2026-10-05 evening)
+
+Two new kinds of talk: **AI flights calling what they do** (mission calls, "Fox 3", "pushing", "Splash"), so the fight can be followed by ear, and **airfield traffic calls the way an uncontrolled field works** ("Kallax traffic, Viper one two, final, runway three one, Kallax"). John: the mission channel is there to understand the fight, and can be turned off to focus on Darkstar and his flight; John and his friend talk on Discord, which is their inter-flight channel.
+
+**How it works in real life (the basis):** frequencies are split by who a call is to. Each flight's own inter-flight frequency is private; the control frequency (AWACS / GCI) carries check-ins, check-outs and the tactical calls everyone needs ("Fox 3", "Magnum": a missile in the air, so nobody flies into it or mistakes it for a threat; "Splash": the picture changed); each field has its own tower / traffic frequency; guard for emergencies. Comm discipline keeps the calls short, so hearing everything on those frequencies is realistic.
+
+**1. Calls come from what flights actually do, not from the controller.** The controller's decisions are orders the DCS AI sometimes doesn't follow, so speaking them would put things on the radio that never happened. A **watcher** sits beside the controller, not in it: it reads DCS's events and the same per-flight facts the controller uses (position, airspace, the flight's jets, weapons left; read only, no decisions), the way the event log watches without deciding. The controller stays orders only and knows nothing of the radio.
+
+| Call | Seen as |
+|---|---|
+| airborne, checking in / out with Darkstar | `S_EVENT_TAKEOFF`; the flight's mission and target from the plan; landing / heading home |
+| pushing / fence in | the flight's position crossing into contested airspace (not the ingress waypoint order) |
+| Fox 1 / Fox 2 / Fox 3, Magnum, Rifle, bombs away | `S_EVENT_SHOT`, by the weapon (radar semi-active / infrared / active radar air-to-air; anti-radiation; air-to-ground missile; bombs); repeats from one flight within a few seconds folded into one call |
+| Splash | `S_EVENT_KILL` / dead with our flight as the killer |
+| defending / engaged | fired upon (a shot at it), or its own air-to-air shot |
+| off target, RTB, bingo, Winchester | its attack done and heading home (seen, not ordered), fuel, weapons left |
+| "Hornet 3-2 is down" | a jet of the flight destroyed or ejected |
+| on station / off station (patrols) | reaching / leaving its race-track |
+
+The controller's orders become **Darkstar's** voice later (below); the pilot's reply would still come from what the flight does, so an order the AI ignores is heard with no reply.
+
+**2. Channels**, each its own frequency, like real ones:
+
+| Channel | On it | Radio |
+|---|---|---|
+| AWACS | Darkstar's picture and threat calls (later its orders), flights checking in and out with Darkstar | UHF |
+| Mission (tactical common) | the flights' tactical calls: pushing, Fox, Magnum, Splash, defending, off target, down | UHF or VHF |
+| One per Blue airfield | that field's traffic calls | VHF |
+
+- Frequencies in a data file (`data/radio_frequencies.lua`): the airfields' **real ones from the Kola map's own airfield radio data** (as the charts), AWACS and mission our own; shown in the brief and each base's *Airfield info*; set on the F-16 slots' preset channels in the mission file where that works (UHF 1 AWACS, UHF 2 mission…).
+- Inter-flight isn't modelled (Discord).
+
+**3. Hearing what the jet is tuned to: our own export script, as SRS does** (John, 2026-10-05: "if SRS does it I am fine with it"). Checked in SRS's own F-16 code (`Saved Games\DCS\Mods\Services\DCS-SRS\Scripts\DCS-SRS-Modules\F16C.lua`): UHF (AN/ARC-164) `GetDevice(36):get_frequency()`, volume cockpit argument 430; VHF (AN/ARC-222) `GetDevice(38):get_frequency()`, volume argument 431; `is_on()` per radio. The mission's own Lua can't read the cockpit; DCS's export system can.
+- **Our export script** (in `radio_calls/`, never a mod or a game file) reads both radios' frequency, on / off and volume about once a second and sends them over UDP on 127.0.0.1 to the radio player.
+- **The radio player plays only calls on a frequency one of the jet's radios is tuned to, at that radio's volume knob** (the radio sound's volume setting stays the overall level). With no word from the export script it plays everything, as now.
+- **Installed by one line in `Saved Games\DCS\Scripts\Export.lua`,** next to SRS's line. The radio player checks for it at start and adds it if missing (never touching anything else in the file), and says once that DCS needs a restart; takes effect from the next DCS start.
+- **Documented step by step in the repo's `README.md`** (John: so he can tell his friend how to set it up): what the line is, where it goes, how to add it by hand, how to check it works, how to take it out.
+- **Multiplayer fits:** the export script runs on each pilot's own PC and talks to that PC's radio player; the host sends every call, tagged with its frequency, to every radio player (over ZeroTier); each plays what its own pilot is tuned to.
+
+**4. Everything is heard** (John, 2026-10-05: "we don't have that many flights running"). From the 10:31 run (1 h 46 min, Blue: ~11 flights, 14 kills, ~20 air-launched salvoes): about 5 routine calls per flight plus the combat calls, ~80 calls, under one a minute, ~5 % airtime; the busiest minute ~2–3 calls once folded. The queue rules (5) are a safety net, not a filter.
+
+**5. The queue, reworked for many calls.** Today: one call at a time, urgent (threat) first, a newer picture replaces an older one waiting, a call past its `expires_s` dropped when its turn comes. Missing for this load:
+- **Its clock starts at the mission event,** not when the helper sends the finished audio (the helper's own wording / voice backlog is counted).
+- **A priority on every call:** threat and combat calls (Fox, Magnum, Splash, defending, down) first, then airfield calls, then routine (airborne, checking in, RTB).
+- **A backlog limit:** over ~20 s of audio waiting, the lowest priority calls go.
+- **Short lives by kind:** a Fox call ~8 s, an airfield call ~20 s, a picture 90 s (as now).
+- **Folding:** the same flight and kind within a few seconds is one call.
+- **The frequency checked when a call's turn comes:** retuning drops calls waiting on the old one.
+- **Calls never overlap** (John: two radios are fine as long as calls don't overlap): one playback lane for both radios.
+
+**6. Callsigns** (John: realistic names for now): one per flight, from planning until it lands, **the same everywhere** (radio, brief, air tasking order, comms menu, event log): MSN2023_SEAD is "Hornet 3" for the whole mission, its jets "Hornet 3-1", "Hornet 3-2". Names by role and type from a data file (`data/flight_callsigns.lua`; e.g. Viper, Hornet, Eagle, Weasel for SEAD), numbered so no two live flights share one. **A retry (`_AGAIN`, `_LATER`) keeps the name with a new number** ("Hornet 5"), so two "Hornet 3"s are never on the radio at once. The group name stays the machine id, never spoken. Players stay "Snake 1-1" until the slots carry their own. This is the optional fun-callsigns item, built realistic; flavour names can come later from the same file.
+
+**7. Airfield traffic, uncontrolled-field style.** "<Field> traffic, <callsign>, <where / what>, runway <n>, <field>" on that field's frequency, for Blue fields:
+- taxiing (a hot-spawned AI jet starting to move), departing (takeoff, with its direction), inbound (~10 nm, heading for its planned landing base), final (~4–5 nm, lined up and descending), clear of the runway (landed and slowed);
+- **the runway it actually uses,** from its heading against the field's runway numbers (grid-based magnetic, as the airfield brief);
+- one tracker of these phases for AI jets near Blue fields, checked every few seconds and only for flights departing or arriving, **shared with roadmap item 15** (traffic in the comms menu);
+- **no player calls** (John: maybe later, if it grows into an LLM-based ATC).
+
+**8. Wording: phrase banks like Darkstar's,** for pilots and airfields both (John: so dozens more phrases can be added later): the facts fixed in code, every flavour piece a weighted, conditional list in a JSON file (`pilot_phrases.json`, `airfield_phrases.json` beside `awacs_phrases.json`), styles chosen once per call, recent phrases down-weighted, every placeholder and condition checked at load.
+
+**9. Voices:** a voice per flight, never Zira (Darkstar's), from whatever voices are open to us; with System.Speech that's only David today, so flights also get a small pitch and rate offset of their own (SSML) to tell them apart. John adds more Windows voices later (Settings → Speech); reaching the newer Windows voices (Mark and the installed language packs) may need the WinRT speech engine through PowerShell, still standard Windows, checked when we get there.
+
+**Darkstar gives orders** over the radio, to AI flights (the controller's decisions, in a controller's words; designed as step 14 below, John 2026-10-05 late) and later to human players (John, 2026-10-05: "at some point").
 
 ### Steps
 
@@ -308,17 +371,49 @@ MSN2025 lost both jets:
 2. ~~**Phrase-bank wording and Windows voices**~~ (built 2026-10-05; 100+ combinations per call; recent phrases made less likely, never barred, after John heard "that's all I have" too often).
 3. ~~**The MVP in Kola:** Darkstar's picture and threat calls, the helper and player started by the mission~~ (built and flown 2026-10-05).
 4. ~~**Bug 61:** bearings a few degrees off against the F10 map~~ (fixed 2026-10-05: DCS's magnetic is grid-based; stale tracks no longer called; `closed.md`).
-5. **Player callsigns** from the slots, once John has them in the mission file.
-6. **More Darkstar calls,** written for the ear like a real controller: new group / pop-up, faded, merged; a short summary when nothing changed instead of the full list every 2 min.
-7. **Multiplayer:** each player's calls with BRAA from their own jet, sent to their radio player over ZeroTier (the player listening on the ZeroTier address too).
-8. **AI flights talk:** airfield calls first (taxi, takeoff, approach, final, landing), then mission calls; a voice per flight (David, more Windows voices from Settings → Speech, or cloud voices), callsigns (the optional fun-callsigns item).
-9. **Optional:** an LLM wording adapter to compare against the phrase bank.
+Steps 5–9 built 2026-10-05 late, harness-tested, copied to DCS, not flown (as built: `plan.md`, *Radio calls*). Built a little differently: slot presets not set (John tunes the frequencies; they're in the start text, the frag and *Airfield info*); folding is done in the mission (per flight and kind, `fold_s`), not in the player; a pilot's voice is per jet, not per flight; with only David installed, the voices differ by speed and pitch (System.Speech ignores SSML pitch, so the radio sound plays the voice faster or slower).
+5. ~~**Callsigns** (design 6)~~.
+6. ~~**The queue rework** (design 5)~~.
+7. ~~**Channels, frequencies and the export script** (designs 2, 3)~~.
+8. ~~**The watcher's mission calls** (designs 1, 8, 9)~~.
+9. ~~**Airfield traffic calls** (design 7)~~; the phase tracker (`track_airfield_traffic.lua`) is there for roadmap item 15 to read.
+10. **More voices: Azure's cloud voices next** (John, 2026-10-05: "probably the next step"; not built). Windows gives scripts only David, Zira and Mark (Mark added 2026-10-05 through the newer OneCore engine). The voices John installed (Ryan, Andrew, Sonia, Guy, Prabhat) are Windows' "natural" voices, Narrator's only; the same voices are Microsoft's Azure neural voices (en-GB Ryan and Sonia, en-US Andrew and Guy, en-IN Prabhat, and many more accents). The plan:
+    - **A third voice adapter** beside `windows_voice.py` (`azure_voice.py`): text in (SSML), WAV out, over Azure Speech's REST text-to-speech API with Python's standard library only (`urllib`), so no new dependency.
+    - **Needs:** internet, an Azure account and a Speech resource's key and region, kept outside the repo (an environment variable or a git-ignored file), never committed. Its free tier covers far more than this mission speaks.
+    - **One more voice option**, alongside the Windows ones: `pilot_phrases.json` voices get an engine (`windows` / `azure`); a call falls back to a Windows voice when Azure doesn't answer in time (no internet, no key, over the quota), so the radio never goes quiet. A voice per flight as now; Darkstar could get one too.
+    - **To check when built:** the time per call (a network round trip on top of the ~0.4–0.7 s now; threat and Fox calls can't wait long), and caching calls that repeat word for word.
+    - Not a third-party adapter that exposes the natural voices to Windows' engines (outside software installed into Windows).
+11. **Player callsigns** from the slots, once John has them in the mission file.
+12. **More Darkstar calls,** written for the ear like a real controller: new group / pop-up, faded, merged; a short summary when nothing changed instead of the full list every 2 min.
+13. **Multiplayer:** each player's calls with BRAA from their own jet, sent to their radio player over ZeroTier (the player listening on the ZeroTier address too).
+14. **Darkstar's directives to the AI flights** (John, 2026-10-05 late: "the controller commands become Darkstar directive radio callouts to the individual flights"; not built). The controller already plays the part a real AWACS / GCI controller does (it commits, sends home, hands over, vectors scrambles); its decisions become Darkstar's calls to that flight, by callsign, on the AWACS channel, so the orders can be heard as well as the flights' answers.
+    - **Which decisions** (the controller's `CONTROL` decisions; the words are a phrase bank, `awacs_phrases.json` or its own file, as variable as the rest):
+
+      | Decision | Darkstar says (e.g.) |
+      |---|---|
+      | `scramble` | "Viper 5, Darkstar, scramble, vector zero four zero, sixty miles, angels two five, group Flanker" |
+      | `defend` (the bandit call) | "Weasel 1, Darkstar, bandit, zero niner zero for two five, hot, engage" |
+      | `leave` (no radar missiles to fight it) | "Hornet 2, Darkstar, bandit hot two five miles, break off, RTB" |
+      | `press on` (a SEAD flight keeps low) | "Weasel 1, Darkstar, bandit north four zero miles, press on" |
+      | `back on mission` | "Weasel 1, Darkstar, bandit dead, resume" |
+      | `go cold` / `no shot` / `salvo over` | "Weasel 1, Darkstar, push cold, RTB" |
+      | `leash home` / `leash stand down` | "Viper 5, Darkstar, raid turned away, return to base" / "… scramble cancelled" |
+      | `handover` | "Eagle 1, Darkstar, relief on station, cleared off, RTB" |
+      | `bingo` | "Viper 2, Darkstar, bingo, RTB Ivalo" |
+      | `land` (an orphaned wingman sent to land) | "Weasel 1-2, Darkstar, land Rovaniemi" |
+
+      Not spoken: the launch decisions (`wait`, `retry`, `cancel`, `launch late`, `come back`, `alert`): planning on the ground, not an order to a flight in the air.
+    - **The answer comes from what the flight does,** as decided for the pilots' calls: the watcher hears the order and looks for the flight to follow it (turning toward home, a Fox call, heading for the intercept point) within a short time; then the pilot answers ("Weasel 1, wilco" / "Weasel 1, copy, engaging"), and their own calls follow as now. An order the DCS AI ignores is heard with no answer, which is honest, and the event log's `RADIO_CALL` line can say "no answer".
+    - **The controller doesn't know the radio:** it publishes each decision to listeners (as the radar picture publishes its events), and the radio subscribes; `ControlAirFlights.say` is the one place every decision already passes.
+    - **Text and timing:** the facts each call needs are what the decision already works out (the bandit's bearing, range, aspect from the radar picture, measured from the flight; a scramble's vector to its intercept point; the base to land at). Priority as a threat call when a bandit is involved, routine for RTB and handover.
+    - **Later, with multiplayer and player taskings:** the same directives to human players (John, 2026-10-05: "at some point"): a commit or an RTB call to a player's flight, which the player follows or not.
+15. **Later:** an LLM wording adapter to compare against the phrase bank; player calls / an LLM-based ATC.
 
 ### Open
 
 - **The threat call's lateness:** up to one radar round (30 s) after a contact crosses 40 nm; fine, or faster?
-- **Callsigns** for the AI flights, once they talk (`plan.md`, *Design*: callsign policy; the optional fun-callsigns item).
-- Red's voice (Russian?) once Red talks; a split by frequency later.
+- Red's voice (Russian?) once Red talks.
+- **Which Kola fields carry radio data** in the map's files, and whether the F-16 slots' presets can be set by script (else John sets them once in the mission editor).
 
 ---
 
@@ -435,6 +530,8 @@ MSN2025 lost both jets:
 ---
 
 ## Optional, later: fun callsigns for human and AI flights
+
+**Status (2026-10-05 evening):** pulled into item 7 (*Flights and airfields talk*, design 6, step 5): realistic names first (John), one per flight for the whole mission, a retry the same name with a new number. Flavour names stay this item, from the same data file, later.
 
 **Goal:** a generated data list of fun, flavourful callsigns ("Viper", "Reaper", "Moose", squadron-style names) that each flight gets, human and AI, so the air war has personality in the brief, the log and later on the radio (John, 2026-09-30).
 

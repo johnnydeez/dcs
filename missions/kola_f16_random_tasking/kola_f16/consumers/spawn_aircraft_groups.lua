@@ -232,12 +232,13 @@ local function zoneEngageTasks(m, first)
 end
 
 -- The script command that writes the event log's WAYPOINT line when the flight reaches
--- waypoint `index`; runs first on that waypoint.
+-- waypoint `index` and tells the controller and the radio's watcher (its "pushing");
+-- runs first on that waypoint.
 local function reachedCommand(m, index)
     return { number = 1, auto = false, id = "WrappedAction", enabled = true,
              params = { action = { id = "Script", params = {
-                 command = string.format("WriteEventLog.waypoint(%q, %d) ControlAirFlights.waypoint(%q, %d)",
-                     m.id, index, m.id, index) } } } }
+                 command = string.format("WriteEventLog.waypoint(%q, %d) ControlAirFlights.waypoint(%q, %d) "
+                     .. "AnnounceFlightActivity.waypoint(%q, %d)", m.id, index, m.id, index, m.id, index) } } } }
 end
 
 local function waypoint(r, extra)

@@ -107,13 +107,11 @@ local function windAt(field)
     return { from_grid = w.from_deg, kts = w.kts }
 end
 
--- "Wind 240° 12 kt → runway 34 in use (headwind 6 kt, crosswind 10 kt from the left)"
-local function windLine(field)
+-- The runway end with the most headwind now (the longer runway on a tie): { number, head,
+-- cross, length }, the wind, and nil when calm or the field has no runway data.
+local function runwayInUse(field)
     local wind = windAt(field)
-    if wind.kts < CALM_KTS then
-        return string.format("Wind calm (%d kt) → %s", round(wind.kts), #field.runways > 1 and "any runway" or "either runway")
-    end
-    local text = string.format("Wind %03d° %d kt", round(magnetic(wind.from_grid, field)) % 360, round(wind.kts))
+    if wind.kts < CALM_KTS then return nil, wind end
     local best
     for _, rw in ipairs(field.runways) do
         for _, e in ipairs(rw.ends) do
@@ -124,6 +122,16 @@ local function windLine(field)
             end
         end
     end
+    return best, wind
+end
+
+-- "Wind 240° 12 kt → runway 34 in use (headwind 6 kt, crosswind 10 kt from the left)"
+local function windLine(field)
+    local best, wind = runwayInUse(field)
+    if wind.kts < CALM_KTS then
+        return string.format("Wind calm (%d kt) → %s", round(wind.kts), #field.runways > 1 and "any runway" or "either runway")
+    end
+    local text = string.format("Wind %03d° %d kt", round(magnetic(wind.from_grid, field)) % 360, round(wind.kts))
     if not best then return text end
     local crossText = round(math.abs(best.cross)) == 0 and "no crosswind"
         or string.format("crosswind %d kt from the %s", round(math.abs(best.cross)), best.cross > 0 and "right" or "left")
@@ -190,12 +198,13 @@ local function nextFlights(name)
     return out, into
 end
 
--- "09:40 MSN2025 SEAD, 2x F-16C_50 (planned)"
+-- "09:40 MSN2025 Weasel 2 SEAD, 2x F-16C_50 (planned)"
 local function flightText(fl, t)
     local m = fl.mission
     local number = fl.id:match("^MSN%d+") or fl.id
     if fl.id:match("_AGAIN$") then number = number .. " again" end
     if fl.id:match("_LATER$") then number = number .. " later" end
+    if m.callsign then number = number .. " " .. FlightCallsigns.text(m) end
     return string.format("%s %s %s, %dx %s (%s)", at(t), number, BriefAirTasking.missionName(m.mission_type),
         m.count, m.aircraft_type, fl.state)
 end
@@ -230,6 +239,7 @@ local function fieldText(field)
             thousands(rw.length), thousands(rw.length * FEET_PER_METRE))
     end
     if #field.runways == 0 then lines[#lines + 1] = "No runway data" end
+    lines[#lines + 1] = string.format("Traffic calls: %s", SendRadioCalls.channelText("airfield", field.name))
     local out, into = nextFlights(field.name)
     if out then lines[#lines + 1] = "Next out: " .. flightText(out, out.mission.takeoff_s) end
     if into then lines[#lines + 1] = "Next in:  " .. flightText(into, into.mission.end_s) end
@@ -240,6 +250,40 @@ end
 
 local function show(side, text)
     trigger.action.outTextForCoalition(side, text, MESSAGE_S, true)
+end
+
+local _fields = {}   -- base name → its facts (Blue bases), for the calls below
+
+-- The runway in use for the wind at Blue base `name` now (its number), or nil (calm, no
+-- runway data, not a Blue base). For the airfield traffic calls.
+function CreateAirfieldsBrief.runwayInUse(name)
+    local field = _fields[name]
+    if not field then return nil end
+    local ok, best = pcall(runwayInUse, field)
+    return ok and best and best.number or nil
+end
+
+-- The runway at Blue base `name` a jet on grid heading `gridDeg` is using: the end nearest
+-- that heading, its number (magnetic, as the F-16 shows it), or nil.
+function CreateAirfieldsBrief.runwayFor(name, gridDeg)
+    local field = _fields[name]
+    local best, bestOff
+    for _, rw in ipairs(field and field.runways or {}) do
+        for _, e in ipairs(rw.ends) do
+            local off = math.abs((gridDeg - e.heading + 180) % 360 - 180)
+            if not bestOff or off < bestOff then best, bestOff = e, off end
+        end
+    end
+    return best and best.number or nil, bestOff
+end
+
+-- A Blue base's runway ends as { heading (grid), number }, for lining up a final approach.
+function CreateAirfieldsBrief.runwayEnds(name)
+    local out = {}
+    for _, rw in ipairs(_fields[name] and _fields[name].runways or {}) do
+        for _, e in ipairs(rw.ends) do out[#out + 1] = e end
+    end
+    return out
 end
 
 -- The Airfield info menu: every Blue base, alphabetical, MENU_PAGE per submenu.
@@ -253,7 +297,7 @@ function CreateAirfieldsBrief.start(plan)
         local b = plan.territory.bases[name]
         if b and b.side == COALITION then
             local ok, field = pcall(fieldFacts, name)
-            if ok then fields[#fields + 1] = field
+            if ok then fields[#fields + 1] = field; _fields[name] = field
             else Log.warn(string.format("airfield brief: %s left out: %s", name, tostring(field))) end
         end
     end

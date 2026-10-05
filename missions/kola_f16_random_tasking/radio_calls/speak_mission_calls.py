@@ -1,19 +1,28 @@
-"""The radio helper: speaks the mission's AWACS calls through the radio player.
+"""The radio helper: speaks the mission's radio calls through the radio player.
 
     python radio_calls/speak_mission_calls.py [--exit-with-dcs]
 
 The mission (kola_f16/consumers/send_radio_calls.lua) writes each call's facts as one JSON
 line to mission_calls.jsonl in this folder, emptying it at mission start. This reads new
-lines as they come (every 0.2 s), words each call (phrase_bank_wording.py, awacs_phrases.json),
-speaks it in the controller's Windows voice (windows_voice.py) and sends it to the radio
-player (radio_player.py), which plays it. The mission starts both with start_radio_calls.cmd;
-either can also be started by hand. One copy runs at a time.
+lines as they come (every 0.2 s), words each call, speaks it in a Windows voice
+(windows_voice.py) and sends it to the radio player (radio_player.py), which plays it. The
+mission starts both with start_radio_calls.cmd; either can also be started by hand. One
+copy runs at a time.
 
-To the player: threat calls are urgent (played before anything waiting); a picture replaces
-an older one for the same player not played yet; a picture not played within
-PICTURE_EXPIRES_S, a threat within THREAT_EXPIRES_S, is dropped (old news).
-Each call is logged here and in speak_mission_calls.log (emptied at each start): the
-words, and how long the wording and the voice took.
+Who says it:
+  Darkstar's calls (picture, picture_clean, no_coverage, threat): phrase_bank_wording.py and
+      awacs_phrases.json, in the controller's voice (Zira);
+  the AI pilots' mission calls (airborne, pushing, fox, splash, ...): flight_phrase_wording.py
+      and pilot_phrases.json; airfield traffic calls (taxi, departing, inbound, final,
+      clear): the same with airfield_phrases.json. A pilot's voice comes from
+      pilot_phrases.json's list, picked by its flight's callsign, so a flight always sounds
+      the same; never Zira.
+To the player, from the mission's facts: the call's frequency and channel, its priority and
+how long it may wait (expires_s); its age counts from when this helper read it (event_at),
+so a backlog here counts too. A picture replaces an older one for the same player not
+played yet.
+Each call is logged here and in speak_mission_calls.log (emptied at each start): the words,
+and how long the wording and the voice took.
 """
 
 import argparse
@@ -22,7 +31,9 @@ import os
 import socket
 import sys
 import time
+import zlib
 
+import flight_phrase_wording
 import phrase_bank_wording
 import radio_player
 import send_radio_call
@@ -35,9 +46,10 @@ LOCK_PORT = 47111            # held while running, so a second copy exits
 READ_EVERY_S = 0.2
 DCS_CHECK_EVERY_S = 30
 OLD_FILE_S = 60              # a calls file untouched this long at start is a past mission's
-PICTURE_EXPIRES_S = 90
-THREAT_EXPIRES_S = 30
-FREQUENCY = "251.000"        # one frequency for now
+AWACS_CALLS = {"picture", "picture_clean", "no_coverage", "threat"}
+# when the mission's call doesn't say (an older mission file)
+DEFAULT_EXPIRES_S = {"threat": 30}
+DEFAULT_PICTURE_EXPIRES_S = 90
 
 _log_file = None
 
@@ -83,30 +95,72 @@ class CallsFile:
         return [line.decode("utf-8") for line in lines if line.strip()]
 
 
-def speak_call(bank, call):
+class Speakers:
+    """Wording and voice for every kind of call."""
+
+    def __init__(self):
+        self.awacs = phrase_bank_wording.PhraseBank()
+        types = self.awacs.data["types"]
+        self.pilot = flight_phrase_wording.FlightPhraseBank(flight_phrase_wording.PILOT_PHRASES_PATH, types)
+        self.airfield = flight_phrase_wording.FlightPhraseBank(flight_phrase_wording.AIRFIELD_PHRASES_PATH, types)
+        installed = set()
+        try:
+            installed = {line.split(" | ")[0] for line in windows_voice.list_voices()}
+        except Exception as error:
+            log("couldn't list the Windows voices (%s)" % error)
+        controller_voice = self.awacs.data["controller"]["voice"]
+        listed = self.pilot.data["voices"]["list"]
+        self.pilot_voices = [v for v in listed if v["voice"] in installed and v["voice"] != controller_voice]
+        if not self.pilot_voices:
+            self.pilot_voices = [{"voice": None, "rate": 1, "pitch": 1.0}]
+        log("pilot voices: %s" % ", ".join(sorted({v["voice"] or "Windows default" for v in self.pilot_voices})))
+
+    def pilot_voice(self, key):
+        return self.pilot_voices[zlib.crc32((key or "").encode("utf-8")) % len(self.pilot_voices)]
+
+    def speak(self, call):
+        """(text, wav bytes, header fields) for one call."""
+        kind = call["call"]
+        if kind in AWACS_CALLS:
+            controller = self.awacs.data["controller"]
+            text = self.awacs.word(call)
+            wav = windows_voice.speak(text, controller["voice"], controller["rate"])
+            fields = {"speaker": controller["callsign"],
+                      "priority": call.get("priority", 1 if kind == "threat" else 3),
+                      "expires_s": call.get("expires_s", DEFAULT_EXPIRES_S.get(kind, DEFAULT_PICTURE_EXPIRES_S))}
+            if kind != "threat":
+                fields["replaces"] = "picture:" + call.get("to", "")
+            return text, wav, fields
+        bank = self.pilot if kind in self.pilot.kinds() else self.airfield
+        if kind not in bank.kinds():
+            raise ValueError("no phrases for call '%s'" % kind)
+        text = bank.word(call)
+        voice = self.pilot_voice(call.get("voice_key") or call.get("flight"))
+        wav = windows_voice.speak(text, voice["voice"], voice["rate"])
+        fields = {"speaker": call.get("callsign", "?"), "pitch": voice.get("pitch", 1.0),
+                  "priority": call.get("priority", 2), "expires_s": call.get("expires_s", 20)}
+        return text, wav, fields
+
+
+def speak_call(speakers, call, read_at):
     started = time.time()
-    text = bank.word(call)
-    worded = time.time()
-    controller = bank.data["controller"]
-    wav = windows_voice.speak(text, controller["voice"], controller["rate"])
+    text, wav, fields = speakers.speak(call)
     spoken = time.time()
-    kind = call["call"]
-    extra = {"urgent": kind == "threat",
-             "expires_s": THREAT_EXPIRES_S if kind == "threat" else PICTURE_EXPIRES_S}
-    if kind != "threat":
-        extra["replaces"] = "picture:" + call.get("to", "")
+    fields.update(event_at=read_at, channel=call.get("channel"))
+    frequency = call.get("frequency_mhz")
     try:
-        send_radio_call.send_call(wav, controller["callsign"], FREQUENCY, **extra)
+        send_radio_call.send_call(wav, fields.pop("speaker"), frequency, **fields)
         sent = "sent"
     except OSError:
         sent = "NOT SENT: no radio player running"
-    log("%s (mission %s s): %s  [wording %.2f s, voice %.2f s, %s]" % (
-        kind, call.get("mission_time_s", "?"), text, worded - started, spoken - worded, sent))
+    log("%s (mission %s s, %s %s): %s  [words + voice %.2f s, %s]" % (
+        call["call"], call.get("mission_time_s", "?"), call.get("channel", "?"),
+        "%.3f" % frequency if isinstance(frequency, (int, float)) else "-", text, spoken - started, sent))
 
 
 def main():
     global _log_file
-    parser = argparse.ArgumentParser(description="Speaks the mission's AWACS calls.")
+    parser = argparse.ArgumentParser(description="Speaks the mission's radio calls.")
     parser.add_argument("--exit-with-dcs", action="store_true", help="close once DCS isn't running")
     args = parser.parse_args()
 
@@ -117,17 +171,27 @@ def main():
         sys.exit("the radio helper is already running")
     _log_file = open(LOG_FILE, "w", encoding="utf-8")
 
-    bank = phrase_bank_wording.PhraseBank()
+    speakers = Speakers()
     calls = CallsFile(CALLS_FILE)
     log("radio helper reading %s%s" % (CALLS_FILE, "; closes with DCS" if args.exit_with_dcs else ""))
     next_dcs_check = time.time() + DCS_CHECK_EVERY_S
     try:
         while True:
-            for line in calls.new_lines():
+            lines = calls.new_lines()
+            read_at = time.time()
+            # the most urgent first when several came at once
+            parsed = []
+            for line in lines:
                 try:
-                    speak_call(bank, json.loads(line))
+                    parsed.append(json.loads(line))
+                except ValueError as error:
+                    log("call not read: %s: %s" % (error, line[:200]))
+            parsed.sort(key=lambda c: c.get("priority", 3 if c.get("call") != "threat" else 1))
+            for call in parsed:
+                try:
+                    speak_call(speakers, call, read_at)
                 except Exception as error:   # one bad call never stops the helper
-                    log("call not spoken: %s: %s" % (error, line[:200]))
+                    log("call not spoken: %s: %s" % (error, json.dumps(call)[:200]))
             if args.exit_with_dcs and time.time() >= next_dcs_check:
                 next_dcs_check = time.time() + DCS_CHECK_EVERY_S
                 if not radio_player.dcs_running():

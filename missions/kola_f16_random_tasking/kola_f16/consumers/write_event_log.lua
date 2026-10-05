@@ -247,11 +247,12 @@ function WriteEventLog.add(coalition, event, subject, details)
     push(coalition, event, subject, details)
 end
 
--- "F-16C_50 2x DEAD from Kittila on SAM_BANA_SA15_1 (SA-15 site), TOT 08:32, after SAM_BANA_SA11_1";
+-- "Viper 2, F-16C_50 2x DEAD from Kittila on SAM_BANA_SA15_1 (SA-15 site), TOT 08:32, after SAM_BANA_SA11_1";
 -- without the TOT when `noTot` (the plan table has its own column)
 local function missionText(m, noTot)
-    local text = string.format("%s %dx %s from %s", m.aircraft_type, m.count, MISSION_NAME[m.mission_type] or m.mission_type,
-        m.launch_base)
+    local callsign = FlightCallsigns.text(m)
+    local text = string.format("%s%s %dx %s from %s", callsign and (callsign .. ", ") or "", m.aircraft_type, m.count,
+        MISSION_NAME[m.mission_type] or m.mission_type, m.launch_base)
     if m.station then
         local st = _stations[m.station]
         text = text .. string.format(", station %s%s", m.station, st and st.label and (" (" .. st.label .. ")") or "")
