@@ -1,4 +1,4 @@
--- Ground zones parsed from khola_ground_zones.miz by kola_data_tools/miz_zones.py — do not hand-edit;
+-- Ground zones parsed from khola_ground_zones.miz by map_data_tools/miz_zones.py — do not hand-edit;
 -- redraw in the survey .miz and re-run the tool. Plain data, no logic.
 --
 -- A zone is a clearing where ground units can realistically be placed. No side,
@@ -11,7 +11,7 @@
 --   x, z     DCS projected metres (x = north, z = east); lat/lon derived in-sim
 --   type     "circle" (radius) | "quad" (verts = { {x, z}, ... })
 --
--- Classes, one question each (thresholds: CLASS_THRESHOLDS in kola_data_tools/miz_zones.py):
+-- Classes, one question each (thresholds: CLASS_THRESHOLDS in map_data_tools/miz_zones.py):
 --   size               What fits here?                    small / medium / large
 --   airfield_distance  Is it part of an airfield?         at_airfield / near_airfield / remote
 --   ground             How level is the zone itself?      flat / uneven / steep

@@ -8,7 +8,13 @@ __pycache__/
 # Kola event logs: one per mission run, written by the mission script
 missions/kola_f16_random_tasking/event_logs/
 
-# Kola radio calls: the mission's calls file and the helper's log, rewritten every run
-missions/kola_f16_random_tasking/radio_calls/mission_calls.jsonl
-missions/kola_f16_random_tasking/radio_calls/speak_mission_calls.log
-missions/kola_f16_random_tasking/radio_calls/radio_player.log
+# Radio calls (shared by every mission): the mission's calls file and the two logs, rewritten every run
+shared_mission_framework/radio_calls/mission_calls.jsonl
+shared_mission_framework/radio_calls/speak_mission_calls.log
+shared_mission_framework/radio_calls/radio_player.log
+
+# Shared mission framework offline test harness: each run's results, rewritten every run
+shared_mission_framework/offline_test_harness/output/
+# its recorded baselines are re-made from the frozen saved world in seconds; the world itself is kept
+shared_mission_framework/offline_test_harness/baselines/*/*_seed_*/
+shared_mission_framework/offline_test_harness/baselines/*/data_tools/

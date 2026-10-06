@@ -1,0 +1,88 @@
+{
+  "_about": [
+    "What Darkstar says when the controller gives an AI flight an order (flight_phrase_wording.py puts it",
+    "together; the mission's side: mission_scripts/consumers/announce_controller_orders.lua). Spoken in Darkstar's",
+    "voice (awacs_phrases.json, controller) on the AWACS channel.",
+    "Each call is a list of parts said in order; each part a list of alternatives: a plain string, or",
+    "{text, weight, when}. weight (default 1) makes an alternative more or less common; an empty text",
+    "leaves the part out; when names a condition (the call's flags, listed per call in",
+    "flight_phrase_wording.py, CALLS). Placeholders: {callsign} the flight (or jet) the order is for",
+    "(Weasel one), {awacs} Darkstar, {pause}, and each call's own facts: a bandit as {bearing} (magnetic,",
+    "digit by digit), {range} (nm), {altitude}, {aspect} (hot, flanking, beaming, cold), {bandit_type};",
+    "{base} the flight's landing base, {relief} a patrol's relief, {angels} the altitude to climb to.",
+    "The reason words (raid_turned_away, sam_threat …) are the controller's: each order says why. A reason",
+    "only the pilot would know (bingo, a salvo done, no emitter, out of missiles) is the pilot's report",
+    "(pilot_phrases.json, report) and Darkstar only acknowledges it (acknowledge, below).",
+    "Brevity: push cold = turn away from the threat / target; RTB = return to base; angels = own",
+    "altitude in thousands of feet (never for an enemy)."
+  ],
+
+  "pronounce": { "SEAD": "seed", "bra": "brah" },
+
+  "calls": {
+    "engage": [
+      [ "{callsign}, {awacs}" ],
+      [ "bandit", "group", "single group", { "text": "your group", "weight": 0.5 } ],
+      [ "bra {bearing}, {range}, {altitude}", "{bearing}, {range}, {altitude}", { "text": "bearing {bearing}, {range}, {altitude}", "weight": 0.5 } ],
+      [ "{aspect}" ],
+      [ { "text": "{bandit_type}", "when": "type_known", "weight": 1.5 }, { "text": "hostile", "weight": 0.6 }, { "text": "", "weight": 0.5 } ],
+      [ "engage", "commit", "cleared to engage", { "text": "your bandit, engage", "weight": 0.5 } ]
+    ],
+
+    "resume": [
+      [ "{callsign}, {awacs}" ],
+      [ { "text": "good kill", "when": "bandit_destroyed" }, { "text": "bandit destroyed", "when": "bandit_destroyed" },
+        { "text": "splash your bandit", "when": "bandit_destroyed", "weight": 0.5 },
+        { "text": "lost contact", "when": "bandit_lost" }, { "text": "your bandit faded", "when": "bandit_lost", "weight": 0.6 },
+        { "text": "bandit opening", "when": "bandit_far" }, { "text": "bandit out of range", "when": "bandit_far" },
+        { "text": "bandit cold", "when": "bandit_cold" }, { "text": "bandit turned cold", "when": "bandit_cold" },
+        { "text": "disengage", "when": "time_up" }, { "text": "knock it off", "when": "time_up", "weight": 0.5 },
+        { "text": "SAM threat, break off", "when": "sam_threat" }, { "text": "you're in a SAM ring, break off", "when": "sam_threat", "weight": 0.6 } ],
+      [ { "text": "resume mission", "when": "on_mission" }, { "text": "resume", "when": "on_mission" },
+        { "text": "back to your tasking", "when": "on_mission", "weight": 0.5 },
+        { "text": "continue RTB", "when": "on_way_home" }, { "text": "resume RTB", "when": "on_way_home" },
+        { "text": "continue home", "when": "on_way_home", "weight": 0.5 } ]
+    ],
+
+    "return_to_base": [
+      [ "{callsign}, {awacs}" ],
+      [ { "text": "you're pressing too far, push cold", "when": "pressed_too_far" }, { "text": "too close, turn cold", "when": "pressed_too_far" },
+        { "text": "time's up, push cold", "when": "attack_time_up" }, { "text": "abort, push cold", "when": "attack_time_up" },
+        { "text": "SAM threat, turn cold", "when": "sam_threat" }, { "text": "you're inside a SAM ring, turn cold", "when": "sam_threat" },
+        { "text": "your bandit is down", "when": "raid_destroyed" }, { "text": "your group's been splashed", "when": "raid_destroyed" },
+        { "text": "your group turned away", "when": "raid_turned_away" }, { "text": "bandit's cold, back over the line", "when": "raid_turned_away" },
+        { "text": "lost contact on your group", "when": "raid_lost" }, { "text": "your group faded", "when": "raid_lost" },
+        { "text": "you're too deep, turn cold", "when": "deep_in_enemy_airspace" }, { "text": "too far over the line, turn cold", "when": "deep_in_enemy_airspace" },
+        { "text": "{relief} on station, you're relieved", "when": "has_relief" }, { "text": "relief on station, cleared off station", "when": "relieved" },
+        { "text": "bandit {bearing}, {range}, {altitude}, {aspect}, no shot, break off", "when": "no_air_to_air" },
+        { "text": "threat {bearing}, {range}, {aspect}, you're defenceless, break off", "when": "no_air_to_air", "weight": 0.6 },
+        { "text": "return to base", "when": "home" } ],
+      [ "RTB", "RTB {base}", { "text": "cleared RTB {base}", "weight": 0.6 }, { "text": "return to base", "weight": 0.5 } ]
+    ],
+
+    "land_at": [
+      [ "{callsign}, {awacs}" ],
+      [ { "text": "your lead is on deck", "when": "wingman_landed" }, { "text": "flight lead's on deck at {base}", "when": "wingman_landed", "weight": 0.5 },
+        { "text": "you're drifting off", "when": "lost_on_way_home" }, { "text": "you're heading away from home", "when": "lost_on_way_home" },
+        { "text": "you're overdue", "when": "overdue" }, { "text": "", "weight": 0.4 } ],
+      [ { "text": "{base} bears {bearing}, {range}", "when": "has_bearing" }, { "text": "steer {bearing} for {base}, {range}", "when": "has_bearing" },
+        { "text": "proceed direct {base}" } ],
+      [ "land", "cleared to land", "recover {base}" ]
+    ],
+
+    "scramble_vector": [
+      [ "{callsign}, {awacs}" ],
+      [ "vector {bearing} for {range}", "snap {bearing}, {range}", "steer {bearing}, {range}" ],
+      [ { "text": "angels {angels}", "when": "has_angels" }, { "text": "climb angels {angels}", "when": "has_angels" }, { "text": "", "weight": 0.4 } ],
+      [ { "text": "group {altitude}, {aspect}, {bandit_type}", "when": "type_known" }, { "text": "{bandit_type}, {altitude}, {aspect}", "when": "type_known" },
+        { "text": "group {altitude}, {aspect}, hostile", "when": "type_unknown" }, { "text": "single group, {altitude}, {aspect}", "when": "type_unknown" } ]
+    ],
+
+    "acknowledge": [
+      [ "{callsign}, {awacs}" ],
+      [ "copy", { "text": "copy all", "weight": 0.5 }, { "text": "copy bingo", "when": "bingo" },
+        { "text": "copy Winchester", "when": "out_of_missiles" }, { "text": "good shots", "when": "salvo_complete", "weight": 0.6 } ],
+      [ { "text": "cleared home", "when": "rtb", "weight": 0.5 }, { "text": "", "weight": 1 } ]
+    ]
+  }
+}

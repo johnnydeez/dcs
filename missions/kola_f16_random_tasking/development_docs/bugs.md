@@ -1,6 +1,8 @@
 # Kola F-16 Random Tasking: bugs and fixes
 
-Bugs found in runs, with what was seen and the fix proposed, to come back to. Each entry says where the evidence is. When one is fixed, it moves to `closed.md` (under *Bugs*, with its number and the fix), and any as-built facts go in `plan.md`. Numbers aren't reused.
+Bugs found in runs, with what was seen and the fix proposed, to come back to. Each entry says where the evidence is. When one is fixed, it moves to `closed.md` (under *Bugs*, with its number and the fix), and any as-built facts go in the framework's `as_built.md`. Numbers aren't reused.
+
+**Since 2026-10-06 Kola runs on the shared mission framework** (`shared_mission_framework\`): most of the code these bugs name is shared now (`shared_mission_framework\mission_scripts\`, `radio_calls\`, `map_data_tools\`; `kola_data_tools\` is now `map_data_tools\`), so a fix there reaches every mission on it. A `plan.md` section named here that isn't in Kola's `plan.md` any more (*The controller*, *Radio calls*, *Stages 5–6* …) is in `shared_mission_framework\development_docs\as_built.md`, under the same name. A fix that changes behaviour means re-recording the offline harness's baselines right after it (framework `plan.md`, *Picking this up*).
 
 ---
 
@@ -406,6 +408,8 @@ So the controller never asks, when it ends the fight, whether the mission can st
 - (b) One decision instead of two: when the break-off fires and the go cold would send it home at the same height, say only the go cold ("break off, RTB").
 - (c) Leave the controller as it is and let Darkstar hold a "resume" call a few seconds, dropping it when an RTB to the same flight follows.
 
+**Since the pilots' answers (roadmap item 7 step 15, 2026-10-06, not flown):** both of Darkstar's calls are still said, but the pilot answers only the last one: a newer order replaces the resume still waiting for its answer, so Weasel 4 would answer "copy, RTB" once it turns home, not "resuming" too.
+
 ## 64. A scramble sent home said "off target"
 
 **Status:** fix built 2026-10-06, not flown. Ragin 3 (MSN2903_SCRAM), leashed home without a fight, said "Ragin three, off target, RTB". Interceptors now have their own condition (`intercept`) in `pilot_phrases.json`: "terminating" / "off intercept", then RTB.
@@ -442,6 +446,8 @@ So the controller never asks, when it ends the fight, whether the mission can st
 
 **Check after the next flight:** `dcs.log` for `first reading`; `radio_player.log` for `hearing the jet's radios`, the volume lines as the knobs turn, and `at volume` on each call.
 
+**2026-10-06 17:47 run** (`event_logs\2026-10-06_174721.log`): the readings arrive: `dcs.log` `first reading of the jet's radios` (UHF 305.000 and VHF 127.000, both off, the cold jet), and `radio_player.log` logs each change, John's retuning to 262.000 / 140.000, and the UHF volume going down 1.00 → 0.00 in 0.05 steps and back up (bug 72). Every call heard was played `at volume 1.00`, so whether a call at a lower knob setting sounds quieter wasn't heard.
+
 ## 70. Both jet-down calls went unheard
 
 **Status:** fix built 2026-10-06, not flown; the cause is likely, not proven (no player log in that run).
@@ -457,3 +463,29 @@ So the controller never asks, when it ends the fight, whether the mission can st
 **Built:**
 - `IMPACT` (new, `consumers/track_weapon_impacts.lua`): every bomb and air-to-ground missile from an aircraft is followed (every 0.1 s) to where it comes down; one line with its grid reference (MGRS, as the F10 map), the objects within 150 m (distance and direction from each, life before → after, or destroyed), or the nearest one when none is that close; "gone in the air … (shot down, or burst)" when it vanished more than 50 m up. The life before is read on its way down (DCS applies the damage in the frame the weapon goes). Settings `EVENT_LOG.impact_*`.
 - `HIT` lines end with the life the target has left a second after the hit (`life now 92 %`, or `destroyed`).
+
+## 72. The radio went silent for the last ~5 minutes, though the calls were being sent
+
+**Status:** open, logged 2026-10-06 (John: "we can log that one"); not investigated further, no fix.
+
+**Seen:** John, 2026-10-06 17:47 run (`event_logs\2026-10-06_174721.log`): no radio calls heard for about the last 5 minutes, while the Python window showed them coming through.
+
+**What the logs show** (`radio_calls\speak_mission_calls.log`, `radio_calls\radio_player.log`; wall clock):
+- The helper worded and sent every call (`… sent`), e.g. Darkstar's pictures at 18:17:24 and 18:19:24, Weasel 2-1's check-in 18:19:46, Darkstar's engage to Cobra 1 18:20:24 and Cobra 1's answer 18:20:26.
+- The radio player got them but played none: each `not heard, no radio tuned to 262.000`.
+- Just before, from 18:15:29, the export script reported the UHF volume going down, 1.00 → 0.00 in 0.05 steps over 9 s (as a knob turning), and the UHF radio `off` from 0.05 (18:15:38). VHF stayed on 140.000 at 1.00, but no mission-channel call came in that window.
+- From 18:20:36 the UHF volume came back up, 0.05 → 1.00 over 8 s; the mission ended about a minute later, no call after it.
+- So the player muted the calls because it was told the UHF radio was off. Before the drop, every call on 262.000 was heard at volume 1.00.
+
+**John's account** (2026-10-06, after the run): he lowered his COMM 1 volume, but it had no effect; then the radio calls stopped, including calls on COMM 2; then he turned it back up, and they never came back.
+
+**Set against the logs** (the mission started at ~17:49:20 wall clock: the helper's `mission 1866 s` was at 18:20:26; the mission ended at T+31:57, ~18:21:17):
+- **"Lowering COMM 1 had no effect":** while the knob went down (18:15:29–18:15:38), the call playing was a Darkstar picture that had started at 18:15:25, 32 s of audio, at volume 1.00. The player sets a call's volume once, when it starts, so a knob turned during a call changes nothing until the next one. With 25–33 s pictures that is most of the time Darkstar talks. Very likely why the knob seemed dead (and part of bug 69's original report).
+- **"The calls stopped, COMM 2 too":** after 18:15:38 every UHF call was muted as `off` (above). On COMM 2 (VHF 140.000) no call was sent in that window: the last mission-channel call was 18:15:10 (Hornet 7-2, rifle), so the logs don't show a COMM 2 call muted, only none to hear. Whether COMM 2 would have played isn't known.
+- **"Turned back up, they never came back":** the UHF reading was back at 1.00 at 18:20:44, about 33 s before the mission ended. The helper sent no call after 18:20:26: the next picture was due at mission 1924 s, 7 s after the end (1917 s). So nothing was sent to play in that last half minute. That doesn't prove it would have come back.
+
+**Open questions:**
+- `off` from a volume of 0.05: does DCS's UHF report `is_on() == false` at the bottom of the knob, or does our export script / player treat a near-zero volume as off? Turning the volume down should make calls quieter, not switch the radio off.
+- A knob turned during a call: apply it live (the player plays a call in one piece with `winsound`, which has no volume control while playing), or at least to the next call, and say so in the log.
+- To prove the rest in one test: turn COMM 1 down to zero and back up, with both radios on, and listen for COMM 2 calls during it and UHF calls after it (a long enough run after turning it up).
+- The wording `not heard, no radio tuned to 262.000` is misleading when a radio is tuned to it but off or at zero volume: it should say so ("UHF on 262.000 is off").

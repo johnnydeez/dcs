@@ -1,5 +1,5 @@
 -- 4-letter code per airbase: the <BASE> part of generated names (ZONE_<code>_…,
--- DEF_<code>_…). Same codes as kola_data_tools/kola_airbases.json — keep the two in sync.
+-- DEF_<code>_…). Same codes as map_data_sources/kola_airbases.json — keep the two in sync.
 -- Plain data, no logic.
 
 AIRBASE_CODE = {

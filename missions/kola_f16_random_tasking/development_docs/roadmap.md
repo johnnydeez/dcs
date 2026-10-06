@@ -2,9 +2,11 @@
 
 What's coming after session 10 (2026-09-30), when the mission became playable by humans. Each item says what it's for, what already exists, a proposed approach and the questions to settle before building. Details are decided with John as each item comes up, step by step, like the rest of the project.
 
-`plan.md` stays the spec and the build log; this file is the list of where the mission is headed. When an item is built and run, its "as built" notes go into `plan.md`, and the item moves to `closed.md` (so this file doesn't grow forever). Item numbers stay as they are, so references elsewhere keep working: items 1–3, 5, 10–13, 16, the performance item and parts 4a / 4b of item 4 are in `closed.md`.
+`plan.md` stays the status and the build log; this file is the list of where the mission is headed. When an item is built and run, its "as built" notes go into the framework's `as_built.md`, and the item moves to `closed.md` (so this file doesn't grow forever). Item numbers stay as they are, so references elsewhere keep working: items 1–3, 5, 10–13, 16, the performance item and parts 4a / 4b of item 4 are in `closed.md`.
 
 Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means Red unless it says otherwise.
+
+**Framework work (2026-10-06):** Kola now runs on the shared mission framework (`shared_mission_framework\`), and **every item on this roadmap is framework work**: each changes shared code (`mission_scripts\`, `radio_calls\`, `map_data_tools\`), so once built it reaches every mission on the framework (the Caucasus random tasking next), with Kola's values as the shared defaults. What would be Kola's alone (its map, its rosters, its slots) is noted in an item when it comes up. Items stay numbered and kept here for now; whether the framework gets its own `roadmap.md` is open (framework `plan.md`, *Open*). "`plan.md`, *As built*" and the other sections about how the code works: `shared_mission_framework\development_docs\as_built.md`.
 
 **Order (John, 2026-09-30; items 10–12 added 2026-10-01; item 5 pulled forward and built 2026-10-02; item 13, airfield info, added and built 2026-10-02 outside the order; item 14, every mission type for players, and item 15, airfield traffic, added 2026-10-03 with no place in the order yet; item 7, AI radio calls, pulled forward 2026-10-05, its MVP (Darkstar spoken) built and flown the same day, and the AI pilots' and airfield calls built that night; item 16, SEAD that meets fighters, added 2026-10-05 and closed the same day, not needed; items 12 and 13 closed 2026-10-05):** ~~radar functions → scrambles → event log~~ → ~~performance in VR~~ (done for now, 2026-10-01) (all in `closed.md`) → ~~every run-time flight decision under the controller (item 11)~~ → ~~SEAD ingress doctrine (item 10)~~ → ~~SEAD against the air defenses: a standing rotation (item 12)~~ (all in `closed.md`) → **AI behaviour logic (item 4, the controller's further directives; next in the order)** → ~~AWACS calls (text)~~ (item 5, in `closed.md`) → cruise missiles → AI radio calls (MVP and pilots / airfields done; the rest) → Skynet IADS → fog of war. CAP visibility (making patrol routes and times easy to see) was cut on 2026-09-30: John can see the dotted station lines on the map fine for now. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Five optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, the threat picture on the map for players (after fog of war), and a Wild Weasel wingman for SEAD flights (added 2026-10-02).
 
@@ -222,7 +224,7 @@ Two new kinds of talk: **AI flights calling what they do** (mission calls, "Fox 
 | Fox 1 / Fox 2 / Fox 3, Magnum, Rifle, bombs away | `S_EVENT_SHOT`, by the weapon (radar semi-active / infrared / active radar air-to-air; anti-radiation; air-to-ground missile; bombs); repeats from one flight within a few seconds folded into one call |
 | Splash | `S_EVENT_KILL` / dead with our flight as the killer |
 | defending / engaged | fired upon (a shot at it), or its own air-to-air shot |
-| off target, RTB, bingo, Winchester | its attack done and heading home (seen, not ordered), fuel, weapons left |
+| off target, RTB, bingo, Winchester | its attack done and heading home (seen, not ordered), fuel, weapons left (since step 15, a bingo or Winchester the controller decided is the pilot's report to Darkstar instead) |
 | "Hornet 3-2 is down" | a jet of the flight destroyed or ejected |
 | on station / off station (patrols) | reaching / leaving its race-track |
 
@@ -232,8 +234,8 @@ The controller's orders become **Darkstar's** voice later (below); the pilot's r
 
 | Channel | On it | Radio |
 |---|---|---|
-| AWACS | Darkstar's picture and threat calls (later its orders), flights checking in and out with Darkstar | UHF |
-| Mission (tactical common) | the flights' tactical calls: pushing, Fox, Magnum, Splash, defending, off target, down | UHF or VHF |
+| AWACS | Darkstar's picture and threat calls (its orders since step 14), flights checking in and out with Darkstar (since step 15 also the pilots' answers and reports, bingo and Winchester) | UHF |
+| Mission (tactical common) | the flights' tactical calls: pushing, Fox, Magnum, Splash, defending, off target, down | VHF |
 | One per Blue airfield | that field's traffic calls | VHF |
 
 - Frequencies in a data file (`data/radio_frequencies.lua`): the airfields' **real ones from the Kola map's own airfield radio data** (as the charts), AWACS and mission our own; shown in the brief and each base's *Airfield info*; set on the F-16 slots' preset channels in the mission file where that works (UHF 1 AWACS, UHF 2 mission…).
@@ -302,10 +304,10 @@ Steps 5–9 built 2026-10-05 late, harness-tested, first heard in the 21:02 test
       | `leave` (no radar missiles to fight it) | "Hornet 2, Darkstar, bandit hot two five miles, break off, RTB" |
       | `press on` (a SEAD flight keeps low) | "Weasel 1, Darkstar, bandit north four zero miles, press on" |
       | `back on mission` | "Weasel 1, Darkstar, bandit dead, resume" |
-      | `go cold` / `no shot` / `salvo over` | "Weasel 1, Darkstar, push cold, RTB" |
+      | `go cold` / `no shot` / `salvo over` | "Weasel 1, Darkstar, push cold, RTB" (since step 15, a salvo done or no emitter is the pilot's report, "Darkstar, Weasel one, Magnum complete, egressing", and Darkstar's "copy"; a go cold for a SAM ring or pressing too far stays Darkstar's) |
       | `leash home` / `leash stand down` | "Viper 5, Darkstar, raid turned away, return to base" / "… scramble cancelled" |
       | `handover` | "Eagle 1, Darkstar, relief on station, cleared off, RTB" |
-      | `bingo` | "Viper 2, Darkstar, bingo, RTB Ivalo" |
+      | `bingo` | "Viper 2, Darkstar, bingo, RTB Ivalo" (since step 15 the pilot's report, "Darkstar, Viper two, bingo, RTB Ivalo", and Darkstar's "copy bingo") |
       | `land` (an orphaned wingman sent to land) | "Weasel 1-2, Darkstar, land Rovaniemi" |
 
       Not spoken: the launch decisions (`wait`, `retry`, `cancel`, `launch late`, `come back`, `alert`): planning on the ground, not an order to a flight in the air.

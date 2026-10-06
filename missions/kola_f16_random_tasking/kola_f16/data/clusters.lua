@@ -1,5 +1,5 @@
 -- Kola base clusters: which airbases move together when territory is rolled.
--- Plain data, no logic. Consumed by stage 1 (territory) and by kola_data_tools/miz_zones.py
+-- Plain data, no logic. Consumed by stage 1 (territory) and by map_data_tools/miz_zones.py
 -- to suggest a cluster for each trigger zone.
 --
 --   fixed        = "blue" | "red"  → never rolled

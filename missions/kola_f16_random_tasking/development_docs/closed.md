@@ -1,6 +1,6 @@
 # Kola F-16 Random Tasking — Closed issues
 
-Roadmap items and fixed bugs that are done, moved here from `roadmap.md` and `bugs.md` so those files only hold open work. Each keeps its original number and text, as it stood when it was closed, with the discussion that led to it. What was actually built, and how it behaves, is in `plan.md` (*As built*).
+Roadmap items and fixed bugs that are done, moved here from `roadmap.md` and `bugs.md` so those files only hold open work. Each keeps its original number and text, as it stood when it was closed, with the discussion that led to it. What was actually built, and how it behaves, is in `plan.md` (*As built*); since 2026-10-06 that section, with every other one about how the code works, is in the shared mission framework's `shared_mission_framework\development_docs\as_built.md`, under the same names (and `kola_data_tools\` is the framework's `map_data_tools\`, `kola_f16\`'s logic its `mission_scripts\`, `radio_calls\` its `radio_calls\`).
 
 ---
 

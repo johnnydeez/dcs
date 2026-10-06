@@ -1,4 +1,4 @@
--- Player slots parsed from kola_f16_random_tasking.miz by kola_data_tools/miz_player_slots.py — do not hand-edit;
+-- Player slots parsed from kola_f16_random_tasking.miz by map_data_tools/miz_player_slots.py — do not hand-edit;
 -- move or add slots in the mission editor and re-run the tool. Plain data, no logic.
 --
 -- DCS always spawns a dynamic-spawn player on the template's exact parking spot, so the
