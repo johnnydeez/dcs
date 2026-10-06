@@ -43,7 +43,9 @@
       [ { "text": "SEAD, en route to {target}", "when": "sead" }, { "text": "SEAD", "when": "sead", "weight": 0.5 },
         { "text": "en route to the target", "when": "attack" }, { "text": "{mission}, en route", "when": "attack" },
         { "text": "{mission} on {target}", "when": "has_target", "weight": 0.4 },
-        { "text": "en route to station", "when": "patrol" }, { "text": "CAP, heading for station", "when": "patrol" } ]
+        { "text": "en route to station", "when": "patrol" }, { "text": "CAP, heading for station", "when": "patrol" },
+        { "text": "scramble, intercept", "when": "intercept" }, { "text": "scrambled, heading for the intercept", "when": "intercept" },
+        { "text": "intercept on the {target_type}", "when": "type_known" }, { "text": "scramble on the {target_type}", "when": "type_known", "weight": 0.6 } ]
     ],
 
     "on_station": [
@@ -111,7 +113,8 @@
       [ "{flight}", "{callsign}" ],
       [ { "text": "off target", "when": "attack" }, { "text": "off target", "when": "sead" },
         { "text": "off, egressing", "when": "attack" }, { "text": "egressing", "when": "sead" },
-        { "text": "off station", "when": "patrol" } ],
+        { "text": "off station", "when": "patrol" },
+        { "text": "terminating", "when": "intercept" }, { "text": "off intercept", "when": "intercept" } ],
       [ "RTB", "RTB {base}", { "text": "", "weight": 0.4 } ]
     ],
 

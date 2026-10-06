@@ -60,6 +60,14 @@
 -- plus the launch decisions (decide_launches.lua), scrambles (scramble_fighters.lua) and
 -- alert jets (track_alert_jets.lua).
 -- Reads the plan; writes nothing back to it. Which flights are watched is runtime state.
+--
+-- Every decision is also published to listeners (ControlAirFlights.onDecision), the way the
+-- radar picture publishes its events: { coalition, subject, decision, text, details }.
+-- details carry what a listener needs without reading the text: reason (one word per
+-- why, e.g. "salvo_over", "bingo", "raid_turned_away"), threat (the bandit's group),
+-- relief (a patrol's relief), units (the jets a landing order went to), targets (a
+-- scramble's raid). The controller doesn't know who listens; Darkstar's radio calls
+-- (announce_controller_orders.lua) are one listener.
 
 ControlAirFlights = {}
 
@@ -78,6 +86,7 @@ local _plan
 local _watched = {}        -- flight id → watch entry (below)
 local _wakeScheduled = {}  -- coalition → true while a fast check is already on its way
 local _offTaskAt = {}      -- flight id → mission time it came off its task (sent home, landed, lost); kept after the watch ends
+local _listeners = {}      -- fn(decision) for every decision (ControlAirFlights.onDecision)
 
 local A = AssessFlightSituations
 
@@ -95,14 +104,27 @@ local function duration(s)
     return string.format("%d min %d s", math.floor(s / 60), s % 60)
 end
 
--- One CONTROL line: "<decision>: <text>", subject the flight (or contact) it is about.
-function ControlAirFlights.say(coalition, subject, decision, text)
+-- One CONTROL line: "<decision>: <text>", subject the flight (or contact) it is about;
+-- then the decision goes to every listener, with `details` (see the top of this file).
+function ControlAirFlights.say(coalition, subject, decision, text, details)
     WriteEventLog.add(coalition, "CONTROL", subject, decision .. ": " .. text)
+    local d = { coalition = coalition, subject = subject, decision = decision, text = text, details = details or {} }
+    for _, fn in ipairs(_listeners) do
+        local ok, err = pcall(fn, d)
+        if not ok then Log.warn(string.format("%s: a decision listener failed on %s: %s", subject, decision, tostring(err))) end
+    end
+end
+
+-- fn(decision) on every controller decision from now on.
+function ControlAirFlights.onDecision(fn)
+    _listeners[#_listeners + 1] = fn
 end
 
 local function log(w, intent, text)
     local words = DECISION[intent.directive] or {}
-    ControlAirFlights.say(w.mission.coalition, w.mission.id, words[intent.kind] or (intent.directive .. " " .. intent.kind), text)
+    ControlAirFlights.say(w.mission.coalition, w.mission.id, words[intent.kind] or (intent.directive .. " " .. intent.kind), text,
+        { reason = intent.reason, threat = intent.threat and intent.threat.group or intent.bandit,
+          relief = intent.relief, units = intent.units })
 end
 
 -- ── one check ───────────────────────────────────────────────────
@@ -141,7 +163,7 @@ local function act(w, s, intent)
         -- its CONTROL line is the scheduler's ">>orphan<< removed", one per jet, with the rest
         -- of that jet's >>orphan<< lines; written before they go, to read where they are
         _watched[m.id] = nil
-        ScheduleAirTaskingOrders.removedInAir(m.id, intent.units)
+        ScheduleAirTaskingOrders.removedInAir(m.id, intent.units, intent.reason ~= "orphan" and intent.why or nil)
         GiveOrders.remove(intent.units)
     elseif intent.kind == "stand_down" then
         GiveOrders.standDown(w, g)
@@ -165,7 +187,8 @@ local function act(w, s, intent)
         local d = w.defending
         GiveOrders.resume(w, g)
         ControlAirFlights.say(m.coalition, m.id, w.state == "going_home" and "back on way home" or "back on mission",
-            string.format("%s (%s)", intent.why, duration(now - d.since)))
+            string.format("%s (%s)", intent.why, duration(now - d.since)),
+            { reason = intent.reason, threat = d.group, fight_s = now - d.since })
         w.defending = nil
         w.memo.self_defence.last_resume = now
     end
@@ -306,9 +329,12 @@ function ControlAirFlights.watch(m, params)
     for _, name in ipairs(names) do memo[name] = {} end
     local targets = params and params.targets or {}
     _watched[m.id] = { mission = m, directives = names, targets = targets,
-                       state = "on_task", airborne_once = false, memo = memo, reports = {}, defending = nil }
+                       state = "on_task", airborne_once = false, memo = memo, reports = {}, defending = nil,
+                       -- spawned in the air on its station: no waypoint to reach first
+                       on_station_at = m.takeoff == "air" and m.route[1] and m.route[1].kind == "station"
+                           and timer.getTime() or nil }
     ControlAirFlights.say(m.coalition, m.id, "watching", table.concat(names, ", ")
-        .. (#targets > 0 and (" on " .. table.concat(targets, ", ")) or ""))
+        .. (#targets > 0 and (" on " .. table.concat(targets, ", ")) or ""), { targets = targets })
 end
 
 -- Flight `id` reached waypoint `index` of its route (the waypoint's script command,
@@ -319,7 +345,11 @@ end
 function ControlAirFlights.waypoint(id, index)
     local w = _watched[id]
     local r = w and w.mission.route and w.mission.route[index]
-    if not (r and w.memo.suppression) then return end
+    if not r then return end
+    -- a patrol at its station waypoint is on station, the relief a handover waits for
+    -- (bug 62: a station over its base counted the relief on station on its takeoff roll)
+    if r.kind == "station" then w.on_station_at = w.on_station_at or timer.getTime() end
+    if not w.memo.suppression then return end
     if (r.kind == "popup" or r.kind == "target") and not w.memo.suppression.arrived_s then
         w.memo.suppression.arrived_s = timer.getTime()
     end

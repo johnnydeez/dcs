@@ -15,7 +15,10 @@
 --       pushing, Fox, Magnum, Splash, defending, off target (mission channel), from what
 --       they actually do (announce_flight_activity.lua), never from the controller's orders;
 --   AI flights at Blue airfields: traffic calls on that field's own frequency, the way an
---       uncontrolled field works (track_airfield_traffic.lua), heard within airfield_range_nm.
+--       uncontrolled field works (track_airfield_traffic.lua), heard within airfield_range_nm;
+--   Darkstar's orders to AI flights (AWACS channel): the controller's decisions that are
+--       orders to a flight in the air, engage, resume, RTB, land, a scramble's vector
+--       (announce_controller_orders.lua, listening to the controller's decisions).
 
 RADIO_CALLS = {
     enabled     = true,
@@ -58,9 +61,12 @@ RADIO_CALLS = {
         magnum        = { priority = 1, expires_s = 8,  fold_s = 30 },
         rifle         = { priority = 1, expires_s = 8,  fold_s = 30 },
         bombs         = { priority = 1, expires_s = 8,  fold_s = 30 },
-        splash        = { priority = 1, expires_s = 15, fold_s = 5 },
+        -- splash and jet down outlast one Darkstar picture (~25 s) on the other radio, as
+        -- calls never overlap (bug 70, 00:16 run: both jet-down calls queued behind a
+        -- picture and were dropped at 20 s); a Fox call that late is no news, so it goes
+        splash        = { priority = 1, expires_s = 40, fold_s = 5 },
         defending     = { priority = 1, expires_s = 8,  fold_s = 30 },
-        jet_down      = { priority = 1, expires_s = 20 },
+        jet_down      = { priority = 1, expires_s = 45 },
         winchester    = { priority = 2, expires_s = 20 },
         bingo         = { priority = 2, expires_s = 30 },
         off_target    = { priority = 3, expires_s = 30 },
@@ -70,6 +76,20 @@ RADIO_CALLS = {
         inbound       = { priority = 2, expires_s = 20 },
         final         = { priority = 2, expires_s = 15 },
         clear         = { priority = 2, expires_s = 20 },
+        -- Darkstar's orders (a "leave", RTB with a bandit hot and nothing to fight it, goes at priority 1)
+        engage          = { priority = 1, expires_s = 15 },
+        resume          = { priority = 3, expires_s = 20 },
+        return_to_base  = { priority = 3, expires_s = 30 },
+        land_at         = { priority = 2, expires_s = 30 },
+        scramble_vector = { priority = 1, expires_s = 20 },
+    },
+
+    -- Darkstar's orders (announce_controller_orders.lua)
+    orders = {
+        engage_fold_s         = 90,   -- an engage on the same bandit to the same flight said once in this long
+                                      --   (a fight broken off for a SAM ring is called again 30 s later)
+        vector_after_takeoff_s = 4,   -- a scramble's vector this long after its takeoff, after the
+                                      --   pilot's own airborne call
     },
 
     -- the watcher (announce_flight_activity.lua)
@@ -77,7 +97,6 @@ RADIO_CALLS = {
     rtb_heading_deg      = 35,     -- heading home: within this of the bearing to its landing base,
     rtb_closing_km       = 0.5,    --   closing on it by this much since the last look (~100 m/s),
     rtb_after_target_km  = 15,     --   and this much nearer home than its farthest point out
-    on_station_km        = 20,     -- a patrol this close to its race-track is on station
     bingo_fuel           = 0.15,   -- "bingo": the lead's fuel (internal fraction) this low, and
     bingo_min_home_km    = 60,     --   still this far from its landing base
 
@@ -86,6 +105,9 @@ RADIO_CALLS = {
     airfield_range_nm    = 40,     -- a field's calls are made only with a player this close
                                    --   (a tower frequency's reach for a jet near the ground)
     taxi_speed_mps       = 3,      -- a jet on the ramp moving this fast is taxiing
+    lineup_margin_m      = 15,     -- "departing": a taxiing jet inside a runway's strip (this
+    lineup_aligned_deg   = 20,     --   much beyond its edges and ends), nose within this of
+                                   --   one of its directions: lined up (bug 67)
     inbound_nm           = 10,     -- "inbound": a flight coming back to land (seen heading home,
                                    --   or already this slow and low) heading for its base this close
     inbound_max_mps      = 130,    --   (~250 kt)

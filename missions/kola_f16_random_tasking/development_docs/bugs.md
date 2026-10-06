@@ -10,6 +10,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 **Seen again, more of it, now every fitting base is an alert base** (bug 16; `event_logs\2026-10-02_145532.log`, 50 min): three Blue scrambles at one MiG-31 patrol, MSN7016_CAP, on its race-track over Red's airspace, all stood down on the ramp with "back over its own airspace, heading away": MSN2901 (Enontekio, intercept 35 km out), MSN2902 (Banak, **125 km** out), MSN2903 (Enontekio, **159 km** out). Red's MSN7902 was stood down the same way at Blue's F-16 patrol MSN2009_CAP, and MSN7901 before launch at MSN2002_CAP. 5 of 7 scrambles in the run were this churn. Tune with bug 32 (the same "inbound / heading away" test, read the other way).
 
+**Change built 2026-10-06, not flown** (John asked whether three inbound checks would do; a race-track leg is 50 km, ~3.5 min, ~7 picture rounds pointing the same way, so three wouldn't): a contact still over its own airspace must be inbound `scramble_inbound_rounds_enemy_airspace` (8) rounds in a row, 4 min, longer than a leg; a turn away resets the count. In contested and own airspace it stays 2. Seen in the 00:16 run: 6 of 7 scrambles were this churn (Blue MSN2901, 2902, 2904 at Red patrols; Red MSN7901, 7902, 7903 stood down before launch). **Check:** fewer `scramble` lines that end in `stand down`; whether a real raid from deep in its own airspace is now answered too late (`can't reach the raid before it reaches …`).
+
 **Worse on the 2026-10-04 22:39 roll** (`event_logs\2026-10-04_223922.log`): about 14 of ~30 Red scrambles stood down on the ramp, 7 of them at Blue's Alakurtti patrols (MSN2016_CAP, MSN2017_CAP: Alakurtti is the Blue pocket inside Red, so each race-track leg reads as inbound); Blue 5 of 11. See bug 50 too.
 
 **Seen:** same log; grep `SCRAMBLE`, `STOOD_DOWN`, `stood down on the ramp`.
@@ -367,3 +369,91 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 **Proposed (decide with John):**
 - A test mission (like the 2026-10-02 HSD tests, script-built, comms-menu steps): an SA-10 as Kola spawns it (with truck), one without the truck, an SA-11 as control, then a step adding 20 more SA-11s to see whether the limit exists and which rings drop past it.
 - Whatever the cause: turn rings on for at most ~15 sites per coalition, chosen on purpose (long-range first, then those covering the front), so the HSD's limit never picks for us.
+
+---
+
+*Bugs 62–71: from the 2026-10-06 00:16 run (`event_logs\2026-10-06_001615.log`, 66 min, John flying MSN2023_OCA from Ivalo on the Kalevala parked aircraft; the first run with Darkstar's orders, roadmap item 7 step 14). Losses Blue 5 / Red 4. Reviewed with John 2026-10-06.*
+
+## 62. Patrols "on station" at takeoff, and relieved by a jet still on its takeoff roll
+
+**Status:** fix built 2026-10-06, not flown (copied to DCS; checked in a luae harness with stubbed DCS).
+
+**Seen:** Viper 1 (Ivalo), Viper 5 and Viper 6 (Alakurtti) and Hornet 1 (Ivalo) said "on station" 1–5 s after "airborne": their race-tracks lie within 20 km of their bases, and the watcher counted a patrol within `on_station_km` (20) of its race-track as on station. The controller had the same test for a handover: `handover: relieved by MSN2017_CAP, on station (3 km from the race-track)` 16 s after Viper 6's takeoff, so Viper 5 was sent home at once. The other way round, Viper 5 never said off station or checked out: that needed it 40 km from its station, and it landed 2 km from it.
+
+**Fix:**
+- A patrol says "on station" at its station waypoint (the waypoint's script command), not by distance.
+- It has left its station once the controller sends it home (handover, bingo, leash home, go cold, leave, land: a listener of the controller's decisions) or at its off-station waypoint (its orbit over); then "off station" and the check-out come when it is seen heading home (pointing at its base and closing), however close its station is to its base. An order the AI ignores still gets no call.
+- The controller counts a relief as on station only once it has reached its station waypoint (`w.on_station_at`; a patrol spawned in the air on its station counts from its spawn), and within `handover.on_station_km` as before.
+
+**Check:** `RADIO_CALL.*on_station` after the flight's `WAYPOINT … on station` line, never seconds after `airborne`; `handover:` only after the relief's on-station waypoint; an `off_target` / `check_out` for every relieved patrol.
+
+## 63. Darkstar told Weasel 4 "back to your tasking", then "RTB" 5 s later
+
+**Status:** open, cause found (John, 2026-10-06: "we need to know why before the fix"). No fix built.
+
+**Seen:** `MSN2028_SEAD`, 04:51:34–04:51:49. Weasel 4 (2× F-16, on its low run-in to the Monchegorsk SA-10) took on the Su-30 MSN7009_CAP at 24 km (inside `sead_commit_km`, as designed). The fight climbed MSN2028_SEAD_2 to ~7,600 ft (12,500 ft by 04:52:11):
+- 04:51:44 `back on mission: breaking off: MSN2028_SEAD_2 inside the kill zone of SAM_MONC_SA10_1` → Darkstar "you're in a SAM ring, break off, back to your tasking";
+- 04:51:49 `go cold: MSN2028_SEAD_2 inside the kill zone of SAM_OLEN_SA10_1` → Darkstar "SAM threat, turn cold, RTB".
+
+**Cause:** two rules, both on the 5 s check, each reacting to the same climb:
+1. The fight's break-off (`self_defence`): a SEAD flight outside its shot area breaks a fight off inside *any* ring at its height, its own target's included (bug 39). Its answer is "back to the mission", which for a SEAD flight is the low run-in.
+2. The go cold (`suppression`): any ring at its height *other than* its own target's and the rings its route was planned through sends it home for good. At 04:51:44 the wingman was inside Monchegorsk's envelope (its target) but not yet Olenya's; 5 s later, still climbing, it was inside Olenya's too.
+
+So the controller never asks, when it ends the fight, whether the mission can still go on. Both orders were right by their own rule. The AIM-120s were still in the air at the break-off (they killed the Su-30 at 04:52:03); the break-off for a kill zone doesn't wait for missiles in flight, as `time_up` does (bug 44).
+
+**Options (decide with John):**
+- (a) A flight whose fight is broken off for a kill zone gets `recover_s` (e.g. 60 s) to get back down to its low run-in before the go cold's ring test applies; still inside a ring after that: go cold.
+- (b) One decision instead of two: when the break-off fires and the go cold would send it home at the same height, say only the go cold ("break off, RTB").
+- (c) Leave the controller as it is and let Darkstar hold a "resume" call a few seconds, dropping it when an RTB to the same flight follows.
+
+## 64. A scramble sent home said "off target"
+
+**Status:** fix built 2026-10-06, not flown. Ragin 3 (MSN2903_SCRAM), leashed home without a fight, said "Ragin three, off target, RTB". Interceptors now have their own condition (`intercept`) in `pilot_phrases.json`: "terminating" / "off intercept", then RTB.
+
+## 65. A scramble's check-in spoke the DCS type name
+
+**Status:** fix built 2026-10-06, not flown. "Darkstar, Ragin three, airborne Alakurtti, intercept on Su-34 at Ivalo": the watcher passed the raid's DCS type as a place-style target. Now the raid's type goes as `target_type`, worded by the helper like the Fox and splash calls (NATO name or designation): "intercept on the Fullback"; "scramble, intercept" when the type isn't known.
+
+## 66. The flight-call listener failed on destroyed buildings
+
+**Status:** fix built 2026-10-06, not flown. `dcs.log`: `flight calls: event 8 failed: … announce_flight_activity.lua:240: attempt to index local 'unitName' (a number value)`, 3×, from John's GBU-38s at Kalevala: a map object's name is a number. `nameOf` in the watcher now returns text names only.
+
+## 67. "Departing" was said after the jet had taken off
+
+**Status:** fix built 2026-10-06, not flown (luae harness: taxi, a runway crossing and a parallel taxiway not counted, lined up counted once, no second call at takeoff). John: backwards for airfield traffic.
+
+**Fix:** the airfield tracker (every 3 s) sees a taxiing jet inside a runway's strip (`lineup_margin_m` 15 beyond its edges and ends; the runways from `Gather`) with its nose within `lineup_aligned_deg` (20) of one of its directions: lined up. New event word `LINE_UP` ("lined up on runway 21 at Ivalo, 2 kt"), and the departing call then, on the runway it is on. At takeoff only if the line-up wasn't seen. A new phrase: "lining up runway two one for departure".
+
+## 68. A lone wingman ignored its landing orders and flew on until the mission ended
+
+**Status:** fix built 2026-10-06, not flown (luae harness: removed 8 min after its last order while flying away; a jet closing on its base after two orders never removed).
+
+**Seen:** `MSN7024_SEAD_2` (Su-34), its lead shot down: heading 050 at 26,000 ft for 13 min, straight past Koshka Yavr; `land: … lost after its landing` at 05:02:04 and 05:04:04 (`max_orders` 2), still flying at mission end. The orphan removal needed a landing in its flight, and there was none.
+
+**Fix:** after its last landing order, a jet still getting farther from its base (`away_km` past its closest since that order) `orphan_remove_after_s` (8 min) later is removed and counted as landed: `>>orphan<< removed: by the controller: MSN7024_SEAD_2 171 km from Koshka Yavr (it was 66 km away) still flying away 8 min after its last landing order; counted as landed (…)`.
+
+## 69. The F-16's COMM 1 / COMM 2 volume knobs did nothing
+
+**Status:** open; logging built 2026-10-06 to find out why (the code reads the same knobs as SRS, arguments 430 / 431, and the player applies them: both checked offline, the export script in luae with a stubbed cockpit, the player with UDP readings).
+
+**Seen:** John, 00:16 run: turning the COMM 1 / COMM 2 knobs didn't change the calls' volume. `dcs.log` shows our export script loaded (`KOLA-RADIOS … sending the jet's radios`), but nothing recorded whether a reading ever reached the radio player: it printed to its window only. With no fresh reading it plays every call at full volume, which would look exactly like this.
+
+**Built:** the radio player writes everything it says to `radio_calls\radio_player.log` (rewritten at each start, git-ignored): the jet's radios as first heard and at every change (volume in 0.05 steps), "no word from the jet's radios … every call plays at full volume" when the readings stop, and each call heard (on which radio, at what volume), not heard (why) or dropped. The export script writes `KOLA-RADIOS … first reading of the jet's radios: {…}` to `dcs.log` once, and the first failure to read or send.
+
+**Check after the next flight:** `dcs.log` for `first reading`; `radio_player.log` for `hearing the jet's radios`, the volume lines as the knobs turn, and `at volume` on each call.
+
+## 70. Both jet-down calls went unheard
+
+**Status:** fix built 2026-10-06, not flown; the cause is likely, not proven (no player log in that run).
+
+**Seen:** John heard no "jet down". Both were sent (`speak_mission_calls.log` 00:34:56 "Weasel one, Weasel one one's hit", 01:10:57 "Weasel four one, lost Weasel four two"), each 8 s after a 4–5 group Darkstar picture (~25 s of audio) started. Calls never overlap, so each waited behind the picture, and `jet_down` expired after 20 s.
+
+**Fix:** `jet_down` lives 45 s and `splash` 40 s (`RADIO_CALLS.kinds`), longer than a picture. Fox / Magnum / defending stay at 8 s (no news that late). Bug 69's player log shows each `dropped` from now on. If it still happens: a combat call could cut in on a routine call playing on the other radio, or the pictures get shorter (roadmap item 7 step 12, "a short summary when nothing changed"), which would help more than longer lives.
+
+## 71. Hits and bomb impacts said nothing about where a weapon landed or how much damage it did
+
+**Status:** built 2026-10-06, not flown (luae harness with stubbed DCS). John, after the 00:16 run: his GBU-38s at Kalevala were logged as `HIT` on the Mi-8 static and two ZU-23s, twice, but nothing said how close they fell or how hurt the Mi-8 was (he thought he saw 8 % damage), so a miss and a weak hit couldn't be told apart.
+
+**Built:**
+- `IMPACT` (new, `consumers/track_weapon_impacts.lua`): every bomb and air-to-ground missile from an aircraft is followed (every 0.1 s) to where it comes down; one line with its grid reference (MGRS, as the F10 map), the objects within 150 m (distance and direction from each, life before → after, or destroyed), or the nearest one when none is that close; "gone in the air … (shot down, or burst)" when it vanished more than 50 m up. The life before is read on its way down (DCS applies the damage in the frame the weapon goes). Settings `EVENT_LOG.impact_*`.
+- `HIT` lines end with the life the target has left a second after the hit (`life now 92 %`, or `destroyed`).

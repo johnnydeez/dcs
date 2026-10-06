@@ -11,3 +11,4 @@ missions/kola_f16_random_tasking/event_logs/
 # Kola radio calls: the mission's calls file and the helper's log, rewritten every run
 missions/kola_f16_random_tasking/radio_calls/mission_calls.jsonl
 missions/kola_f16_random_tasking/radio_calls/speak_mission_calls.log
+missions/kola_f16_random_tasking/radio_calls/radio_player.log

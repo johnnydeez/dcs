@@ -21,7 +21,8 @@
     "departing": [
       [ "{field} traffic" ],
       [ "{flight}", "{callsign}" ],
-      [ "departing runway {runway}", "rolling runway {runway}", "taking off runway {runway}" ],
+      [ "departing runway {runway}", "rolling runway {runway}", "taking off runway {runway}",
+        { "text": "lining up runway {runway} for departure", "weight": 0.6 } ],
       [ "{direction}bound", "departing to the {direction}", { "text": "", "weight": 0.4 } ],
       [ "{field}", { "text": "", "weight": 0.3 } ]
     ],

@@ -420,7 +420,7 @@ local function hit(e)
     local exploding = isNamedThing(e.weapon) and who(e.weapon)
     local unexplained = not shooter and not exploding and not e.weapon_name and not e.weapon
     local weapon = exploding and "explosion" or weaponName(e)
-    fold(table.concat({ "hit", name, shooter and shooter.name or "?", exploding or weapon }, "|"), EVENT_LOG.fold_hits_s, function()
+    local line = fold(table.concat({ "hit", name, shooter and shooter.name or "?", exploding or weapon }, "|"), EVENT_LOG.fold_hits_s, function()
         local by = shooter and shooter.text or "unknown"
         local asleep = isAircraft(target) and "" or asleepTag(target)
         return push(sideOf(target), "HIT", name, nil, { weapon = weapon, by = by, target_type = typeOf(target),
@@ -436,9 +436,23 @@ local function hit(e)
                     text = string.format("%s hit by %s%s from %s", l.target_type or "?", l.weapon, hits, l.by)
                 end
                 if l.where then text = text .. ", " .. l.where end
+                if l.life then text = text .. ", " .. l.life end
                 return text .. asleep
             end })
     end)
+    -- the life it has left, read a second on, once the hit's damage is in (2026-10-06: the
+    -- Kalevala Mi-8 was hit twice and nothing said how badly); the latest hit of a folded
+    -- line counts
+    timer.scheduleFunction(function()
+        line.life = safe(function()
+            if not target:isExist() then return "destroyed" end
+            local life = target:getLife()
+            local full = (target.getLife0 and target:getLife0()) or (target:getDesc() or {}).life
+            if not life or not full or full <= 0 then return nil end
+            return string.format("life now %d %%", math.floor(math.max(0, math.min(1, life / full)) * 100 + 0.5))
+        end)
+        return nil
+    end, nil, timer.getTime() + 1)
 end
 
 local function placeName(e)

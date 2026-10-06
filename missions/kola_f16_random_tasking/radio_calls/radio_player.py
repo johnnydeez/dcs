@@ -62,10 +62,23 @@ MAX_BACKLOG_S = 20.0            # audio waiting before the lowest-priority calls
 RADIOS_FRESH_S = 3.0            # the jet's radios as last reported count this long
 TUNED_WITHIN_MHZ = 0.01
 EXPORT_SCRIPT = os.path.join(HERE, "export_cockpit_radios.lua")
+# everything the window shows, also kept in a file, rewritten at each start (git-ignored), so
+# a run can be read afterwards: the jet's radios as they changed, and each call heard, not
+# heard (and why) or dropped (2026-10-06: the volume knobs did nothing in the 00:16 run, and
+# nothing was left to show whether the radios ever reached the player)
+LOG_PATH = os.path.join(HERE, "radio_player.log")
+_log_file = None
 
 
 def log(text):
-    print(time.strftime("%H:%M:%S"), text, flush=True)
+    line = "%s %s" % (time.strftime("%H:%M:%S"), text)
+    print(line, flush=True)
+    if _log_file:
+        try:
+            _log_file.write(line + "\n")
+            _log_file.flush()
+        except OSError:
+            pass
 
 
 def read_call(connection):
@@ -160,6 +173,7 @@ class JetRadios:
     def __init__(self):
         self.report = None
         self.received_at = 0.0
+        self.stale_said = False
         self.lock = threading.Lock()
 
     def listen(self, port=RADIOS_PORT):
@@ -169,34 +183,46 @@ class JetRadios:
         except OSError as error:
             log("can't listen for the jet's radios on UDP %d (%s): every call is played" % (port, error))
             return
-        first = True
+        first, said = True, None
         while True:
             try:
                 data, _ = sock.recvfrom(8192)
                 report = json.loads(data.decode("utf-8"))
-            except Exception:
+            except Exception as error:
+                log("a report from the jet's radios couldn't be read: %s" % error)
                 continue
             with self.lock:
                 self.report, self.received_at = report, time.time()
+                self.stale_said = False
+            # every change of the radios (a volume knob counted in steps of 0.05), so the
+            # log shows what the jet was tuned to and how loud when each call played
+            text = self.text(report, volume_step=0.05)
             if first:
                 first = False
-                log("hearing the jet's radios from DCS: %s" % self.text(report))
+                log("hearing the jet's radios from DCS: %s" % text)
+            elif text != said:
+                log("the jet's radios: %s" % text)
+            said = text
 
     @staticmethod
-    def text(report):
+    def text(report, volume_step=0.01):
         radios = report.get("radios") or []
         if not radios:
             return "%s, no radios read (every call is played)" % report.get("type", "no aircraft")
         return "%s, " % report.get("type", "?") + ", ".join(
             "%s %.3f %s vol %.2f" % (r.get("name", "?"), r.get("mhz", 0), "on" if r.get("on") else "off",
-                                     r.get("volume", 1)) for r in radios)
+                                     round(float(r.get("volume", 1)) / volume_step) * volume_step) for r in radios)
 
     def tuned(self, frequency):
         """(play?, volume, why) for a call on `frequency` MHz."""
         with self.lock:
-            report, fresh = self.report, time.time() - self.received_at <= RADIOS_FRESH_S
+            report, age = self.report, time.time() - self.received_at
+            fresh = age <= RADIOS_FRESH_S
+            if report and not fresh and not self.stale_said:
+                self.stale_said = True
+                log("no word from the jet's radios for %.0f s: every call plays at full volume" % age)
         if frequency is None or not fresh or not report or not report.get("radios"):
-            return True, 1.0, ""
+            return True, 1.0, "" if report else "no word from the jet's radios yet, played at full volume"
         try:
             frequency = float(frequency)
         except (TypeError, ValueError):
@@ -224,8 +250,9 @@ def play_calls(waiting, radios):
             radio = radio_sound.make_radio_call(audio, pitch=float(header.get("pitch", 1.0)), radio_volume=volume)
             sound_s = time.time() - started
             seconds = (len(radio) - 44) / 2.0 / radio_sound.load_settings()["sample_rate_hz"]
-            log("%s: %.1f s of audio, priority %d%s (radio sound %.2f s, %.1f s after the event)"
-                % (describe(header), seconds, priority_of(header), (", on " + why) if why else "", sound_s, age))
+            log("%s: %.1f s of audio, priority %d, %s at volume %.2f (radio sound %.2f s, %.1f s after the event)"
+                % (describe(header), seconds, priority_of(header), ("on " + why) if why else "every call played",
+                   volume, sound_s, age))
             winsound.PlaySound(radio, winsound.SND_MEMORY)
         except Exception as error:   # one bad call never stops the player
             log("%s: not played: %s" % (describe(header), error))
@@ -297,6 +324,11 @@ def main():
         server.bind(("127.0.0.1", args.port))
     except OSError:
         sys.exit("port %d is taken: is the radio player already running?" % args.port)
+    global _log_file   # opened only by the copy that runs, so a second start doesn't wipe its log
+    try:
+        _log_file = open(LOG_PATH, "w", encoding="utf-8")
+    except OSError as error:
+        print("can't write %s (%s): the log is in this window only" % (LOG_PATH, error), flush=True)
     server.listen(8)
     server.settimeout(1.0)   # wakes up each second so Ctrl+C works
 

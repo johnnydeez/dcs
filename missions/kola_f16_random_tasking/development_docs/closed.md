@@ -441,6 +441,106 @@ What item 4's *Where it stands* said about them when they moved:
 
 ---
 
+### 12. SEAD against the air defenses: a standing rotation, rolling them back outside-in (top priority, next)
+
+**Closed 2026-10-05** (John: "item 12 is fine"): the rotation, the site table, the outside-in order, retries and the come-back have flown in every run since 2026-10-02. As built: `plan.md`, *Stages 5–6*, SEAD.
+
+**Status:** built 2026-10-02 (session 15, late), every step of the build order below; harness-tested on the 10:38 plan (planning over six seeds: SEAD flights Red 0–4 → 9, Blue 0–2 → 10–11; the plan's timing rules; a gate harness for wait / retry / cancel chains / the rotation's retry and pull-forward; a 6 h smoke on the re-planned roll). **Flown 2026-10-02 in the 14:55, 16:03, 16:50, 17:15 and 17:48 runs**: the rotation, the site table, `retry … the rotation's next flight` and `wait` all ran; the SEAD profile was reworked along the way (bugs 33, 36, 39, 40, 41) until the 17:48 run killed the Sodankylä SA-10's and the Kuusamo SA-11's search radars. As-built notes: `plan.md`, *Stages 5–6*, SEAD; bug 27 in `closed.md`. Moves to `closed.md` once a run confirms it. Built a little differently from the design below:
+- **Both "to confirm with John" points built as proposed, and John confirmed them** (2026-10-02: the bug 27 split, "probably fine"; a player's SEAD on a step-1 rotation site, "sounds good"; the rest of the deviations below too). The old player form (first threat of an AI mission's route) was dropped instead of kept as a fallback: when no step-1 site fits, the player simply gets another mission type, as for any type that doesn't fit.
+- **The rotation goes on to deeper sites** once the sites reaching over the front are queued (by step, nearest the front first), so it runs the whole window; on the 10:38 roll only 6–7 sites per coalition reach over the front, which filled ~3 h.
+- **Pulled forward on landing too,** not only on a cancel or a loss: the next rotation flight goes when the one before it is down ("one comes back and lands, despawns, the other spins up").
+- **Deeper targets** need at least one ring on the route, every one with a SEAD flight (a target deep but under no ring isn't opened by this).
+- **Heights above the ground** for the reach model (the low figure is the radar horizon).
+
+**Goal:** SEAD is the primary mission that opens everything else (John, 2026-10-01, after the 22:23 run: "every run has almost no SEAD flights and SEAD flights are the primary mission to open up everything else"). Each coalition goes after the enemy's air defenses for their own sake, the way a real air force does, taking a dense, nested network like Kola's core apart from the outside in, with a SEAD 2-ship in the air pretty much the whole mission; strikes and DEAD use what it clears.
+
+**Why:** today a SEAD flight exists only because a strike or DEAD mission needed it (`planMission`, `stages/plan_air_tasking.lua`): pick a target, route to it, plan one SEAD flight per ring the route crosses, all of them or the mission is dropped. That gives almost no SEAD in two ways, and recent rolls hit both:
+- **No clear launch point** (the 21:30 run, `event_logs\2026-10-01_213052.log`): Blue planned 1 of 6 AI attack missions and no SEAD flight; every other mission "no suppression flight in reach". Red's sites cover each other: each SA-11 beside its SA-10 (`SAM_KOSH_SA11_1` under `SAM_KOSH_SA10_1`, `SAM_MONC_SA11_1` under `SAM_OLEN_SA10_1`) and the SA-11s in the Kola Bay cluster have no clear launch point even with item 10's low run-in. Re-planning that roll with item 10 over six seeds still gave Blue 0 SEAD flights.
+- **No strike to go with** (the 22:23 run, `event_logs\2026-10-01_222355.log`; `dcs.log`): nearly every failure was "no target near the front in reach" (8 of 8 tries). Red planned 1 of 6 missions (1 SEAD flight), Blue 3 of 8 (SEAD against 3 sites), while the front was full of SAM sites nobody went after.
+
+**Where it stands:** the pieces exist. Packages fly in sequence (SEAD first, the mission only once its SAMs are out of the fight, `requires_cleared`); a later package reuses an earlier SEAD flight's work (`ctx.cleared`); the run-time gate in `decide_launches.lua` already checks *sites*, not flights (wait, retry once as `<id>_AGAIN`, cancel; `cancel: not needed` when the site is already dead). The low SEAD profile (item 10) works: the 22:23 run's MSN2025 knocked out the Kuusamo SA-11 without it firing once.
+
+**Design** (John, 2026-10-01: "choose the most realistic options"; reworked with John 2026-10-02: one kind of SEAD flight, no classifiers for chaining, and a standing rotation):
+
+1. **One kind of SEAD flight.** A SEAD flight is a mission against one SAM site; its `target` is the site, like any other mission. It carries nothing about who it's for. "Escort" goes (John, 2026-10-02: they don't escort anyone, they fly separately): `planned_as = "escort"`, `escorts`, `suppresses` (→ `target`), `suppressed_by` and the per-mission `cleared_by` are removed; `suppression_of_air_defenses` becomes a mission type of its own.
+2. **One link: `requires_cleared`.** Any flight may list the sites it needs out of the fight: a strike or DEAD the rings its route crosses; a SEAD flight against an inner site the outer sites in its way (outside-in falls out of this, no layer field). The planner keeps one table per coalition, **site → the SEAD flight planned against it** (at most one each; replaces `ctx.cleared`; kept in the plan for the gate and the brief). A site gets its SEAD flight for one of two reasons:
+   - **the general assault** on the enemy air defenses (the rotation, below);
+   - **an attack flight needs it:** its route crosses a site nobody takes yet, so a SEAD flight for that site is planned right then (John: "if a STRIKE or DEAD needs SEAD, it gets SEAD"). Same flight, same fields.
+3. **Which sites the general assault takes:** every enemy medium and long-range site whose ring reaches the contested airspace or own ground (the sites that deny the air over the front), plus any deeper site that blocks one of those. Early-warning radars and short-range sites aren't on it (short-range ones are DEAD targets, as now; base-defense Pantsirs / Tors stay in the way at every step).
+4. **The order, outside in:**
+   - first the sites with a launch point and low route clear of every other site's low-altitude reach (today's `launchPoint` / `suppressionRoute`);
+   - then the sites whose launch point and low route are clear once those are taken out (the low threat map rebuilt without them; the routing cache keyed by it); their `requires_cleared` = the earlier sites they need out of the way;
+   - at most 3 steps deep; among sites of one step, the one whose ring covers the most own and contested airspace first;
+   - sites still blocked aren't attacked, and the planning log says why ("blocked by …", "no base in reach"), one line per site.
+5. **The rotation** (John, 2026-10-02: "a 2 ship flight running pretty much the whole mission on both sides; one comes back and lands, despawns, the other spins up"): the general assault is one queue per coalition, flown back to back by 2-ships, each starting when the one before it is planned to land, from whichever base suits its site; from `first_start_s` until the window or the queue runs out. ~60–90 min a sortie gives ~4–6 flights per coalition in 6 hours, against ~11 medium / long-range sites on Red's side. A site that survives its flight gets its second try (`_AGAIN`) as the next flight in the rotation, not as an extra jet. Planned first, after defensive air, so it has first call on the airborne cap.
+6. **SEAD an attack needs flies extra** (John, 2026-10-02, option b): alongside the rotation, under the airborne cap. With the rotation planned first most strikes reuse its sites, so this should be rare. (Replaces the earlier "at most 2 campaign flights at once" setting.)
+7. **One timing rule:** a flight with `requires_cleared` starts no earlier than `strike_after_suppression_s` (10 min, for battle damage assessment) after the planned salvo of each SEAD flight on those sites, not after its landing (real forces keep up the tempo once the site is assessed down). Same rule for strikes and for SEAD behind SEAD.
+8. **One run-time rule** (the gate in `decide_launches.lua`, keyed on the site table): when a flight is due and a site it needs is still in the fight, wait while that site's SEAD flight is still on its attack (once it has gone cold it's done: don't wait out its planned landing); otherwise fly that SEAD flight once more (`_AGAIN`, one repeat per SEAD flight, shared by every flight waiting on it); if the site is still up after that, cancel. If the site's SEAD flight was itself cancelled, cancel too (`CONTROL … cancel: <site>'s SEAD flight MSN… was cancelled`; today the gate would fly a never-spawned flight as if it were an unflown player tasking). The plan is fixed once built: no re-planning at run time; the rest of the queue carries on.
+9. **No gaps in the rotation:** when a rotation flight is cancelled or lost, the next one in the queue is pulled forward to now (the `launch late` mechanism), so the rotation doesn't sit empty until the next planned start.
+10. **Strikes and DEAD fill in behind:** planned after the rotation; a route crossing only sites the table already covers needs no SEAD of its own and waits on them; a site it doesn't cover gets an extra SEAD flight (point 6), or the mission isn't planned.
+11. **Deeper targets where the way is cleared:** a target may lie up to `max_km_past_contested` (40 km) past the contested airspace as now, or deeper (up to ~100 km, a new setting) when every ring its route crosses has a SEAD flight in the table. This also answers many "no target near the front in reach" failures.
+12. **Players:**
+    - **A player's strike / DEAD:** the AI SEAD flights on its sites are timed to fire before the player's time over the target (`suppression_lead_s`, first thing after takeoff as now); the player isn't gated.
+    - **A player's SEAD** (John confirmed, 2026-10-02): the player is the SEAD flight on a site in the table, a first-step site from the rotation's queue (one with nothing in its `requires_cleared`). Anything waiting on it gets the AI retry if the site survives (bug 17's rule, unchanged), since a player's flight never counts as done for the AI. The old form (the player takes the first threat of an AI mission's route) is dropped: when no step-1 site fits, the player gets another mission type.
+13. **The brief** (John, 2026-10-02: show which SEAD flight had to succeed for the mission to run; keep it simple): each frag gets one line per site the mission needs down, with the SEAD flight and its state; the comms menu's air tasking order tags a mission "after MSN2024 SEAD". A SEAD flight's own line says which missions wait on it ("opening the way for MSN2025, MSN2030"), worked out from the table. Packages (`PKG<n>`) stop being groups (a SEAD flight serves several missions): the attack-package menu lists missions by start time with these lines.
+    ```
+    Needs down: SAM_KUUS_SA11_1 (MSN2024_SEAD, airborne)
+                SAM_SODA_SA10_1 (MSN2026_SEAD, planned 09:40)
+    ```
+
+**Build order:**
+0. **Bug 27, the low-altitude reach** (found in the 2026-10-02 00:57 run; do this first): `lib/sam_reach.lua` lets a site reach only its low-altitude figure up to 3,000 m, but at the pop-up the SA-11 fired at 39 km at 3,200 m (model: 25), the Patriot at 50 km at 2,500 m (model: 30), the SA-10 at 46 km at ~900 m (model: 40). Proposed: the low figure only up to ~300 m, the full ring from ~3,000 m (all three shots fit). Split (John confirmed, 2026-10-02): the truer model for the leash, the scrambles and the kill zones; the launch-point test and the low routes keep the low figure, accepting the short pop-up as exposure (every SEAD jet that died at its pop-up died to its own target, never a neighbouring site; with the truer model a launch point would have to sit outside every other site's full ring, and Kola's core would go unattacked); go cold ignores other sites' rings from the pop-up until the salvo is away. See the retune's DCS run (launch 55 km, pop-up 15 km before it, go cold on the last missile) before building.
+1. The rename and the one-kind model (points 1–2), with the gate keyed on the site table (point 8); everything still planned as today.
+2. The general assault's site list and order (points 3–4), logged.
+3. The rotation and the timing rule (points 5–7, 9).
+4. Strikes behind it, extra SEAD, deeper targets (points 6, 10, 11).
+5. Players and the brief (points 12–13); the event log, the map drawings and `logFlight` lose "escorts".
+
+**Goes with it** (same work, or right after):
+- ~~**Bug 22:** route the low legs and the climb-out around short-range SAM sites~~ (built 2026-10-02, not flown: `closed.md`, bug 22).
+- ~~**Two flights at once against an SA-10 / Patriot / IRIS-T**~~ (not needed, John, 2026-10-02: one 8-missile salvo gets through from close enough in, which the low run-in and pop-up are for; the salvoes shot down were fired from far out).
+- `plan.md` *Packages* gets the as-built notes; the summary line counts SEAD flights (rotation and extra), how deep the order went, and sites not attacked.
+
+**Testing:** the luae harness on the 21:30, 22:23 and 00:57 plans (`kola_last_plan.lua` replays), six seeds each: SEAD flights per coalition, how deep the order reached, which Kola-core sites stay unattacked and why; the rotation's coverage (minutes with no SEAD flight up); peaks under the cap. The controller harness: a flight behind an inner site waiting, its blocker retried as `_AGAIN`, a cancel chaining down, a cancelled rotation flight pulling the next one forward. Then a DCS run.
+
+---
+
+### 13. Airfield info in the comms menu (John, 2026-10-02)
+
+**Closed 2026-10-05** (John: "built and working"). As built: `plan.md`, *Brief*.
+
+**Status:** built 2026-10-02 (session 17), harness-tested on the last plan dump, copied to DCS, not flown. As-built notes: `plan.md`, *Brief*. Moves to `closed.md` once a run confirms it.
+
+**Goal:** a player can land and turn around at any Blue base, not only the one they spawned at, so each Blue base gets a short brief: `Airfield info > <base>`.
+
+**Decided with John:**
+- every Blue base, alphabetical by DCS name; Blue only;
+- one text per base: header (code, echelon, class, elevation), wind and the runway in use (headwind and crosswind), each runway's numbers and length, the next AI takeoff and the next AI landing (one each, with the flight's live state, a line left out if none), one alert line ("2 of 3 jets ready");
+- no TACAN, ILS or frequencies for now (they'd need a data file from the Kola terrain's beacon and radio files);
+- the file is `consumers/create_airfields_brief.lua`.
+
+**To check in the first run:**
+- whether our runway in use matches DCS ATC's and the AI's takeoffs;
+- whether the runway numbers match the airfield charts / F-16's;
+- whether the wind matches the start text and ATC.
+
+---
+
+### 16. SEAD that meets fighters: clear the way, or go elsewhere (John, 2026-10-05)
+
+**Closed 2026-10-05, not built** (John: "no longer needed, we have it on the radio now").
+
+**Goal:** a SEAD flight that keeps dying to enemy fighters in contested airspace gets help, or its effort moves somewhere less hot, instead of the same flight being sent down the same corridor again. John: "A SEAD fail to fighters in contested airspace should call in a CAP or SCRAM or send out a search and destroy mission from a base to clear the way. And rotating flights to other less hot regions also makes sense." A bigger change; a todo item, no place in the order yet.
+
+**Seen** (`event_logs\2026-10-05_103126.log`, 1 h 46 min, no player flying): three tries at the Koshka Yavr SA-10 (MSN2026_SEAD, `_AGAIN`, `_LATER`, all 2x F/A-18C from Kirkenes on the same route) cost 6 Hornets and destroyed no radar. 3 of the 6 died to fighters: two to Red's Su-34 strike flights (R-77s) and one to a Su-27 patrol, all in the Kirkenes-Koshka Yavr corridor, which is also Red's busiest (strikes out of Koshka Yavr and Murmansk, the MiG-31 station). Two more died to the SA-10 and the Luostari SA-8. Blue's whole rotation waits behind that one site. Red lost 4 Su-34s the same way on the Rovaniemi SA-10 (one Kh-31P got through).
+
+**Ideas (decide with John when it comes up):**
+- **Clear the way:** a SEAD flight lost to fighters (or `press on` / `defend` calls on its run-in) marks its corridor as fighter-contested; the next try waits for a patrol commit there (item 4d), a scramble at the fighters seen, or a planned sweep ("search and destroy") from the nearest fighter base, timed ahead of it.
+- **Go elsewhere:** the rotation moves on to sites in a quieter region (by the picture's fighter contacts or losses there) and comes back to the hot one later; goes with bug 35 (no immediate retry into what just killed the first flight) and the come-back (bug 46).
+- **Not the lever** (John, 2026-10-05): tuning the SEAD flight's own fight (the 25 km commit). "Some jets are going to fly into a zone and kill other jets. It's DCS, not real life." The lever is not sending SEAD unsupported into a corridor full of enemy CAP.
+
+---
+
 ## Bugs
 
 Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: what was built). Moved 2026-10-01; fixed in session 12 and not all confirmed in a DCS run yet.

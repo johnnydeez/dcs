@@ -469,6 +469,12 @@ HUMAN_TASKING = {
 --                         on a base in ~5 minutes)
 --   scramble_inbound_rounds  radar-picture rounds in a row (30 s each) a contact must stay
 --                         inbound, so one turn of a patrol's race-track doesn't trigger
+--   scramble_inbound_rounds_enemy_airspace  the same for a contact still over its own
+--                         (our enemy) airspace: longer than one leg of a race-track
+--                         (station_leg_km 50 at ~450 kt is ~3.5 min, ~7 rounds), so a
+--                         patrol whose leg points at us is no raid until it keeps coming
+--                         (bug 3, 2026-10-06: 6 of 7 scrambles in the 00:16 run were stood
+--                         down at patrols on their race-tracks); a turn away resets the count
 --   scramble_reaction_s   { min, max }: cockpit alert — from the decision to the spawn,
 --                         hot on a free ramp spot
 --   scramble_reserve_aircraft  of the coalition's max_airborne_aircraft, this many are kept
@@ -547,6 +553,7 @@ AIR_DEFENSE = {
     scramble_cooldown_s   = 900,
     scramble_warning_min  = 15,
     scramble_inbound_rounds = 2,
+    scramble_inbound_rounds_enemy_airspace = 8,
     scramble_reaction_s   = { 60, 120 },
     scramble_reserve_aircraft = 2,
     scramble_takeoff_s    = 150,

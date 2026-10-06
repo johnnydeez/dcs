@@ -38,6 +38,10 @@ local TYPE_RADIOS = {
 
 local udp = socket.udp()
 local nextSend = 0
+-- said once each in dcs.log (KOLA-RADIOS), so a run shows whether the radios were read:
+-- the first reading with radios, the first failure to read one (2026-10-06: the volume
+-- knobs did nothing in the 00:16 run, and nothing showed whether a reading ever went out)
+local firstReadingSaid, readFailureSaid = false, false
 
 local function readRadio(r)
     local device = GetDevice(r.device)
@@ -65,10 +69,21 @@ local function report()
     if which and cockpit and type(cockpit) ~= "number" then
         for _, r in ipairs(which) do
             local ok, text = pcall(readRadio, r)
-            if ok and text then radios[#radios + 1] = text end
+            if ok and text then
+                radios[#radios + 1] = text
+            elseif not readFailureSaid then
+                readFailureSaid = true
+                log.write("KOLA-RADIOS", log.WARNING, string.format("%s radio of the %s not read: %s", r.name, typeName,
+                    ok and "no such device" or tostring(text)))
+            end
         end
     end
-    return string.format('{"type":"%s","radios":[%s]}', typeName, table.concat(radios, ","))
+    local line = string.format('{"type":"%s","radios":[%s]}', typeName, table.concat(radios, ","))
+    if #radios > 0 and not firstReadingSaid then
+        firstReadingSaid = true
+        log.write("KOLA-RADIOS", log.INFO, "first reading of the jet's radios: " .. line)
+    end
+    return line
 end
 
 local previousActivityNextEvent = LuaExportActivityNextEvent
@@ -79,7 +94,14 @@ LuaExportActivityNextEvent = function(t)
         nextSend = t + SEND_EVERY_S
         local ok, text = pcall(report)
         if ok then
-            pcall(function() udp:sendto(text, "127.0.0.1", PORT) end)
+            local sent, err = pcall(function() return udp:sendto(text, "127.0.0.1", PORT) end)
+            if not sent and not readFailureSaid then
+                readFailureSaid = true
+                log.write("KOLA-RADIOS", log.WARNING, "the jet's radios not sent: " .. tostring(err))
+            end
+        elseif not readFailureSaid then
+            readFailureSaid = true
+            log.write("KOLA-RADIOS", log.WARNING, "the jet's radios not read: " .. tostring(text))
         end
     end
     if previousActivityNextEvent then

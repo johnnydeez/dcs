@@ -350,7 +350,9 @@ end
 -- Jets of flight `id` the controller is removing in the air (`names`), called before they
 -- go: wingmen still up long after their flight's last landing (bug 19). They count as
 -- landed, so whatever waits on the flight sees it down.
-function ScheduleAirTaskingOrders.removedInAir(id, names)
+-- `why`: the reason in words when it isn't "its lead landed" (bug 68: deaf to its
+-- landing orders).
+function ScheduleAirTaskingOrders.removedInAir(id, names, why)
     local f = _flights[id]
     if not f then return end
     local m = f.mission_flown or f.mission
@@ -358,9 +360,14 @@ function ScheduleAirTaskingOrders.removedInAir(id, names)
         _gone[name] = true   -- a stray dead event isn't a loss
         local orphan = f.orphans and f.orphans[name]
         if orphan then orphan.closed = true end
-        ControlAirFlights.say(m.coalition, name, ">>orphan<< removed", string.format("by the controller %s after %s landed, counted as landed (%s)",
-            minSec(timer.getTime() - (orphan and orphan.since or f.last_landing_at or timer.getTime())),
-            orphan and orphan.lead or f.last_landed or "its lead", orphanWhere(m, Unit.getByName(name))))
+        if why then
+            ControlAirFlights.say(m.coalition, name, ">>orphan<< removed", string.format("by the controller: %s; counted as landed (%s)",
+                why, orphanWhere(m, Unit.getByName(name))))
+        else
+            ControlAirFlights.say(m.coalition, name, ">>orphan<< removed", string.format("by the controller %s after %s landed, counted as landed (%s)",
+                minSec(timer.getTime() - (orphan and orphan.since or f.last_landing_at or timer.getTime())),
+                orphan and orphan.lead or f.last_landed or "its lead", orphanWhere(m, Unit.getByName(name))))
+        end
     end
     f.landed = f.landed + #names
     checkDown(id)

@@ -9,7 +9,8 @@
 -- orders: nothing here changes a flight or the plan.
 --
 --   airborne     (AWACS)    a flight's first jet takes off: "Darkstar, Weasel three one, airborne Rovaniemi, SEAD"
---   on_station   (AWACS)    a patrol reaches its race-track
+--   on_station   (AWACS)    a patrol reaches its station waypoint (bug 62: not by distance, as a
+--                station over its own base was "reached" on the takeoff roll)
 --   pushing      (mission)  an attack flight reaches its ingress waypoint (SEAD: its first low-level one)
 --   fox / magnum / rifle / bombs (mission)  a jet fires (repeats folded: RADIO_CALLS.kinds fold_s)
 --   splash       (mission)  a jet kills an aircraft
@@ -17,7 +18,10 @@
 --   jet_down     (mission)  a jet of the flight is lost, said by another jet still flying
 --   winchester / bingo (mission)  weapons gone / fuel low far from home
 --   off_target   (mission) and check_out (AWACS)  the flight is seen heading home: pointing at
---                its landing base, closing on it, well nearer home than its farthest point
+--                its landing base, closing on it, well nearer home than its farthest point;
+--                a patrol once it has left its station (sent home by the controller, or its
+--                orbit over: its off-station waypoint) and is seen heading home, however close
+--                its station is to its base (bug 62)
 -- Who talks: each jet by its own callsign (lib/flight_callsigns.lua), so each has its own
 -- voice. Players' and AWACS flights don't talk here; only coalitions RADIO_CALLS.coalitions.
 -- Event log: RADIO_CALL, one line per call (what, on which channel, by whom).
@@ -36,9 +40,11 @@ local MISSION_WORDS = {
 
 local function norm(deg) return (deg % 360 + 360) % 360 end
 
+-- A unit's name, or nil. A map object (a building a bomb destroyed) is named by a number,
+-- so only text counts (bug 66: "attempt to index local 'unitName' (a number value)").
 local function nameOf(obj)
     local ok, name = pcall(function() return obj:getName() end)
-    return ok and name or nil
+    return ok and type(name) == "string" and name or nil
 end
 
 local function groupNameOf(unit)
@@ -255,10 +261,16 @@ local function onTakeoff(e)
     if not f or f.once.airborne then return end
     local m = f.m
     f.airborne_at = timer.getTime()
-    local target = targetWords(m)
+    -- a scramble names its raid by type, worded by the helper as the other calls do
+    -- ("intercept, Fullback"; bug 65: "intercept on Su-34 at Ivalo", the DCS type name)
+    local intercept = f.kind == "intercept"
+    local raidType = intercept and m.target_label ~= "type unknown" and m.target_label or nil
+    local target = not intercept and targetWords(m) or nil
     sayOnce(f, "airborne", "awacs", nameOf(e.initiator), {
         base = m.launch_base, count = m.count, mission = MISSION_WORDS[m.mission_type] or "", target = target or "",
+        target_type = raidType,
         flags = flags({ patrol = f.kind == "patrol", sead = f.kind == "sead", attack = f.kind == "attack",
+                        intercept = intercept, type_known = raidType ~= nil,
                         single = m.count == 1, two_ship = m.count >= 2, has_target = target ~= nil }) })
 end
 
@@ -277,13 +289,6 @@ function handler:onEvent(e)
 end
 
 -- ── what the flights are doing, looked at every watch_every_s ───
-
-local function distanceToSegment(p, a, b)
-    local dx, dz = b.x - a.x, b.z - a.z
-    local len2 = dx * dx + dz * dz
-    local t = len2 > 0 and math.max(0, math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2)) or 0
-    return Util.dist(p, { x = a.x + t * dx, z = a.z + t * dz })
-end
 
 local function weaponsAboard(units)
     local n = 0
@@ -308,14 +313,6 @@ local function look(groupName, f)
     local heading = norm(math.deg(math.atan2(v.z, v.x)))
     local home = basePos(m.landing_base)
 
-    -- on station: a patrol at its race-track
-    local station = m.attack and m.attack.station
-    local fromStation = station and distanceToSegment(p, { x = station[1], z = station[2] }, { x = station[3], z = station[4] })
-    if f.kind == "patrol" and fromStation and fromStation <= R.on_station_km * 1000 then
-        sayOnce(f, "on_station", "awacs", leadName, { station = "" })
-        f.on_station_seen = true
-    end
-
     -- weapons gone (only once it has had some)
     local aboard = weaponsAboard(jets)
     if aboard > 0 then f.had_weapons = true end
@@ -331,14 +328,21 @@ local function look(groupName, f)
         sayOnce(f, "bingo", "mission", leadName, { base = m.landing_base })
     end
 
-    -- heading home: pointing at its landing base, closing on it, well back from its farthest point
+    -- heading home: pointing at its landing base, closing on it, well back from its farthest
+    -- point; a patrol once it has left its station, whose race-track may lie over its own
+    -- base (bug 62: Viper 5 at Alakurtti never got far enough from it to check out)
     local toHome = norm(math.deg(math.atan2(home.z - p.z, home.x - p.x)))
     local off = math.abs((heading - toHome + 180) % 360 - 180)
     local closing = f.last_home_km and (f.last_home_km - homeKm) >= R.rtb_closing_km
-    local leftStation = f.kind ~= "patrol" or (f.on_station_seen and fromStation and fromStation > 2 * R.on_station_km * 1000)
-    if not f.once.off_target and off <= R.rtb_heading_deg and closing and leftStation
-            and f.farthest_km - homeKm >= R.rtb_after_target_km then
-        local fl = flags({ patrol = f.kind == "patrol", sead = f.kind == "sead", attack = f.kind == "attack" or f.kind == "intercept" })
+    local wentHome
+    if f.kind == "patrol" then
+        wentHome = f.left_station
+    else
+        wentHome = f.farthest_km - homeKm >= R.rtb_after_target_km
+    end
+    if not f.once.off_target and off <= R.rtb_heading_deg and closing and wentHome then
+        local fl = flags({ patrol = f.kind == "patrol", sead = f.kind == "sead", attack = f.kind == "attack",
+                           intercept = f.kind == "intercept" })
         sayOnce(f, "off_target", "mission", leadName, { base = m.landing_base, flags = fl })
         sayOnce(f, "check_out", "awacs", leadName, { base = m.landing_base, flags = fl })
     end
@@ -351,14 +355,26 @@ end
 -- really is. (Until 2026-10-05 late: leaving own airspace, which a flight from a base in
 -- contested airspace did on its takeoff roll.)
 local PUSH_WAYPOINT = { ingress = true, low = true, descent = true }
+-- the controller's decisions that send a flight home (ControlAirFlights.say)
+local SENT_HOME = { handover = true, bingo = true, ["leash home"] = true, ["go cold"] = true, leave = true, land = true }
 
+-- A patrol says it is on station at its station waypoint, and has left it at its
+-- off-station waypoint (its orbit is over), also told by the waypoint's script command.
 function AnnounceFlightActivity.waypoint(groupName, index)
     local ok, err = pcall(function()
         local f = _flights[groupName]
-        if not f or f.once.pushing or (f.kind ~= "attack" and f.kind ~= "sead") then return end
-        local r = f.m.route and f.m.route[index]
-        if not r or not PUSH_WAYPOINT[r.kind] then return end
+        local r = f and f.m.route and f.m.route[index]
+        if not r then return end
         local lead = jetsUp(groupName)[1]
+        if f.kind == "patrol" then
+            if r.kind == "station" then
+                sayOnce(f, "on_station", "awacs", lead and nameOf(lead), { station = "" })
+            elseif r.kind == "station_end" then
+                f.left_station = true
+            end
+            return
+        end
+        if f.once.pushing or (f.kind ~= "attack" and f.kind ~= "sead") or not PUSH_WAYPOINT[r.kind] then return end
         local target = targetWords(f.m)
         sayOnce(f, "pushing", "mission", lead and nameOf(lead), { target = target or "",
             flags = flags({ sead = f.kind == "sead", has_target = target ~= nil }) })
@@ -391,6 +407,12 @@ function AnnounceFlightActivity.start(plan)
     for side in pairs(RADIO_CALLS.coalitions) do any = any or SendRadioCalls.on(side) end
     if not any then return end
     world.addEventHandler(handler)
+    -- a patrol sent home has left its station; its check-out still waits until it is seen
+    -- heading home (an order the DCS AI ignores gets no call)
+    ControlAirFlights.onDecision(function(d)
+        local f = _flights[d.subject]
+        if f and f.kind == "patrol" and SENT_HOME[d.decision] then f.left_station = true end
+    end)
     timer.scheduleFunction(function(_, now)
         local ok, err = pcall(lookAll)
         if not ok then Log.error("flight calls: round failed: " .. tostring(err)) end

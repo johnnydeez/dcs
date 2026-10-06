@@ -71,6 +71,7 @@ if not load("stages\\plan_convoys.lua")           then return end
 if not load("stages\\catalog_targets.lua")        then return end
 if not load("stages\\plan_air_tasking.lua")       then return end
 if not load("consumers\\write_event_log.lua") then return end
+if not load("consumers\\track_weapon_impacts.lua") then return end
 if not load("consumers\\territory.lua")    then return end
 if not load("consumers\\draw_airspace.lua")       then return end
 if not load("consumers\\spawn_ground_groups.lua") then return end
@@ -98,6 +99,7 @@ if not load("consumers\\call_air_picture.lua")    then return end
 if not load("consumers\\send_radio_calls.lua")    then return end
 if not load("consumers\\create_airfields_brief.lua") then return end
 if not load("consumers\\announce_flight_activity.lua") then return end
+if not load("consumers\\announce_controller_orders.lua") then return end
 if not load("consumers\\track_airfield_traffic.lua") then return end
 if CONFIG.SURVEY_FOOTPRINTS and not load("survey\\survey_airbase_footprints.lua") then return end
 if CONFIG.PROBE_PARKED_AIRCRAFT_SPAWN and not load("survey\\probe_parked_aircraft_spawn.lua") then return end
@@ -175,6 +177,9 @@ local function run()
     -- DCS events to the event log from here on: after the preload (its spawns aren't part
     -- of the story), before the first flight spawns
     WriteEventLog.start()
+    -- where each bomb and air-to-ground missile from an aircraft came down, and what it did
+    -- to what was there (event log: IMPACT)
+    TrackWeaponImpacts.start()
     -- callsigns given at run time (scrambles, SEAD retries) carry on from the plan's numbers
     FlightCallsigns.start(plan)
     -- the mission clock: each planned flight is due at its start time, and the controller
@@ -208,6 +213,9 @@ local function run()
     -- Blue fields on each field's frequency; after the airfield brief, whose runways they use
     AnnounceFlightActivity.start(plan)
     TrackAirfieldTraffic.start(plan)
+    -- Darkstar's orders to the AI flights: a listener of the controller's decisions (the
+    -- controller itself knows nothing of the radio)
+    AnnounceControllerOrders.start()
     -- the build summary goes to dcs.log; the screen shows only the weather and the human
     -- taskings (John, session 10)
     local text = Territory.summaryText(plan) .. "\n" .. DrawAirspace.summaryText(plan)

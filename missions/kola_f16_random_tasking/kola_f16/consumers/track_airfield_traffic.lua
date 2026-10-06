@@ -6,7 +6,10 @@
 -- RADIO_CALLS.airfield_every_s for flights departing or arriving, and DCS's takeoff and
 -- landing events. One call per flight per phase, by its lead (the first jet that does it):
 --   taxi       a hot-spawned jet on the ramp starts to move     "taxiing to runway 31" (the runway in use for the wind)
---   departing  its first jet takes off                          the runway from its heading, bound for its first leg
+--   departing  its first jet lines up on a runway: on the       the runway it is on, bound for its first leg
+--              runway, nose along it (event log LINE_UP; bug 67:
+--              it was said at takeoff, after the jet was gone);
+--              at takeoff if the line-up wasn't seen
 --   inbound    back toward its landing base, inside inbound_nm  where it is from the field; the runway in use
 --   final      lined up with a runway end, close in and low     that runway
 --   clear      clear_after_landing_s after its first touchdown  the runway it landed on
@@ -109,6 +112,15 @@ local function onBirth(unit)
     _departing[group] = { m = m, base = m.launch_base, phase = "parked" }
 end
 
+-- "departing" by jet `unit` of flight m from `base` on `runway`: bound for its first leg,
+-- the route's next point from the field.
+local function sayDeparting(m, base, unit, runway)
+    local from, to = basePos(base), m.route and m.route[2]
+    local direction = (from and to) and compass(math.deg(math.atan2(to.z - from.z, to.x - from.x))) or compass(noseHeading(unit))
+    say(m, "departing", base, nameOf(unit), { runway = runway, direction = direction,
+        flags = flagList({ single = m.count == 1, two_ship = m.count >= 2 }) })
+end
+
 local function onTakeoff(unit)
     local group = groupNameOf(unit)
     local d = group and _departing[group]
@@ -117,12 +129,9 @@ local function onTakeoff(unit)
     _departing[group] = nil
     local base = m.launch_base
     _flying[group] = { m = m, base = m.landing_base, airborne_at = timer.getTime(), said = {} }
-    local runway = CreateAirfieldsBrief.runwayFor(base, noseHeading(unit))
-    -- bound for its first leg: the route's next point from the field
-    local from, to = basePos(base), m.route and m.route[2]
-    local direction = (from and to) and compass(math.deg(math.atan2(to.z - from.z, to.x - from.x))) or compass(headingOf(unit))
-    say(m, "departing", base, nameOf(unit), { runway = runway, direction = direction,
-        flags = flagList({ single = m.count == 1, two_ship = m.count >= 2 }) })
+    -- said at its line-up; only a line-up the look missed is said now
+    if d and d.lined_up then return end
+    sayDeparting(m, base, unit, CreateAirfieldsBrief.runwayFor(base, noseHeading(unit)))
 end
 
 local function onLand(unit)
@@ -160,19 +169,51 @@ local function units(group)
     return ok and list or {}
 end
 
+-- The runway at `base` a jet at `p` with its nose on grid heading `nose` is lined up on:
+-- inside the runway's strip (lineup_margin_m beyond its ends and edges) with its nose
+-- within lineup_aligned_deg of one of its directions (so a jet crossing it isn't);
+-- the runway end's number (magnetic, as the F-16 shows it), or nil.
+local function runwayLinedUp(base, p, nose)
+    local R = RADIO_CALLS
+    local ab = _plan.world.airbases[base]
+    for _, rw in ipairs(ab and ab.runways or {}) do
+        local h = math.rad(rw.heading_deg)
+        local dx, dz = p.x - rw.x, p.z - rw.z
+        local along = dx * math.cos(h) + dz * math.sin(h)
+        local across = -dx * math.sin(h) + dz * math.cos(h)
+        local off = math.abs((nose - rw.heading_deg + 180) % 360 - 180)
+        if math.abs(along) <= rw.length / 2 + R.lineup_margin_m and math.abs(across) <= rw.width / 2 + R.lineup_margin_m
+           and (off <= R.lineup_aligned_deg or off >= 180 - R.lineup_aligned_deg) then
+            return CreateAirfieldsBrief.runwayFor(base, nose)
+        end
+    end
+    return nil
+end
+
 local function lookDeparting(group, d)
-    if d.phase ~= "parked" then return end
+    if d.lined_up then return end
     for _, u in ipairs(units(group)) do
-        local ok, moving = pcall(function()
+        local ok, p, speed = pcall(function()
+            if not u:isExist() or u:inAir() then return nil end
             local v = u:getVelocity()
-            return u:isExist() and not u:inAir() and math.sqrt(v.x * v.x + v.z * v.z) >= RADIO_CALLS.taxi_speed_mps
+            return u:getPoint(), math.sqrt(v.x * v.x + v.z * v.z)
         end)
-        if ok and moving then
-            d.phase = "taxi"
-            local runway = CreateAirfieldsBrief.runwayInUse(d.base)
-            say(d.m, "taxi", d.base, nameOf(u), { runway = runway,
-                flags = flagList({ runway_known = runway ~= nil, single = d.m.count == 1, two_ship = d.m.count >= 2 }) })
-            return
+        if ok and p then
+            if d.phase == "parked" and speed >= RADIO_CALLS.taxi_speed_mps then
+                d.phase = "taxi"
+                local runway = CreateAirfieldsBrief.runwayInUse(d.base)
+                say(d.m, "taxi", d.base, nameOf(u), { runway = runway,
+                    flags = flagList({ runway_known = runway ~= nil, single = d.m.count == 1, two_ship = d.m.count >= 2 }) })
+            end
+            -- lined up: the first jet of the flight on a runway, nose along it
+            local runway = d.phase == "taxi" and runwayLinedUp(d.base, p, noseHeading(u))
+            if runway then
+                d.lined_up = true
+                WriteEventLog.add(d.m.coalition, "LINE_UP", nameOf(u) or group, string.format("lined up on runway %02d at %s, %.0f kt",
+                    runway, d.base, speed * 1.94384))
+                sayDeparting(d.m, d.base, u, runway)
+                return
+            end
         end
     end
 end

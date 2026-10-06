@@ -1,11 +1,14 @@
 """Wording adapter, phrase bank, for pilots: turns a flight's or an airfield call's facts into
 what the pilot says.
 
-    python radio_calls/flight_phrase_wording.py      checks pilot_phrases.json and airfield_phrases.json, prints samples
+    python radio_calls/flight_phrase_wording.py      checks pilot_phrases.json, airfield_phrases.json and
+                                                     awacs_order_phrases.json, prints samples
 
-Darkstar's calls have their own wording (phrase_bank_wording.py, awacs_phrases.json); this one
-is for the AI pilots: their mission calls ("Viper two one, Fox three") and their airfield
-traffic calls ("Kallax traffic, Viper two one, final, runway three one, Kallax").
+Darkstar's picture and threat calls have their own wording (phrase_bank_wording.py,
+awacs_phrases.json); this one is for the AI pilots: their mission calls ("Viper two one, Fox
+three") and their airfield traffic calls ("Kallax traffic, Viper two one, final, runway three
+one, Kallax"); and for Darkstar's orders to AI flights ("Weasel one, Darkstar, push cold, RTB"),
+one call kind per kind of order, in awacs_order_phrases.json.
 
 Each call kind in a phrase file is a list of parts, said in order, joined with commas. Each
 part is a list of alternatives: a plain string, or {text, weight, when}. weight (default 1)
@@ -29,6 +32,7 @@ import phrase_bank_wording as words
 HERE = os.path.dirname(os.path.abspath(__file__))
 PILOT_PHRASES_PATH = os.path.join(HERE, "pilot_phrases.json")
 AIRFIELD_PHRASES_PATH = os.path.join(HERE, "airfield_phrases.json")
+ORDER_PHRASES_PATH = os.path.join(HERE, "awacs_order_phrases.json")
 
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
 RECENT_WEIGHT = [0.25, 0.5]
@@ -36,9 +40,12 @@ RECENT_WEIGHT = [0.25, 0.5]
 # Every call kind: the facts it carries (its placeholders) and the conditions it may set.
 # "awacs" (the controller's callsign) and "pause" can be used in any call.
 COMMON = {"callsign", "flight", "awacs", "pause"}
+# a bandit as Darkstar gives it: bearing (magnetic, digit by digit), range (nm), altitude, aspect, type
+BRAA = {"bearing", "range", "altitude", "aspect", "bandit_type"}
 CALLS = {
     # mission calls (the mission and AWACS channels)
-    "airborne":    ({"base", "count", "mission", "target"}, {"patrol", "attack", "sead", "single", "two_ship", "has_target"}),
+    "airborne":    ({"base", "count", "mission", "target", "target_type"},
+                    {"patrol", "attack", "sead", "intercept", "type_known", "single", "two_ship", "has_target"}),
     "on_station":  ({"station"}, set()),
     "pushing":     ({"target"}, {"sead", "has_target"}),
     "fox":         ({"fox", "target_type"}, {"target_known", "fox_one", "fox_two", "fox_three"}),
@@ -50,15 +57,29 @@ CALLS = {
     "jet_down":    ({"down"}, {"ejected"}),
     "winchester":  (set(), set()),
     "bingo":       ({"base"}, set()),
-    "off_target":  ({"base"}, {"sead", "attack", "patrol"}),
-    "check_out":   ({"base"}, {"patrol", "attack", "sead"}),
+    "off_target":  ({"base"}, {"sead", "attack", "patrol", "intercept"}),
+    "check_out":   ({"base"}, {"patrol", "attack", "sead", "intercept"}),
     # airfield traffic calls (each field's own frequency)
     "taxi":        ({"field", "runway"}, {"runway_known", "single", "two_ship"}),
     "departing":   ({"field", "runway", "direction"}, {"single", "two_ship"}),
     "inbound":     ({"field", "runway", "distance", "direction"}, {"runway_known"}),
     "final":       ({"field", "runway"}, set()),
     "clear":       ({"field", "runway"}, {"runway_known"}),
+    # Darkstar's orders to AI flights (the AWACS channel; awacs_order_phrases.json, Darkstar's voice)
+    "engage":          (BRAA, {"has_bandit", "type_known", "type_unknown"}),
+    "resume":          ({"base"}, {"on_mission", "on_way_home", "bandit_destroyed", "bandit_lost", "bandit_far",
+                                   "bandit_cold", "time_up", "sam_threat", "out_of_missiles", "bingo"}),
+    "return_to_base":  (BRAA | {"base", "relief"},
+                        {"has_bandit", "type_known", "type_unknown", "has_relief",
+                         "salvo_complete", "salvo_over", "pressed_too_far", "no_shot", "attack_time_up", "sam_threat",
+                         "raid_destroyed", "raid_turned_away", "raid_lost", "deep_in_enemy_airspace",
+                         "relieved", "bingo", "no_air_to_air", "home"}),
+    "land_at":         ({"base", "bearing", "range"}, {"has_bearing", "wingman_landed", "lost_on_way_home", "overdue"}),
+    "scramble_vector": (BRAA | {"angels"}, {"type_known", "type_unknown", "has_angels"}),
 }
+
+# What the AWACS calls a group's aspect, from the mission's hot / flank / beam / drag / slow.
+ASPECT_WORDS = {"hot": "hot", "flank": "flanking", "beam": "beaming", "drag": "cold", "slow": "slow"}
 
 FOX_WORDS = {1: "one", 2: "two", 3: "three"}
 
@@ -183,6 +204,21 @@ class FlightPhraseBank:
             v["distance"] = words.number_words(max(1, int(round(call["distance_nm"]))))
         if call.get("direction"):
             v["direction"] = words.COMPASS.get(call["direction"], call["direction"])
+        # Darkstar's orders: a bandit's BRAA, the relief's callsign, the altitude to climb to
+        if "bearing" in call:
+            v["bearing"] = words.bearing_words(call["bearing"])
+        if "range_nm" in call:
+            v["range"] = words.range_words(call["range_nm"], "plain")
+        if "altitude_ft" in call:
+            v["altitude"] = words.altitude_words(call["altitude_ft"], "plain", "low")
+        if call.get("aspect"):
+            v["aspect"] = ASPECT_WORDS.get(call["aspect"], call["aspect"])
+        if call.get("bandit_type"):
+            v["bandit_type"] = self.type_words(call["bandit_type"])
+        if call.get("relief"):
+            v["relief"] = spoken_callsign(call["relief"])
+        if call.get("angels_ft"):
+            v["angels"] = words.number_words(max(1, int(round(call["angels_ft"] / 1000.0))))
         return v
 
     def word(self, call):
@@ -215,6 +251,29 @@ SAMPLES = [
     {"call": "inbound", "callsign": "Hornet 2-1", "flight": "Hornet 2", "field": "Kemi_Tornio", "runway": 18,
      "distance_nm": 10, "direction": "N", "flags": ["runway_known"]},
     {"call": "final", "callsign": "Hornet 2-1", "flight": "Hornet 2", "field": "Kemi_Tornio", "runway": 18, "flags": []},
+    # Darkstar's orders
+    {"call": "engage", "callsign": "Weasel 1", "flight": "Weasel 1", "bearing": 92, "range_nm": 24.6,
+     "altitude_ft": 18200, "aspect": "hot", "bandit_type": "Su-27", "flags": ["has_bandit", "type_known"]},
+    {"call": "engage", "callsign": "Hornet 2", "flight": "Hornet 2", "bearing": 7, "range_nm": 31,
+     "altitude_ft": 800, "aspect": "flank", "flags": ["has_bandit", "type_unknown"]},
+    {"call": "resume", "callsign": "Weasel 1", "flight": "Weasel 1", "base": "Rovaniemi",
+     "flags": ["bandit_destroyed", "on_mission"]},
+    {"call": "resume", "callsign": "Weasel 1", "flight": "Weasel 1", "base": "Rovaniemi",
+     "flags": ["sam_threat", "on_way_home"]},
+    {"call": "return_to_base", "callsign": "Weasel 1", "flight": "Weasel 1", "base": "Rovaniemi", "relief": "",
+     "flags": ["salvo_over"]},
+    {"call": "return_to_base", "callsign": "Viper 5", "flight": "Viper 5", "base": "Kallax", "relief": "",
+     "flags": ["raid_turned_away"]},
+    {"call": "return_to_base", "callsign": "Eagle 1", "flight": "Eagle 1", "base": "Bodo", "relief": "Eagle 2",
+     "flags": ["relieved", "has_relief"]},
+    {"call": "return_to_base", "callsign": "Hornet 3", "flight": "Hornet 3", "base": "Ivalo", "relief": "",
+     "bearing": 45, "range_nm": 22, "altitude_ft": 25000, "aspect": "hot", "bandit_type": "MiG-31",
+     "flags": ["no_air_to_air", "has_bandit", "type_known"]},
+    {"call": "land_at", "callsign": "Weasel 1-2", "flight": "Weasel 1", "base": "Rovaniemi", "bearing": 210,
+     "range_nm": 14.8, "flags": ["wingman_landed", "has_bearing"]},
+    {"call": "scramble_vector", "callsign": "Viper 5", "flight": "Viper 5", "bearing": 40, "range_nm": 62,
+     "altitude_ft": 24000, "aspect": "hot", "bandit_type": "Su-34", "angels_ft": 25000,
+     "flags": ["type_known", "has_angels"]},
 ]
 
 
@@ -222,11 +281,12 @@ def main():
     awacs = json.load(open(words.PHRASES_PATH, encoding="utf-8"))
     pilot = FlightPhraseBank(PILOT_PHRASES_PATH, awacs["types"])
     airfield = FlightPhraseBank(AIRFIELD_PHRASES_PATH, awacs["types"])
-    print("pilot_phrases.json and airfield_phrases.json are fine.\n")
+    orders = FlightPhraseBank(ORDER_PHRASES_PATH, awacs["types"])
+    print("pilot_phrases.json, airfield_phrases.json and awacs_order_phrases.json are fine.\n")
     for call in SAMPLES:
-        bank = pilot if call["call"] in pilot.kinds() else airfield
+        bank = next(b for b in (pilot, airfield, orders) if call["call"] in b.kinds())
         for _ in range(2):
-            print("- %-10s %s" % (call["call"], bank.word(call)))
+            print("- %-15s %s" % (call["call"], bank.word(call)))
 
 
 if __name__ == "__main__":

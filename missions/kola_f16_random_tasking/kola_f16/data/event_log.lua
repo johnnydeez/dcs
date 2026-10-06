@@ -23,6 +23,19 @@ EVENT_LOG = {
     -- a POSITION line for every airborne aircraft this often (0 = off)
     position_every_s = 60,
 
+    -- IMPACT lines (consumers/track_weapon_impacts.lua): bombs and air-to-ground missiles
+    -- from aircraft, followed to where they come down
+    impact_every_s       = 0.1,   -- each followed weapon's position read this often (~30 m at 300 m/s)
+    impact_follow_max    = 40,    -- at most this many followed at once (a big salvo's rest unlogged)
+    impact_max_flight_s  = 900,   -- given up after this long in flight
+    impact_air_burst_m   = 50,    -- gone higher than this above the ground: "gone in the air"
+    impact_search_m      = 1500,  -- objects looked for this far around the impact (the nearest named
+    impact_near_m        = 150,   --   when none is within impact_near_m; those within it listed,
+    impact_list_max      = 4,     --   at most this many)
+    impact_snapshot_s    = 1,     -- the objects' life before the blast read this long before it
+    impact_snapshot_m    = 150,   --   comes down, or once it is this low (a missile flying flat)
+    impact_settle_s      = 1.5,   -- the objects' life read again this long after the impact
+
     -- how wide the subject column is (longer names push the details right)
     subject_width   = 26,
 }

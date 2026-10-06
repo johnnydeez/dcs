@@ -12,6 +12,8 @@ copy runs at a time.
 Who says it:
   Darkstar's calls (picture, picture_clean, no_coverage, threat): phrase_bank_wording.py and
       awacs_phrases.json, in the controller's voice (Zira);
+  Darkstar's orders to AI flights (engage, resume, return_to_base, land_at, scramble_vector):
+      flight_phrase_wording.py and awacs_order_phrases.json, in the controller's voice too;
   the AI pilots' mission calls (airborne, pushing, fox, splash, ...): flight_phrase_wording.py
       and pilot_phrases.json; airfield traffic calls (taxi, departing, inbound, final,
       clear): the same with airfield_phrases.json. A pilot's voice comes from
@@ -103,6 +105,7 @@ class Speakers:
         types = self.awacs.data["types"]
         self.pilot = flight_phrase_wording.FlightPhraseBank(flight_phrase_wording.PILOT_PHRASES_PATH, types)
         self.airfield = flight_phrase_wording.FlightPhraseBank(flight_phrase_wording.AIRFIELD_PHRASES_PATH, types)
+        self.orders = flight_phrase_wording.FlightPhraseBank(flight_phrase_wording.ORDER_PHRASES_PATH, types)
         installed = set()
         try:
             installed = {line.split(" | ")[0] for line in windows_voice.list_voices()}
@@ -130,6 +133,13 @@ class Speakers:
                       "expires_s": call.get("expires_s", DEFAULT_EXPIRES_S.get(kind, DEFAULT_PICTURE_EXPIRES_S))}
             if kind != "threat":
                 fields["replaces"] = "picture:" + call.get("to", "")
+            return text, wav, fields
+        if kind in self.orders.kinds():
+            controller = self.awacs.data["controller"]
+            text = self.orders.word(call)
+            wav = windows_voice.speak(text, controller["voice"], controller["rate"])
+            fields = {"speaker": controller["callsign"], "priority": call.get("priority", 2),
+                      "expires_s": call.get("expires_s", 20)}
             return text, wav, fields
         bank = self.pilot if kind in self.pilot.kinds() else self.airfield
         if kind not in bank.kinds():

@@ -388,8 +388,9 @@ local function distanceToSegment(p, a, b)
 end
 
 -- A patrol's relief: the next patrol of its station (a later planned start) that is in
--- the air, on its task and within handover.on_station_km of the race-track, as
--- { id, km }; or false.
+-- the air, on its task, has reached its station waypoint (ControlAirFlights.waypoint;
+-- bug 62: Viper 6 counted as on station 16 s after takeoff, its race-track lying over its
+-- base) and is within handover.on_station_km of the race-track, as { id, km }; or false.
 FACTS.relief = function(s)
     local m = s.mission
     local a = m.attack
@@ -399,7 +400,7 @@ FACTS.relief = function(s)
     for _, w in ipairs(ControlAirFlights.watchedFlights()) do
         local other = w.mission
         if other.station == m.station and other.id ~= m.id and other.start_s > m.start_s
-           and w.state == "on_task" then
+           and w.state == "on_task" and w.on_station_at then
             local g = AssessFlightSituations.liveGroup(other.id)
             local lead = g and leadOf(g)
             local ok, p, air = pcall(function() return lead:getPoint(), lead:inAir() end)

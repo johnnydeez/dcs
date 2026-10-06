@@ -4,7 +4,8 @@
 -- is. Settings in data/air_control.lua; which flights get which directives:
 -- AIR_CONTROL.directives_by_mission_type.
 --
--- An intent is { kind, why, … }:
+-- An intent is { kind, why, reason, … }: why is the CONTROL line's text, reason one
+-- word for it that listeners can read (ControlAirFlights.onDecision; e.g. "salvo_over"):
 --   home        go home now, returning fire only ("going home: <why>")
 --   land        a flight lost on its way home: a new landing order straight to its base
 --   stand_down  still on the ramp: removed, never flies
@@ -60,33 +61,36 @@ DIRECTIVES.leash = {
         local L = AIR_CONTROL.leash
         local c = s.coalition
         -- the raid: any group still alive, in the picture and not back over its own airspace?
-        local why
+        local why, reason
         for _, name in ipairs(w.targets) do
             if A.liveGroup(name) then
                 local contact = TrackRadarPicture.contact(c, name)
                 if contact and not (contact.airspace == "enemy" and not contact.inbound) then
-                    why = nil
+                    why, reason = nil, nil
                     break
                 end
-                why = why or (contact and (name .. " back over its own airspace, heading away")
-                                       or (name .. " lost from the radar picture"))
-            else
-                why = why or A.goneText(name)
+                if not why then
+                    why = contact and (name .. " back over its own airspace, heading away")
+                                   or (name .. " lost from the radar picture")
+                    reason = contact and "raid_turned_away" or "raid_lost"
+                end
+            elseif not why then
+                why, reason = A.goneText(name), "raid_destroyed"
             end
         end
         local raidGone = why ~= nil
         if not s.airborne then
-            if raidGone and not w.airborne_once then return { kind = "stand_down", why = why } end
+            if raidGone and not w.airborne_once then return { kind = "stand_down", why = why, reason = reason } end
             return nil
         end
-        if raidGone then return { kind = "home", why = why } end
+        if raidGone then return { kind = "home", why = why, reason = reason } end
         local depth = A.flightEnemyDepth(s, L.front_search_km * 1000)
         if depth > L.enemy_airspace_km * 1000 then
-            return { kind = "home", why = depth == math.huge and "deep in enemy airspace"
+            return { kind = "home", reason = "deep_in_enemy_airspace", why = depth == math.huge and "deep in enemy airspace"
                 or string.format("%.0f km into enemy airspace", depth / 1000) }
         end
         local site, jet = A.flightKillZone(s, L.killzone_fraction)
-        if site then return { kind = "home", why = insideText(s, jet, site) } end
+        if site then return { kind = "home", why = insideText(s, jet, site), reason = "sam_threat" } end
         return nil
     end,
 }
@@ -108,7 +112,7 @@ DIRECTIVES.suppression = {
         local a = m.attack or {}
         local arms = s.anti_radiation_missiles
         if not mem.arms_at_start then mem.arms_at_start = arms end
-        if mem.arms_at_start > 0 and arms == 0 then return { kind = "home", why = "every anti-radiation missile fired" } end
+        if mem.arms_at_start > 0 and arms == 0 then return { kind = "home", why = "every anti-radiation missile fired", reason = "salvo_complete" } end
         local now = timer.getTime()
         -- the last time a missile left (this check runs 0.5 s after each one)
         if mem.arms_seen and arms < mem.arms_seen then mem.last_shot_at = now end
@@ -127,7 +131,7 @@ DIRECTIVES.suppression = {
             end
         end
         if mem.first_empty and arms > 0 and now > mem.first_empty.at + R.salvo_time_s then
-            return { kind = "home", why = string.format("salvo over: %s fired its last %d s ago, %d anti-radiation missile%s left aboard",
+            return { kind = "home", reason = "salvo_over", why = string.format("salvo over: %s fired its last %d s ago, %d anti-radiation missile%s left aboard",
                 mem.first_empty.name, math.floor(now - mem.first_empty.at), arms, arms == 1 and "" or "s") }
         end
         local p = { x = s.pos.x, z = s.pos.z }
@@ -141,12 +145,12 @@ DIRECTIVES.suppression = {
             local pressed = Util.dist(limit, a.site) - closest
             local firing = mem.last_shot_at and now < mem.last_shot_at + R.press_after_shot_s
             if pressed > R.press_km * 1000 and not firing then
-                return { kind = "home", why = string.format("%.0f km past its %s toward %s", pressed / 1000,
+                return { kind = "home", reason = "pressed_too_far", why = string.format("%.0f km past its %s toward %s", pressed / 1000,
                     a.press_on and "press-on point" or "launch point", a.groups and a.groups[1] or "its site") }
             end
             -- at its press-on point and still no radar to shoot at: home as planned (bug 36)
             if mem.pressed_on and arms > 0 and arms == mem.arms_at_start then
-                return { kind = "home", why = string.format(
+                return { kind = "home", reason = "no_shot", why = string.format(
                     "no shot: pressed on to %.0f km from %s with no radar to shoot at, all %d anti-radiation missiles aboard",
                     Util.dist(p, a.site) / 1000, a.groups and a.groups[1] or "its site", arms) }
             end
@@ -167,9 +171,9 @@ DIRECTIVES.suppression = {
         mem.accepted = mem.accepted or A.acceptedRings(m)
         local popping = a.launch and arms > 0 and function(q) return DirectivesPerFlight.inShotArea(m, q) end or nil
         local other, jet = A.flightKillZone(s, R.killzone_fraction, mem.accepted, true, popping)
-        if other then return { kind = "home", why = insideText(s, jet, other) } end
+        if other then return { kind = "home", why = insideText(s, jet, other), reason = "sam_threat" } end
         if mem.arrived_s and now > mem.arrived_s + R.attack_time_s then
-            return { kind = "home", why = string.format("still on the attack %d min after it reached its launch point",
+            return { kind = "home", reason = "attack_time_up", why = string.format("still on the attack %d min after it reached its launch point",
                 math.floor(R.attack_time_s / 60)) }
         end
         -- said once: at its launch point a while and not one missile away (bug 29); a flight
@@ -219,10 +223,10 @@ DIRECTIVES.fuel = {
             #s.jets > 1 and b.name or s.mission.id, b.fraction * 100, b.km, s.mission.landing_base, b.need * 100)
         if w.state == "going_home" then
             -- already going home: only a fight on the way is broken off
-            if w.defending then return { kind = "resume", why = why } end
+            if w.defending then return { kind = "resume", why = why, reason = "bingo" } end
             return nil
         end
-        return { kind = "home", why = why }
+        return { kind = "home", why = why, reason = "bingo" }
     end,
 }
 
@@ -235,7 +239,7 @@ DIRECTIVES.handover = {
         if not s.airborne then return nil end
         local r = s.relief
         if not r then return nil end
-        return { kind = "home", why = string.format("relieved by %s, on station (%.0f km from the race-track)", r.id, r.km) }
+        return { kind = "home", reason = "relieved", relief = r.id, why = string.format("relieved by %s, on station (%.0f km from the race-track)", r.id, r.km) }
     end,
 }
 
@@ -264,7 +268,7 @@ DIRECTIVES.landing = {
                         or u.name
                 end
             end
-            return { kind = "remove", units = names,
+            return { kind = "remove", units = names, reason = "orphan",
                      why = string.format("%s still in the air %d min after %s landed; removed, counted as landed",
                          table.concat(words, ", "), math.floor((now - record.last_landing_at) / 60), record.last_landed or "its lead") }
         end
@@ -273,7 +277,33 @@ DIRECTIVES.landing = {
             return nil
         end
         local base = s.landing_base_pos
-        if not base or (mem.orders or 0) >= L.max_orders then return nil end
+        if not base then return nil end
+        -- deaf to its landing orders: its last one given orphan_remove_after_s ago and a jet
+        -- still getting farther from its base (bug 68: MSN7024_SEAD_2, its lead shot down,
+        -- flew heading 050 at 26,000 ft past its base for 13 min after two orders; the
+        -- orphan rule above needs a landing in its flight, and there was none) is removed,
+        -- counted as landed
+        if (mem.orders or 0) >= L.max_orders then
+            mem.closest = mem.closest or {}   -- measured from the last order (act)
+            local names, words = {}, {}
+            local deaf = mem.ordered_at and now - mem.ordered_at >= L.orphan_remove_after_s
+            for _, u in ipairs(s.units) do
+                if u.airborne then
+                    local d = Util.dist({ x = u.pos.x, z = u.pos.z }, base)
+                    local closest = math.min(mem.closest[u.name] or d, d)
+                    mem.closest[u.name] = closest
+                    if deaf and d > closest + L.away_km * 1000 then
+                        names[#names + 1] = u.name
+                        words[#words + 1] = string.format("%s %.0f km from %s (it was %.0f km away)", u.name, d / 1000,
+                            m.landing_base, closest / 1000)
+                    end
+                end
+            end
+            if #names == 0 then return nil end
+            return { kind = "remove", units = names, reason = "deaf_to_landing",
+                     why = string.format("%s still flying away %d min after its last landing order",
+                         table.concat(words, ", "), math.floor((now - mem.ordered_at) / 60)) }
+        end
         -- (a jet on the ground may also be a wingman not yet taken off: only the record's
         -- landings say one is home)
         local up, onGround = {}, false
@@ -289,18 +319,20 @@ DIRECTIVES.landing = {
             mem.after_landing = record.last_landing_at
             local names = {}
             for _, u in ipairs(up) do names[#names + 1] = u.name end
-            return { kind = "land", why = string.format("%s landed, %s still in the air", record.last_landed or "a jet", table.concat(names, ", ")) }
+            return { kind = "land", reason = "wingman_landed", units = names,
+                     why = string.format("%s landed, %s still in the air", record.last_landed or "a jet", table.concat(names, ", ")) }
         end
         local homebound = w.state == "going_home" or landedOne or (m.end_s and now > m.end_s)
         if not homebound then return nil end
         -- each jet's closest approach to its base since it was on its way home
         mem.closest = mem.closest or {}
-        local lost
+        local lost, reason = nil, "overdue"
         for _, u in ipairs(up) do
             local d = Util.dist({ x = u.pos.x, z = u.pos.z }, base)
             local closest = math.min(mem.closest[u.name] or d, d)
             mem.closest[u.name] = closest
             if not lost and d > closest + L.away_km * 1000 then
+                reason = "lost_on_way_home"
                 lost = string.format("%s lost after its landing: %.0f km from %s and getting farther (it was %.0f km away)",
                     u.name, d / 1000, m.landing_base, closest / 1000)
             end
@@ -312,7 +344,7 @@ DIRECTIVES.landing = {
         -- with a jet of it on the ground the order goes to each jet in the air on its own
         -- (GiveOrders.land), so a landed one isn't sent up again
         if not lost then return nil end
-        return { kind = "land", why = lost }
+        return { kind = "land", why = lost, reason = reason }
     end,
 }
 
@@ -401,7 +433,7 @@ DIRECTIVES.self_defence = {
         if not s.airborne then
             -- its fighting jet shot down with a wingman still on the ramp: the fight ends,
             -- so the next jet up starts clean (bug 48)
-            if d then return { kind = "resume", why = "no jet of the flight left in the air" } end
+            if d then return { kind = "resume", why = "no jet of the flight left in the air", reason = "no_jets_up" } end
             return nil
         end
         local R = AIR_CONTROL.self_defence
@@ -410,38 +442,38 @@ DIRECTIVES.self_defence = {
         if d then
             -- in a fight: back to the mission when it's over
             mem.hot = nil
-            local why
+            local why, reason
             local t = findThreat(s, d.group)
             if not A.liveGroup(d.group) then
-                why = A.goneText(d.group)
+                why, reason = A.goneText(d.group), "bandit_destroyed"
             -- a bandit that just fired at the flight stays the fight for shot_memory_s
             -- whether the picture holds it or not (2026-10-02: MSN5024_SEAD dropped the
             -- F-15C that had just fired at it 4 s into the fight, Red's picture never held it)
             elseif not TrackRadarPicture.contact(s.coalition, d.group)
                 and not (s.shot_at and s.shot_at.shooter_group == d.group) then
-                why = d.group .. " lost from the radar picture"
+                why, reason = d.group .. " lost from the radar picture", "bandit_lost"
             elseif s.air_to_air.radar_count == 0 then
-                why = "out of radar missiles"
+                why, reason = "out of radar missiles", "out_of_missiles"
             elseif not t then
-                why = d.group .. string.format(" beyond %d km", R.warning_range_km)
+                why, reason = d.group .. string.format(" beyond %d km", R.warning_range_km), "bandit_far"
             elseif t.aspect_deg > R.cold_aspect_deg then
-                why = d.group .. " turned cold"
+                why, reason = d.group .. " turned cold", "bandit_cold"
             -- time is up, but never in the middle of the shots: not while a missile of the
             -- flight is still flying, nor within shot_memory_s of being fired upon
             -- (2026-10-04, after the 2026-10-03 14:15 run: both SEAD duels were timed out
             -- the moment the missiles were in the air, and the jets were hit 1-33 s later)
             elseif now - d.since > R.max_engage_s and s.own_missiles_in_flight == 0 and not s.shot_at then
-                why = string.format("%d min on %s, time is up", math.floor(R.max_engage_s / 60), d.group)
+                why, reason = string.format("%d min on %s, time is up", math.floor(R.max_engage_s / 60), d.group), "time_up"
             else
                 local site, jet = fightKillZone(s, mem, R)
                 if site then
-                    why = "breaking off: " .. insideText(s, jet, site)
+                    why, reason = "breaking off: " .. insideText(s, jet, site), "sam_threat"
                     -- not that bandit again while the flight is still inside a kill zone
                     -- (17:15 run: MSN2025_SEAD_AGAIN defend, break off 5 s later, defend again)
                     mem.held_off = d.group
                 end
             end
-            if why then return { kind = "resume", why = why } end
+            if why then return { kind = "resume", why = why, reason = reason } end
             return nil
         end
         if mem.held_off and not fightKillZone(s, mem, R) then mem.held_off = nil end
@@ -467,7 +499,7 @@ DIRECTIVES.self_defence = {
         end
         if w.state == "going_home" then return nil end
         local b = bandits[1]
-        return { kind = "home", why = string.format("bandit %s, %s%s; %s", threatText(b), closingText(b),
+        return { kind = "home", reason = "no_air_to_air", bandit = b.group, why = string.format("bandit %s, %s%s; %s", threatText(b), closingText(b),
             b.fired and ", it fired at the flight" or "",
             s.air_to_air.count > 0 and "only infrared missiles aboard" or "no air-to-air missiles aboard") }
     end,

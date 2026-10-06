@@ -183,6 +183,12 @@ local function ownFrom(unit)
              height_m = p.y - (okGround and ground or 0) }
 end
 
+-- One contact's facts (bearing, range, altitude, aspect …, as `describe` gives them) as
+-- seen from `unit`, an AI jet: Darkstar's orders to AI flights (announce_controller_orders.lua).
+function CallAirPicture.groupFrom(unit, contact)
+    return describe(contact, ownFrom(unit))
+end
+
 -- ── coverage ────────────────────────────────────────────────────
 
 -- Radar horizon, metres, between antennas / targets h1 and h2 metres up (4/3 earth).

@@ -9,7 +9,9 @@
 --      airspace, or that the picture has inbound on an own asset (a held base, a catalog
 --      target) it will reach within scramble_warning_min minutes, for
 --      scramble_inbound_rounds rounds in a row — in whatever airspace it is now (John:
---      100 km was far too close; a jet at 60 nm can bomb a base in ~5 min)
+--      100 km was far too close; a jet at 60 nm can bomb a base in ~5 min); still over
+--      its own airspace, scramble_inbound_rounds_enemy_airspace (longer than a race-track
+--      leg, bug 3)
 --   2. skipped when a live scramble is already after it, when an airborne patrol's
 --      defended zone or commit circle covers where it is (the patrol handles it), or
 --      while it is inside an enemy kill zone (under enemy SAM cover: the leash would only
@@ -358,7 +360,8 @@ local function check(st)
             local reason
             if c.airspace == "own" then
                 reason = "over own airspace"
-            elseif threatening and st.inbound[c.group] >= AIR_DEFENSE.scramble_inbound_rounds then
+            elseif threatening and st.inbound[c.group] >= (c.airspace == "enemy"
+                    and AIR_DEFENSE.scramble_inbound_rounds_enemy_airspace or AIR_DEFENSE.scramble_inbound_rounds) then
                 reason = string.format("%s airspace, %s", c.airspace, threatText(minutes, asset))
             end
             if reason and not answered(st, c.group) then
