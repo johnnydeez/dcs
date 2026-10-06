@@ -7,7 +7,7 @@
 -- ones that are orders to a flight in the air, on the AWACS channel, in Darkstar's voice.
 -- Unlike the pilots' calls (announce_flight_activity.lua), which come from what a flight
 -- actually does, these come from the decision itself: the order is what Darkstar said,
--- whether or not the DCS AI follows it. No pilot answers yet (John, 2026-10-05: next).
+-- whether or not the DCS AI follows it; the pilot's answer comes only if it does (below).
 --
 --   engage           defend: "Weasel 1, Darkstar, bandit zero niner zero, twenty-five, hot, engage"
 --   resume           back on mission / way home, after an engage that was said: "… bandit
@@ -21,6 +21,14 @@
 --                    (the jet is still on the ground, 1-2 min from spawning).
 -- Not said: launch decisions (wait, retry, cancel, launch late, come back), alert jets, no
 -- scramble, ramp stand-downs, press on, leave threat, orphans.
+-- Who says it: a decision only the pilot could make (RADIO_CALLS.orders.pilot_reasons: fuel,
+-- weapons gone, no emitter; a controller can't see inside a jet, John 2026-10-06) is said
+-- as the flight lead's report ("Darkstar, Viper one, bingo, RTB Ivalo"), then Darkstar's
+-- "copy" (acknowledge); the order to DCS is the controller's either way. Everything the
+-- controller sees on the radar picture stays Darkstar's order.
+-- The pilots answer the orders (roadmap item 7 step 15) from what the flight then does: the
+-- watcher (announce_flight_activity.lua) hears each order as said (SendRadioCalls.onCall);
+-- every order carries the flight's group and, for an engage or a vector, the bandit's.
 -- Bearings and ranges are from the flight's lead to the bandit as the coalition's radar
 -- picture holds it (grid-based magnetic, as Darkstar's picture calls), else to where the
 -- bandit really is (a bandit that fired at the flight but no radar holds).
@@ -118,14 +126,33 @@ local function flagList(set)
     return out
 end
 
--- Say `kind` to flight m (or to `addressee`, a jet's callsign), with `facts` and `flags`.
+-- Say `kind` to flight m (or to `addressee`, a jet's callsign), with `facts` and `flags`;
+-- the call's id.
 local function say(m, kind, facts, flags, addressee, why)
     facts.callsign = addressee or FlightCallsigns.text(m)
     facts.flight = FlightCallsigns.text(m)
+    facts.group = m.id
     facts.flags = flagList(flags)
-    SendRadioCalls.say(m.coalition, kind, "awacs", facts)
+    local id = SendRadioCalls.say(m.coalition, kind, "awacs", facts)
     WriteEventLog.add(m.coalition, "RADIO_CALL", m.id, string.format("%s on awacs by %s to %s%s", kind,
         RADIO_CALLS.awacs_callsign[m.coalition] or "AWACS", facts.callsign, why and (", " .. why) or ""))
+    return id
+end
+
+-- A decision only the pilot could make: the flight lead reports it to Darkstar ("Darkstar,
+-- Viper one, bingo, RTB Ivalo"), by the flight's callsign in the lead's own voice, then
+-- Darkstar says "copy". `flags`: the reason, and rtb / fight with on_mission / on_way_home.
+local function pilotReport(m, flags, reason)
+    local lead = leadOf(m.id)
+    if not lead then return end
+    local okName, leadName = pcall(function() return lead:getName() end)
+    local n = okName and tonumber(leadName:match("_(%d+)$") or "") or 1
+    local facts = { callsign = FlightCallsigns.text(m), flight = FlightCallsigns.text(m),
+                    voice_key = FlightCallsigns.jet(m, n), base = m.landing_base, group = m.id, flags = flagList(flags) }
+    local id = SendRadioCalls.say(m.coalition, "report", "awacs", facts)
+    WriteEventLog.add(m.coalition, "RADIO_CALL", m.id, string.format("report on awacs by %s to %s, %s", facts.callsign,
+        RADIO_CALLS.awacs_callsign[m.coalition] or "AWACS", reason))
+    say(m, "acknowledge", { base = m.landing_base, answers = id }, flags, nil, reason)
 end
 
 -- ── the decisions ───────────────────────────────────────────────
@@ -139,6 +166,7 @@ local function engage(m, d)
     local facts, flags = braa(m.coalition, m.id, bandit)
     if not facts.bearing then return end
     f.engaged[bandit], f.resumed[bandit] = now, nil
+    facts.bandit = bandit
     say(m, "engage", facts, flags, nil, bandit)
 end
 
@@ -151,12 +179,23 @@ local function resume(m, d)
     f.resumed[bandit] = true
     local flags = { on_way_home = d.decision == "back on way home", on_mission = d.decision ~= "back on way home" }
     if det.reason then flags[det.reason] = true end
+    -- out of missiles, or bingo: the pilot knocks it off and says so
+    if RADIO_CALLS.orders.pilot_reasons[det.reason] then
+        flags.fight = true
+        pilotReport(m, flags, det.reason)
+        return
+    end
     say(m, "resume", { base = m.landing_base }, flags, nil, det.reason)
 end
 
 local function returnToBase(m, d)
     local det = d.details
     if not leadOf(m.id) then return end
+    -- bingo, Magnums gone, no emitter: the pilot's call, not Darkstar's
+    if RADIO_CALLS.orders.pilot_reasons[det.reason] then
+        pilotReport(m, { rtb = true, [det.reason] = true }, det.reason)
+        return
+    end
     local facts, flags = {}, {}
     if d.decision == "leave" then
         facts, flags = braa(m.coalition, m.id, det.threat)
@@ -235,7 +274,8 @@ local function vector(id, unitName)
                     altitude_ft = math.floor(g.altitude_ft + 0.5), aspect = g.aspect,
                     bandit_type = known and g.type or nil,
                     angels_ft = climb and math.floor(climb * FEET_PER_METRE + 0.5) or nil,
-                }, { type_known = known and true or nil, type_unknown = (not known) or nil, has_angels = climb ~= nil },
+                    bandit = group,
+                },{ type_known = known and true or nil, type_unknown = (not known) or nil, has_angels = climb ~= nil },
                 nil, group)
                 return
             end

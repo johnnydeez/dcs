@@ -33,6 +33,10 @@ Header fields, all but audio_bytes optional:
     replaces            a key ("picture:Snake one one"): a call waiting with the same key is
                         dropped, so a newer picture replaces an older one not yet played
     pitch               the voice played this much faster and higher (1.05) or slower (0.95)
+    call_id             the mission's id of the call
+    answers             the call_id of the call this one answers (a pilot's "copy, RTB" to
+                        Darkstar's order): dropped when that call was dropped, so nobody
+                        answers an order that was never heard
 When more than MAX_BACKLOG_S of audio is waiting, the lowest-priority calls go first
 (the oldest of them), so a busy fight never leaves the radio minutes behind.
 send_radio_call.py sends test calls; speak_mission_calls.py sends the mission's.
@@ -60,6 +64,8 @@ MAX_AUDIO_BYTES = 50 * 1024 * 1024
 DCS_CHECK_EVERY_S = 30
 MAX_BACKLOG_S = 20.0            # audio waiting before the lowest-priority calls are dropped
 RADIOS_FRESH_S = 3.0            # the jet's radios as last reported count this long
+UNPLAYED_KEPT_S = 120.0         # a dropped call's id is remembered this long for its answers
+                                #   (ids start over each mission; answers come within a minute)
 TUNED_WITHIN_MHZ = 0.01
 EXPORT_SCRIPT = os.path.join(HERE, "export_cockpit_radios.lua")
 # everything the window shows, also kept in a file, rewritten at each start (git-ignored), so
@@ -135,6 +141,22 @@ class CallsWaiting:
     def __init__(self):
         self.calls = []        # (header, audio, received_at, seconds)
         self.ready = threading.Condition()
+        self.unplayed = {}     # call_id of a call dropped → when, for the calls answering it
+
+    def dropped(self, header):
+        """Remember that this call was dropped, so an answer to it is dropped too."""
+        if header.get("call_id") is not None:
+            with self.ready:
+                now = time.time()
+                self.unplayed[header["call_id"]] = now
+                for old in [k for k, t in self.unplayed.items() if now - t > UNPLAYED_KEPT_S]:
+                    del self.unplayed[old]
+
+    def answers_dropped(self, header):
+        """True when this call answers a call that was dropped."""
+        with self.ready:
+            at = self.unplayed.get(header.get("answers")) if header.get("answers") is not None else None
+            return at is not None and time.time() - at <= UNPLAYED_KEPT_S
 
     def add(self, header, audio):
         with self.ready:
@@ -142,6 +164,7 @@ class CallsWaiting:
             if key:
                 for old in [c for c in self.calls if c[0].get("replaces") == key]:
                     self.calls.remove(old)
+                    self.unplayed[old[0].get("call_id")] = time.time()
                     log("%s: replaced by a newer call before it played (%s)" % (describe(old[0]), key))
             call = (header, audio, time.time(), audio_seconds(audio))
             priority = priority_of(header)
@@ -157,6 +180,8 @@ class CallsWaiting:
             lowest = max(priority_of(c[0]) for c in self.calls)
             victim = next(c for c in self.calls if priority_of(c[0]) == lowest)
             self.calls.remove(victim)
+            if victim[0].get("call_id") is not None:
+                self.unplayed[victim[0]["call_id"]] = time.time()
             log("%s: dropped, the radio is %.0f s behind (priority %d)"
                 % (describe(victim[0]), sum(c[3] for c in self.calls) + victim[3], lowest))
 
@@ -239,7 +264,12 @@ def play_calls(waiting, radios):
         header, audio, received_at, _ = waiting.next()
         try:
             age = age_of(header, received_at)
+            if waiting.answers_dropped(header):
+                waiting.dropped(header)
+                log("%s: dropped, the call it answers (%s) was dropped" % (describe(header), header["answers"]))
+                continue
             if header.get("expires_s") is not None and age > header["expires_s"]:
+                waiting.dropped(header)
                 log("%s: dropped, %.0f s old (expires after %s s)" % (describe(header), age, header["expires_s"]))
                 continue
             play, volume, why = radios.tuned(header.get("frequency"))
@@ -255,6 +285,7 @@ def play_calls(waiting, radios):
                    volume, sound_s, age))
             winsound.PlaySound(radio, winsound.SND_MEMORY)
         except Exception as error:   # one bad call never stops the player
+            waiting.dropped(header)
             log("%s: not played: %s" % (describe(header), error))
 
 

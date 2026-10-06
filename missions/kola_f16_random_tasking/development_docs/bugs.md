@@ -389,7 +389,7 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 63. Darkstar told Weasel 4 "back to your tasking", then "RTB" 5 s later
 
-**Status:** open, cause found (John, 2026-10-06: "we need to know why before the fix"). No fix built.
+**Status:** open, parked (John, 2026-10-06): option (a) below "sounds good", but SEAD is mostly working, so no SEAD behaviour changes for now. Build (a) when SEAD is opened up again.
 
 **Seen:** `MSN2028_SEAD`, 04:51:34–04:51:49. Weasel 4 (2× F-16, on its low run-in to the Monchegorsk SA-10) took on the Su-30 MSN7009_CAP at 24 km (inside `sead_commit_km`, as designed). The fight climbed MSN2028_SEAD_2 to ~7,600 ft (12,500 ft by 04:52:11):
 - 04:51:44 `back on mission: breaking off: MSN2028_SEAD_2 inside the kill zone of SAM_MONC_SA10_1` → Darkstar "you're in a SAM ring, break off, back to your tasking";

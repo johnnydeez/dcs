@@ -7,8 +7,12 @@
     "flight_phrase_wording.py, CALLS). Placeholders: {callsign} the jet talking (Weasel three one),",
     "{flight} its flight (Weasel three), {awacs} the controller (Darkstar), {pause}, and each call's",
     "own facts (CALLS). Add as many alternatives as you like: the file is checked when the helper starts.",
+    "report and answer are said to Darkstar by the flight's callsign ({callsign} is then Weasel one):",
+    "report, a decision only the pilot could make (bingo, Magnum complete, no emitter, Winchester);",
+    "answer, the answer to Darkstar's order once the flight is seen following it.",
     "Brevity: Fox one / two / three = semi-active radar / infrared / active radar air-to-air missile;",
-    "Magnum = anti-radiation missile; Rifle = air-to-ground missile; Splash = a kill."
+    "Magnum = anti-radiation missile; Rifle = air-to-ground missile; Splash = a kill; buster = full",
+    "military power; knock it off = stop the fight."
   ],
 
   "voices": {
@@ -99,14 +103,43 @@
     ],
 
     "winchester": [
-      [ "{callsign}" ],
+      [ "{awacs}, {callsign}", "{awacs}, {flight}" ],
       [ "Winchester", "Winchester, RTB" ]
     ],
 
     "bingo": [
-      [ "{callsign}" ],
+      [ "{awacs}, {callsign}", "{awacs}, {flight}" ],
       [ "bingo", "bingo fuel" ],
       [ "RTB {base}", "RTB", "heading home" ]
+    ],
+
+    "report": [
+      [ "{awacs}, {callsign}" ],
+      [ { "text": "bingo", "when": "bingo" }, { "text": "bingo fuel", "when": "bingo" },
+        { "text": "Magnum complete", "when": "salvo_complete" }, { "text": "Magnums complete", "when": "salvo_complete", "weight": 0.5 },
+        { "text": "Magnum complete", "when": "salvo_over" }, { "text": "shots away", "when": "salvo_over" },
+        { "text": "no emitter", "when": "no_shot" }, { "text": "no emitter, no shot", "when": "no_shot" },
+        { "text": "Winchester", "when": "out_of_missiles" }, { "text": "Winchester air to air", "when": "out_of_missiles", "weight": 0.5 } ],
+      [ { "text": "knocking it off", "when": "fight" }, { "text": "knock it off", "when": "fight", "weight": 0.5 },
+        { "text": "", "weight": 0.4 } ],
+      [ { "text": "RTB {base}", "when": "rtb" }, { "text": "egressing", "when": "rtb" }, { "text": "heading home", "when": "rtb" },
+        { "text": "RTB", "when": "on_way_home" }, { "text": "continuing RTB", "when": "on_way_home" },
+        { "text": "resuming", "when": "on_mission" }, { "text": "back to the mission", "when": "on_mission" } ]
+    ],
+
+    "answer": [
+      [ "{callsign}" ],
+      [ { "text": "committing", "when": "engage" }, { "text": "engaged", "when": "engage" },
+        { "text": "copy, committing", "when": "engage", "weight": 0.6 },
+        { "text": "contact, {bandit_type}, committing", "when": "type_known", "weight": 0.6 },
+        { "text": "copy, resuming", "when": "resume_mission" }, { "text": "resuming", "when": "resume_mission" },
+        { "text": "back to the mission", "when": "resume_mission", "weight": 0.5 },
+        { "text": "continuing RTB", "when": "resume_home" }, { "text": "copy, RTB", "when": "resume_home" },
+        { "text": "copy, RTB", "when": "rtb" }, { "text": "wilco, heading home", "when": "rtb" },
+        { "text": "RTB {base}", "when": "rtb" }, { "text": "copy, checking out", "when": "rtb", "weight": 0.6 },
+        { "text": "copy, {base}", "when": "land" }, { "text": "wilco, recovering {base}", "when": "land" },
+        { "text": "copy vector", "when": "vector" }, { "text": "copy vector, buster", "when": "vector" },
+        { "text": "snapping, buster", "when": "vector", "weight": 0.5 } ]
     ],
 
     "off_target": [

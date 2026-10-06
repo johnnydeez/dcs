@@ -42,6 +42,9 @@ RECENT_WEIGHT = [0.25, 0.5]
 COMMON = {"callsign", "flight", "awacs", "pause"}
 # a bandit as Darkstar gives it: bearing (magnetic, digit by digit), range (nm), altitude, aspect, type
 BRAA = {"bearing", "range", "altitude", "aspect", "bandit_type"}
+# the controller's reasons only the pilot would know: the pilot's report, Darkstar's "copy"
+# (RADIO_CALLS.orders.pilot_reasons in the mission)
+PILOT_REASONS = {"bingo", "salvo_complete", "salvo_over", "no_shot", "out_of_missiles"}
 CALLS = {
     # mission calls (the mission and AWACS channels)
     "airborne":    ({"base", "count", "mission", "target", "target_type"},
@@ -57,6 +60,11 @@ CALLS = {
     "jet_down":    ({"down"}, {"ejected"}),
     "winchester":  (set(), set()),
     "bingo":       ({"base"}, set()),
+    # to Darkstar, by the flight's callsign: a decision only the pilot could make, and the
+    # answer to Darkstar's order once the flight is seen following it
+    "report":      ({"base"}, PILOT_REASONS | {"fight", "rtb", "on_mission", "on_way_home"}),
+    "answer":      ({"base", "bandit_type"},
+                    {"engage", "resume_mission", "resume_home", "rtb", "land", "vector", "type_known"}),
     "off_target":  ({"base"}, {"sead", "attack", "patrol", "intercept"}),
     "check_out":   ({"base"}, {"patrol", "attack", "sead", "intercept"}),
     # airfield traffic calls (each field's own frequency)
@@ -68,14 +76,15 @@ CALLS = {
     # Darkstar's orders to AI flights (the AWACS channel; awacs_order_phrases.json, Darkstar's voice)
     "engage":          (BRAA, {"has_bandit", "type_known", "type_unknown"}),
     "resume":          ({"base"}, {"on_mission", "on_way_home", "bandit_destroyed", "bandit_lost", "bandit_far",
-                                   "bandit_cold", "time_up", "sam_threat", "out_of_missiles", "bingo"}),
+                                   "bandit_cold", "time_up", "sam_threat"}),
     "return_to_base":  (BRAA | {"base", "relief"},
                         {"has_bandit", "type_known", "type_unknown", "has_relief",
-                         "salvo_complete", "salvo_over", "pressed_too_far", "no_shot", "attack_time_up", "sam_threat",
+                         "pressed_too_far", "attack_time_up", "sam_threat",
                          "raid_destroyed", "raid_turned_away", "raid_lost", "deep_in_enemy_airspace",
-                         "relieved", "bingo", "no_air_to_air", "home"}),
+                         "relieved", "no_air_to_air", "home"}),
     "land_at":         ({"base", "bearing", "range"}, {"has_bearing", "wingman_landed", "lost_on_way_home", "overdue"}),
     "scramble_vector": (BRAA | {"angels"}, {"type_known", "type_unknown", "has_angels"}),
+    "acknowledge":     ({"base"}, PILOT_REASONS | {"fight", "rtb", "on_mission", "on_way_home"}),
 }
 
 # What the AWACS calls a group's aspect, from the mission's hot / flank / beam / drag / slow.
@@ -261,7 +270,7 @@ SAMPLES = [
     {"call": "resume", "callsign": "Weasel 1", "flight": "Weasel 1", "base": "Rovaniemi",
      "flags": ["sam_threat", "on_way_home"]},
     {"call": "return_to_base", "callsign": "Weasel 1", "flight": "Weasel 1", "base": "Rovaniemi", "relief": "",
-     "flags": ["salvo_over"]},
+     "flags": ["pressed_too_far"]},
     {"call": "return_to_base", "callsign": "Viper 5", "flight": "Viper 5", "base": "Kallax", "relief": "",
      "flags": ["raid_turned_away"]},
     {"call": "return_to_base", "callsign": "Eagle 1", "flight": "Eagle 1", "base": "Bodo", "relief": "Eagle 2",
@@ -274,6 +283,18 @@ SAMPLES = [
     {"call": "scramble_vector", "callsign": "Viper 5", "flight": "Viper 5", "bearing": 40, "range_nm": 62,
      "altitude_ft": 24000, "aspect": "hot", "bandit_type": "Su-34", "angels_ft": 25000,
      "flags": ["type_known", "has_angels"]},
+    # the pilots' reports and Darkstar's copy, and the answers to Darkstar's orders
+    {"call": "report", "callsign": "Viper 1", "flight": "Viper 1", "base": "Ivalo", "flags": ["bingo", "rtb"]},
+    {"call": "acknowledge", "callsign": "Viper 1", "flight": "Viper 1", "base": "Ivalo", "flags": ["bingo", "rtb"]},
+    {"call": "report", "callsign": "Weasel 1", "flight": "Weasel 1", "base": "Rovaniemi", "flags": ["salvo_complete", "rtb"]},
+    {"call": "report", "callsign": "Eagle 2", "flight": "Eagle 2", "base": "Bodo",
+     "flags": ["out_of_missiles", "fight", "on_mission"]},
+    {"call": "answer", "callsign": "Weasel 1", "flight": "Weasel 1", "base": "Rovaniemi", "bandit_type": "Su-30",
+     "flags": ["engage", "type_known"]},
+    {"call": "answer", "callsign": "Weasel 1", "flight": "Weasel 1", "base": "Rovaniemi", "flags": ["resume_mission"]},
+    {"call": "answer", "callsign": "Hornet 2", "flight": "Hornet 2", "base": "Ivalo", "flags": ["rtb"]},
+    {"call": "answer", "callsign": "Weasel 1-2", "flight": "Weasel 1", "base": "Rovaniemi", "flags": ["land"]},
+    {"call": "answer", "callsign": "Ragin 3", "flight": "Ragin 3", "base": "Alakurtti", "flags": ["vector"]},
 ]
 
 

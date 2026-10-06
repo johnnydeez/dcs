@@ -10,7 +10,9 @@
     "(Weasel one), {awacs} Darkstar, {pause}, and each call's own facts: a bandit as {bearing} (magnetic,",
     "digit by digit), {range} (nm), {altitude}, {aspect} (hot, flanking, beaming, cold), {bandit_type};",
     "{base} the flight's landing base, {relief} a patrol's relief, {angels} the altitude to climb to.",
-    "The reason words (salvo_over, bingo, raid_turned_away …) are the controller's: each order says why.",
+    "The reason words (raid_turned_away, sam_threat …) are the controller's: each order says why. A reason",
+    "only the pilot would know (bingo, a salvo done, no emitter, out of missiles) is the pilot's report",
+    "(pilot_phrases.json, report) and Darkstar only acknowledges it (acknowledge, below).",
     "Brevity: push cold = turn away from the threat / target; RTB = return to base; angels = own",
     "altitude in thousands of feet (never for an enemy)."
   ],
@@ -35,9 +37,7 @@
         { "text": "bandit opening", "when": "bandit_far" }, { "text": "bandit out of range", "when": "bandit_far" },
         { "text": "bandit cold", "when": "bandit_cold" }, { "text": "bandit turned cold", "when": "bandit_cold" },
         { "text": "disengage", "when": "time_up" }, { "text": "knock it off", "when": "time_up", "weight": 0.5 },
-        { "text": "SAM threat, break off", "when": "sam_threat" }, { "text": "you're in a SAM ring, break off", "when": "sam_threat", "weight": 0.6 },
-        { "text": "break off", "when": "out_of_missiles" }, { "text": "no shot left, break off", "when": "out_of_missiles", "weight": 0.5 },
-        { "text": "bingo, break off", "when": "bingo" } ],
+        { "text": "SAM threat, break off", "when": "sam_threat" }, { "text": "you're in a SAM ring, break off", "when": "sam_threat", "weight": 0.6 } ],
       [ { "text": "resume mission", "when": "on_mission" }, { "text": "resume", "when": "on_mission" },
         { "text": "back to your tasking", "when": "on_mission", "weight": 0.5 },
         { "text": "continue RTB", "when": "on_way_home" }, { "text": "resume RTB", "when": "on_way_home" },
@@ -46,11 +46,7 @@
 
     "return_to_base": [
       [ "{callsign}, {awacs}" ],
-      [ { "text": "push cold", "when": "salvo_complete" }, { "text": "good shots, push cold", "when": "salvo_complete" },
-        { "text": "Magnums away, egress", "when": "salvo_complete", "weight": 0.6 },
-        { "text": "push cold", "when": "salvo_over" }, { "text": "salvo's over, turn cold", "when": "salvo_over" },
-        { "text": "you're pressing too far, push cold", "when": "pressed_too_far" }, { "text": "too close, turn cold", "when": "pressed_too_far" },
-        { "text": "no emitter, push cold", "when": "no_shot" }, { "text": "target's not radiating, abort, push cold", "when": "no_shot" },
+      [ { "text": "you're pressing too far, push cold", "when": "pressed_too_far" }, { "text": "too close, turn cold", "when": "pressed_too_far" },
         { "text": "time's up, push cold", "when": "attack_time_up" }, { "text": "abort, push cold", "when": "attack_time_up" },
         { "text": "SAM threat, turn cold", "when": "sam_threat" }, { "text": "you're inside a SAM ring, turn cold", "when": "sam_threat" },
         { "text": "your bandit is down", "when": "raid_destroyed" }, { "text": "your group's been splashed", "when": "raid_destroyed" },
@@ -58,7 +54,6 @@
         { "text": "lost contact on your group", "when": "raid_lost" }, { "text": "your group faded", "when": "raid_lost" },
         { "text": "you're too deep, turn cold", "when": "deep_in_enemy_airspace" }, { "text": "too far over the line, turn cold", "when": "deep_in_enemy_airspace" },
         { "text": "{relief} on station, you're relieved", "when": "has_relief" }, { "text": "relief on station, cleared off station", "when": "relieved" },
-        { "text": "copy bingo", "when": "bingo" }, { "text": "bingo", "when": "bingo" },
         { "text": "bandit {bearing}, {range}, {altitude}, {aspect}, no shot, break off", "when": "no_air_to_air" },
         { "text": "threat {bearing}, {range}, {aspect}, you're defenceless, break off", "when": "no_air_to_air", "weight": 0.6 },
         { "text": "return to base", "when": "home" } ],
@@ -81,6 +76,13 @@
       [ { "text": "angels {angels}", "when": "has_angels" }, { "text": "climb angels {angels}", "when": "has_angels" }, { "text": "", "weight": 0.4 } ],
       [ { "text": "group {altitude}, {aspect}, {bandit_type}", "when": "type_known" }, { "text": "{bandit_type}, {altitude}, {aspect}", "when": "type_known" },
         { "text": "group {altitude}, {aspect}, hostile", "when": "type_unknown" }, { "text": "single group, {altitude}, {aspect}", "when": "type_unknown" } ]
+    ],
+
+    "acknowledge": [
+      [ "{callsign}, {awacs}" ],
+      [ "copy", { "text": "copy all", "weight": 0.5 }, { "text": "copy bingo", "when": "bingo" },
+        { "text": "copy Winchester", "when": "out_of_missiles" }, { "text": "good shots", "when": "salvo_complete", "weight": 0.6 } ],
+      [ { "text": "cleared home", "when": "rtb", "weight": 0.5 }, { "text": "", "weight": 1 } ]
     ]
   }
 }

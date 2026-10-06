@@ -18,7 +18,11 @@
 --       uncontrolled field works (track_airfield_traffic.lua), heard within airfield_range_nm;
 --   Darkstar's orders to AI flights (AWACS channel): the controller's decisions that are
 --       orders to a flight in the air, engage, resume, RTB, land, a scramble's vector
---       (announce_controller_orders.lua, listening to the controller's decisions).
+--       (announce_controller_orders.lua, listening to the controller's decisions);
+--       a decision only the pilot could make (fuel, weapons, no shot) is said as the
+--       pilot's report instead, and Darkstar says "copy" (roadmap item 7 step 15);
+--   the pilots' answers to Darkstar's orders (AWACS channel), once the flight is seen
+--       following the order (announce_flight_activity.lua); none when it doesn't.
 
 RADIO_CALLS = {
     enabled     = true,
@@ -82,6 +86,12 @@ RADIO_CALLS = {
         return_to_base  = { priority = 3, expires_s = 30 },
         land_at         = { priority = 2, expires_s = 30 },
         scramble_vector = { priority = 1, expires_s = 20 },
+        -- a pilot's report of a decision only the pilot could make (bingo, Magnum
+        -- complete, no emitter, Winchester), then Darkstar's "copy" of it
+        report          = { priority = 2, expires_s = 30 },
+        acknowledge     = { priority = 2, expires_s = 30 },
+        -- a pilot's answer to an order: at its order's priority, so it plays after it
+        answer          = { priority = 3, expires_s = 20 },
     },
 
     -- Darkstar's orders (announce_controller_orders.lua)
@@ -90,6 +100,24 @@ RADIO_CALLS = {
                                       --   (a fight broken off for a SAM ring is called again 30 s later)
         vector_after_takeoff_s = 4,   -- a scramble's vector this long after its takeoff, after the
                                       --   pilot's own airborne call
+        -- the controller's reasons only the pilot would know (what is inside the jet: fuel,
+        -- weapons, whether the target's radar showed): said as the pilot's report, and
+        -- Darkstar's "copy", not as Darkstar's order (John, 2026-10-06: a controller can't
+        -- see a jet's fuel)
+        pilot_reasons = { bingo = true, salvo_complete = true, salvo_over = true, no_shot = true,
+                          out_of_missiles = true },
+    },
+
+    -- the pilots' answers to Darkstar's orders (announce_flight_activity.lua): an answer
+    -- once the flight is seen following the order, within that order's time; none after it
+    -- (event log: "no answer"); a newer order to the flight replaces one not yet answered
+    answers = {
+        every_s     = 2,      -- flights waiting to answer looked at this often
+        within_s    = { engage = 30, resume = 30, return_to_base = 45, land_at = 60, scramble_vector = 45 },
+        toward_deg  = 30,     -- engage / vector: the lead's nose within this of the bandit
+        route_deg   = 45,     -- resume: within this of one of its next two waypoints
+        home_deg    = 35,     -- RTB / land / continue RTB: within this of its base,
+        home_looks  = 2,      --   this many looks in a row
     },
 
     -- the watcher (announce_flight_activity.lua)

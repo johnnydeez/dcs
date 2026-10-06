@@ -12,9 +12,11 @@ copy runs at a time.
 Who says it:
   Darkstar's calls (picture, picture_clean, no_coverage, threat): phrase_bank_wording.py and
       awacs_phrases.json, in the controller's voice (Zira);
-  Darkstar's orders to AI flights (engage, resume, return_to_base, land_at, scramble_vector):
-      flight_phrase_wording.py and awacs_order_phrases.json, in the controller's voice too;
-  the AI pilots' mission calls (airborne, pushing, fox, splash, ...): flight_phrase_wording.py
+  Darkstar's orders to AI flights (engage, resume, return_to_base, land_at, scramble_vector)
+      and its "copy" of a pilot's report (acknowledge): flight_phrase_wording.py and
+      awacs_order_phrases.json, in the controller's voice too;
+  the AI pilots' mission calls (airborne, pushing, fox, splash, ..., and to Darkstar their
+      reports and their answers to its orders): flight_phrase_wording.py
       and pilot_phrases.json; airfield traffic calls (taxi, departing, inbound, final,
       clear): the same with airfield_phrases.json. A pilot's voice comes from
       pilot_phrases.json's list, picked by its flight's callsign, so a flight always sounds
@@ -22,7 +24,9 @@ Who says it:
 To the player, from the mission's facts: the call's frequency and channel, its priority and
 how long it may wait (expires_s); its age counts from when this helper read it (event_at),
 so a backlog here counts too. A picture replaces an older one for the same player not
-played yet.
+played yet. Each call's id (call_id) and the call it answers (answers) go along, so the
+player drops an answer whose order it dropped; an answer to a call this helper couldn't
+speak or send isn't said at all.
 Each call is logged here and in speak_mission_calls.log (emptied at each start): the words,
 and how long the wording and the voice took.
 """
@@ -71,6 +75,7 @@ class CallsFile:
         self.path = path
         self.position = 0
         self.partial = b""
+        self.restarted = False
         try:
             if time.time() - os.path.getmtime(path) > OLD_FILE_S:
                 self.position = os.path.getsize(path)   # a past mission's calls: skip them
@@ -84,6 +89,7 @@ class CallsFile:
             return []
         if size < self.position:            # emptied: a new mission
             self.position, self.partial = 0, b""
+            self.restarted = True           # its call ids start over
             log("a new mission started")
         if size == self.position:
             return []
@@ -152,17 +158,29 @@ class Speakers:
         return text, wav, fields
 
 
-def speak_call(speakers, call, read_at):
+def speak_call(speakers, call, read_at, unsent):
+    # an answer (or Darkstar's copy) to a call that never reached the player isn't said
+    if call.get("answers") is not None and call["answers"] in unsent:
+        unsent.add(call.get("id"))
+        log("%s (mission %s s): not said, the call it answers (%s) wasn't sent"
+            % (call["call"], call.get("mission_time_s", "?"), call["answers"]))
+        return
     started = time.time()
-    text, wav, fields = speakers.speak(call)
+    try:
+        text, wav, fields = speakers.speak(call)
+    except Exception:
+        unsent.add(call.get("id"))
+        raise
     spoken = time.time()
-    fields.update(event_at=read_at, channel=call.get("channel"))
+    # the call's id, and the call it answers: the player drops an answer whose call it dropped
+    fields.update(event_at=read_at, channel=call.get("channel"), call_id=call.get("id"), answers=call.get("answers"))
     frequency = call.get("frequency_mhz")
     try:
         send_radio_call.send_call(wav, fields.pop("speaker"), frequency, **fields)
         sent = "sent"
     except OSError:
         sent = "NOT SENT: no radio player running"
+        unsent.add(call.get("id"))
     log("%s (mission %s s, %s %s): %s  [words + voice %.2f s, %s]" % (
         call["call"], call.get("mission_time_s", "?"), call.get("channel", "?"),
         "%.3f" % frequency if isinstance(frequency, (int, float)) else "-", text, spoken - started, sent))
@@ -183,11 +201,15 @@ def main():
 
     speakers = Speakers()
     calls = CallsFile(CALLS_FILE)
+    unsent = set()   # ids of calls not spoken or not sent: their answers aren't said either
     log("radio helper reading %s%s" % (CALLS_FILE, "; closes with DCS" if args.exit_with_dcs else ""))
     next_dcs_check = time.time() + DCS_CHECK_EVERY_S
     try:
         while True:
             lines = calls.new_lines()
+            if calls.restarted:
+                calls.restarted = False
+                unsent.clear()
             read_at = time.time()
             # the most urgent first when several came at once
             parsed = []
@@ -199,7 +221,7 @@ def main():
             parsed.sort(key=lambda c: c.get("priority", 3 if c.get("call") != "threat" else 1))
             for call in parsed:
                 try:
-                    speak_call(speakers, call, read_at)
+                    speak_call(speakers, call, read_at, unsent)
                 except Exception as error:   # one bad call never stops the helper
                     log("call not spoken: %s: %s" % (error, json.dumps(call)[:200]))
             if args.exit_with_dcs and time.time() >= next_dcs_check:

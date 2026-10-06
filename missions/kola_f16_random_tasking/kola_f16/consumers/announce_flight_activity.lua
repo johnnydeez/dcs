@@ -16,12 +16,23 @@
 --   splash       (mission)  a jet kills an aircraft
 --   defending    (mission)  a missile is fired at a jet (the jet itself says it)
 --   jet_down     (mission)  a jet of the flight is lost, said by another jet still flying
---   winchester / bingo (mission)  weapons gone / fuel low far from home
+--   winchester / bingo (AWACS: reports to the controller)  weapons gone / fuel low far from
+--                home; bingo only for flights the controller doesn't watch for fuel (its
+--                bingo is the pilot's report, announce_controller_orders.lua), and neither
+--                once the pilot has reported it
 --   off_target   (mission) and check_out (AWACS)  the flight is seen heading home: pointing at
 --                its landing base, closing on it, well nearer home than its farthest point;
 --                a patrol once it has left its station (sent home by the controller, or its
 --                orbit over: its off-station waypoint) and is seen heading home, however close
---                its station is to its base (bug 62)
+--                its station is to its base (bug 62). No check-out once the flight has
+--                answered an RTB or reported going home: that was its check-out.
+--   answer       (AWACS)  the flight's answer to Darkstar's order (roadmap item 7 step 15),
+--                once it is seen following it (RADIO_CALLS.answers): an engage when it fires
+--                at the bandit or turns toward it closing; resume when it turns back to its
+--                route (or home); RTB / land when it points home two looks running; a
+--                scramble's vector when it turns toward its raid. Not seen in time: no answer
+--                (event log "no answer"); a newer order replaces one not yet answered. The
+--                orders are heard as said (SendRadioCalls.onCall), never from the controller.
 -- Who talks: each jet by its own callsign (lib/flight_callsigns.lua), so each has its own
 -- voice. Players' and AWACS flights don't talk here; only coalitions RADIO_CALLS.coalitions.
 -- Event log: RADIO_CALL, one line per call (what, on which channel, by whom).
@@ -138,6 +149,15 @@ local function sayOnce(f, kind, channel, unitName, facts)
     say(f, kind, channel, unitName, facts)
 end
 
+-- True when the controller watches the flight's fuel (patrols, scrambles): its bingo is
+-- the controller's decision, said as the pilot's report (announce_controller_orders.lua).
+local function fuelWatched(m)
+    for _, name in ipairs(AIR_CONTROL.directives_by_mission_type[m.mission_type] or {}) do
+        if name == "fuel" then return true end
+    end
+    return false
+end
+
 -- ── what a flight is ────────────────────────────────────────────
 
 local function kindOfFlight(m)
@@ -167,6 +187,132 @@ jetsUp = function(groupName)
         if okAir and air then out[#out + 1] = u end
     end
     return out
+end
+
+-- ── answers to Darkstar's orders ────────────────────────────────
+
+local ORDER_KINDS = { engage = "engage", return_to_base = "rtb", land_at = "land", scramble_vector = "vector" }
+
+local function has(list, word)
+    for _, w in ipairs(list or {}) do if w == word then return true end end
+    return false
+end
+
+-- The first jet of group `name` still there (in the air or not), or nil.
+local function firstAlive(name)
+    local g = Group.getByName(name)
+    local ok, units = pcall(function() return g and g:getUnits() end)
+    for _, u in ipairs(ok and units or {}) do
+        local okE, e = pcall(function() return u:isExist() end)
+        if okE and e then return u end
+    end
+    return nil
+end
+
+-- How far jet u's nose is off the line to `pos`, degrees; and how far away it is, m.
+local function offLine(u, pos)
+    local p, v = u:getPoint(), u:getVelocity()
+    local heading = norm(math.deg(math.atan2(v.z, v.x)))
+    local to = norm(math.deg(math.atan2(pos.z - p.z, pos.x - p.x)))
+    return math.abs((heading - to + 180) % 360 - 180), Util.dist(pos2(p), pos)
+end
+
+-- A call written (SendRadioCalls.onCall): Darkstar's order to one of our flights waits for
+-- its answer; a pilot's report (bingo, Magnum complete …) was its check-out, its bingo or
+-- its Winchester, and ends any order still waiting.
+local function callHeard(_, call)
+    local f = call.group and flightFor(call.group)
+    if not f then return end
+    if call.call == "report" then
+        f.pending = nil
+        if has(call.flags, "rtb") or has(call.flags, "on_way_home") then f.once.check_out = true end
+        if has(call.flags, "bingo") then f.once.bingo = true end
+        if has(call.flags, "salvo_complete") or has(call.flags, "out_of_missiles") then f.once.winchester = true end
+        return
+    end
+    local what = ORDER_KINDS[call.call]
+    if call.call == "resume" then what = has(call.flags, "on_way_home") and "resume_home" or "resume_mission" end
+    if not what then return end
+    -- an order to one jet ("Weasel 1-2") is answered by that jet
+    local n = call.callsign ~= call.flight and tonumber((call.callsign or ""):match("%-(%d+)$") or "")
+    f.pending = { order = call.call, what = what, id = call.id, at = timer.getTime(), priority = call.priority,
+                  bandit = call.bandit, bandit_type = call.call == "engage" and call.bandit_type or nil,
+                  addressee = call.callsign,
+                  unit = n and (call.group .. "_" .. n) or nil, looks = 0 }
+end
+
+-- The answer, by the flight's callsign (or the one jet the order was to) in the voice of
+-- the jet saying it.
+local function answer(f)
+    local p, m = f.pending, f.m
+    f.pending = nil
+    local jet = p.unit
+    if not jet then
+        local lead = jetsUp(m.id)[1]
+        jet = lead and nameOf(lead)
+    end
+    if not jet or _down[jet] then return end
+    local facts = { callsign = p.addressee or FlightCallsigns.text(m), flight = FlightCallsigns.text(m),
+                    voice_key = jetCallsign(m, jet), group = m.id, answers = p.id, priority = p.priority,
+                    base = m.landing_base, bandit_type = p.bandit_type,
+                    flags = flags({ [p.what] = true, type_known = p.bandit_type ~= nil }) }
+    SendRadioCalls.say(f.side, "answer", "awacs", facts)
+    WriteEventLog.add(f.side, "RADIO_CALL", jet, string.format("answer on awacs by %s to %s, %s (%d s after the order)",
+        facts.callsign, RADIO_CALLS.awacs_callsign[f.side] or "AWACS", p.order, math.floor(timer.getTime() - p.at + 0.5)))
+    -- "copy, RTB" is how a flight leaves the controller: its check-out
+    if p.what == "rtb" or p.what == "resume_home" or p.what == "land" then f.once.check_out = true end
+end
+
+-- True once the flight is seen doing what it was told.
+local function following(f, p)
+    local A = RADIO_CALLS.answers
+    local m = f.m
+    local u = p.unit and Unit.getByName(p.unit) or jetsUp(m.id)[1]
+    local okAir, air = pcall(function() return u and u:isExist() and u:inAir() end)
+    if not (okAir and air) then return false end
+    if p.what == "engage" or p.what == "vector" then
+        -- toward the bandit (an engage also closing on it; a shot at it answers at once, onShot)
+        local b = p.bandit and firstAlive(p.bandit)
+        if not b then return false end
+        local off, d = offLine(u, pos2(b:getPoint()))
+        local closing = p.last_m ~= nil and d < p.last_m
+        p.last_m = d
+        return off <= A.toward_deg and (p.what == "vector" or closing)
+    elseif p.what == "resume_mission" then
+        -- back toward one of its next two waypoints
+        local route, i = m.route or {}, f.last_waypoint or 1
+        for k = i + 1, i + 2 do
+            local r = route[k]
+            if r and r.x and offLine(u, { x = r.x, z = r.z }) <= A.route_deg then return true end
+        end
+        return false
+    end
+    -- RTB, continue RTB, land: pointing home, looks in a row
+    local home = basePos(m.landing_base)
+    if not home then return false end
+    p.looks = offLine(u, home) <= A.home_deg and p.looks + 1 or 0
+    return p.looks >= A.home_looks
+end
+
+local function answerRound()
+    local now = timer.getTime()
+    for _, f in pairs(_flights) do
+        local p = f.pending
+        if p then
+            local ok, yes = pcall(following, f, p)
+            local within = RADIO_CALLS.answers.within_s[p.order] or 30
+            if not ok then
+                f.pending = nil
+                Log.warn(string.format("flight calls: answer for %s: %s", f.m.id, tostring(yes)))
+            elseif yes then
+                answer(f)
+            elseif now - p.at >= within then
+                f.pending = nil
+                WriteEventLog.add(f.side, "RADIO_CALL", f.m.id, string.format("no answer to %s from %s: not seen following it in %d s",
+                    p.order, p.addressee or FlightCallsigns.text(f.m), within))
+            end
+        end
+    end
 end
 
 -- ── DCS events ──────────────────────────────────────────────────
@@ -211,6 +357,11 @@ local function onShot(e)
     if not f then return end
     local kind, fox = weaponCall(e.weapon)
     if not kind then return end
+    -- a shot at the bandit it was told to engage: "committing" first, then the Fox
+    local p = f.pending
+    if kind == "fox" and p and p.what == "engage" and okT and target and groupNameOf(target) == p.bandit then
+        answer(f)
+    end
     local facts = {}
     if kind == "fox" then
         facts.fox = fox
@@ -316,16 +467,17 @@ local function look(groupName, f)
     -- weapons gone (only once it has had some)
     local aboard = weaponsAboard(jets)
     if aboard > 0 then f.had_weapons = true end
-    if f.had_weapons and aboard == 0 then sayOnce(f, "winchester", "mission", leadName) end
+    if f.had_weapons and aboard == 0 then sayOnce(f, "winchester", "awacs", leadName) end
 
     if not home then return end
     local homeKm = Util.dist(p, home) / 1000
     f.farthest_km = math.max(f.farthest_km or 0, homeKm)
 
-    -- bingo: low on fuel, still far from home
+    -- bingo: low on fuel, still far from home (a flight the controller watches for fuel
+    -- reports it when the controller sends it home)
     local okFuel, fuel = pcall(function() return lead:getFuel() end)
-    if okFuel and fuel and fuel <= R.bingo_fuel and homeKm >= R.bingo_min_home_km then
-        sayOnce(f, "bingo", "mission", leadName, { base = m.landing_base })
+    if not fuelWatched(m) and okFuel and fuel and fuel <= R.bingo_fuel and homeKm >= R.bingo_min_home_km then
+        sayOnce(f, "bingo", "awacs", leadName, { base = m.landing_base })
     end
 
     -- heading home: pointing at its landing base, closing on it, well back from its farthest
@@ -365,6 +517,7 @@ function AnnounceFlightActivity.waypoint(groupName, index)
         local f = _flights[groupName]
         local r = f and f.m.route and f.m.route[index]
         if not r then return end
+        f.last_waypoint = index   -- where "back to its route" points (an answer to resume)
         local lead = jetsUp(groupName)[1]
         if f.kind == "patrol" then
             if r.kind == "station" then
@@ -418,6 +571,13 @@ function AnnounceFlightActivity.start(plan)
         if not ok then Log.error("flight calls: round failed: " .. tostring(err)) end
         return now + RADIO_CALLS.watch_every_s
     end, nil, timer.getTime() + RADIO_CALLS.watch_every_s)
+    -- Darkstar's orders as said, and the pilots' reports: answers wait for the flight
+    SendRadioCalls.onCall(callHeard)
+    timer.scheduleFunction(function(_, now)
+        local ok, err = pcall(answerRound)
+        if not ok then Log.error("flight calls: answer round failed: " .. tostring(err)) end
+        return now + RADIO_CALLS.answers.every_s
+    end, nil, timer.getTime() + RADIO_CALLS.answers.every_s)
     Log.info(string.format("--- Flight calls: AI flights check in on %s, mission calls on %s ---",
         SendRadioCalls.channelText("awacs"), SendRadioCalls.channelText("mission")))
 end

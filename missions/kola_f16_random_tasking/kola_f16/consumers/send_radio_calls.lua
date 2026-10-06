@@ -1,8 +1,9 @@
 -- Consumer: hands the mission's radio calls to the radio programs outside DCS, so they're
 -- heard, not only read (roadmap.md item 7; data/radio_calls.lua). Every call carries its
 -- channel and frequency (RADIO_CALLS.channels), its priority and how long it may wait
--- (RADIO_CALLS.kinds). The AI pilots' calls come in through SendRadioCalls.say
--- (announce_flight_activity.lua, track_airfield_traffic.lua).
+-- (RADIO_CALLS.kinds). The AI pilots' calls and Darkstar's orders come in through
+-- SendRadioCalls.say (announce_flight_activity.lua, track_airfield_traffic.lua,
+-- announce_controller_orders.lua).
 --
 -- Darkstar's two kinds of call, on the AWACS channel, both from the facts CallAirPicture
 -- works out for its on-screen list:
@@ -16,11 +17,18 @@
 -- radio player. Both are started here, once. Nothing here waits on them.
 -- Event log: threat calls as PICTURE_CALL "threat: …" (picture calls are already logged
 -- by CallAirPicture).
+-- Every call gets an id (`id`); an answer names the call it answers (`answers`), so the
+-- radio player drops an answer whose order it dropped. Every call made through
+-- SendRadioCalls.say is published to listeners once written (SendRadioCalls.onCall), the
+-- way the controller publishes its decisions: the watcher hears Darkstar's orders that
+-- were really said, and answers them (announce_flight_activity.lua).
 
 SendRadioCalls = {}
 
 local _file                 -- the open calls file, or nil when off
 local _threatCalled = {}    -- player group name → contact group → mission time it was called
+local _nextId = 0           -- the last call id given
+local _listeners = {}       -- fn(sideName, call) for every call written through SendRadioCalls.say
 
 -- ── JSON, just enough for the call facts ───────────────────────
 
@@ -72,6 +80,8 @@ end
 
 local function write(call)
     if not _file then return end
+    _nextId = _nextId + 1
+    call.id = _nextId
     call.mission_time_s = math.floor(timer.getTime())
     local kind = RADIO_CALLS.kinds[call.call]
     if kind then
@@ -96,6 +106,18 @@ function SendRadioCalls.say(sideName, kind, channel, facts, base)
                           or RADIO_CALLS.channels[channel].mhz
     facts.awacs = RADIO_CALLS.awacs_callsign[sideName]
     write(facts)
+    for _, fn in ipairs(_listeners) do
+        local ok, err = pcall(fn, sideName, facts)
+        if not ok then Log.warn(string.format("radio calls: a call listener failed on %s: %s", kind, tostring(err))) end
+    end
+    return facts.id
+end
+
+-- fn(sideName, call) for every call written through SendRadioCalls.say from now on: the
+-- call's facts as written (id, call, channel, priority, expires_s and its own facts).
+-- Read them, never change them.
+function SendRadioCalls.onCall(fn)
+    _listeners[#_listeners + 1] = fn
 end
 
 -- True when calls are being written for this coalition.
