@@ -425,14 +425,10 @@ HUMAN_TASKING = {
 --   early_warning_coverage_km  how far an orbit counts as seeing (a planning figure: the
 --                              E-3A's first detections came at 120-210 km for jets low
 --                              down, session 11; farther for jets high up)
---   early_warning_fighter_base_km  the whole race-track stays this far from every enemy
---                              fighter base (2026-10-05, bug 59: 150 until then, checked
---                              at the centre only; the E-3A orbited 191 km from Alakurtti
---                              and Kuusamo scrambled at it six times in 90 min; an AWACS
---                              that close would be hunted and shot down)
---   early_warning_front_km     and this far from the contested airspace (80 until bug 59), in own (not
---                              contested) airspace on own ground, the whole race-track
---                              outside every enemy kill zone by early_warning_clearance_km
+--   (how far the race-track keeps from enemy fighter bases and from the contested airspace
+--   depends on the map's size: each mission's own, AWACS_ORBIT_DISTANCES in its
+--   data/awacs_orbit_distances.lua; the race-track is always in own (not contested)
+--   airspace on own ground, outside every enemy kill zone by early_warning_clearance_km)
 --   early_warning_step_km      the grid the orbit and the front are sampled on
 --   early_warning_max          at most this many AWACS, per coalition
 --   early_warning_second_share a second when the first leaves more than this share of the
@@ -440,7 +436,7 @@ HUMAN_TASKING = {
 --   early_warning_tries        best orbits tried in turn when one can't be flown
 --   early_warning_leg_km       length of its race-track
 --   early_warning_map_margin_km  the whole race-track stays this far inside the map's
---                              edges (AIRSPACE.map_bounds_m; 2026-10-05, bug 47: orbits on
+--                              edges (MISSION.map_bounds_m; 2026-10-05, bug 47: orbits on
 --                              the map edge spent half their radar on nothing)
 --   early_warning_near_best    among the orbits that see at least (1 - this) of the best
 --                              one's share of the fight, the one nearest the fight it sees
@@ -534,8 +530,6 @@ AIR_DEFENSE = {
     early_warning_start_s      = 5,
     early_warning_weights      = { front = 1, target = 1, enemy_fighter_base = 3 },
     early_warning_coverage_km  = 250,
-    early_warning_fighter_base_km = 250,
-    early_warning_front_km     = 120,
     early_warning_step_km      = 20,
     early_warning_max          = { blue = 2, red = 1 },   -- Russia has few A-50s
     early_warning_second_share = 0.3,

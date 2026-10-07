@@ -227,8 +227,7 @@ function PlanAirTasking.validate()
                          "station_spacing_km", "station_leg_km", "station_clearance_km", "step_km", "on_station_s", "rotation_overlap_s",
                          "station_enemy_airspace_km", "commit_range_km", "commit_spacing_km", "commit_radius_km",
                          "commit_min_radius_km",
-                         "early_warning_coverage_km", "early_warning_fighter_base_km", "early_warning_front_km",
-                         "early_warning_step_km", "early_warning_second_share",
+                         "early_warning_coverage_km", "early_warning_step_km", "early_warning_second_share",
                          "early_warning_second_gain", "early_warning_tries", "early_warning_legacy_standoff_km",
                          "early_warning_clearance_km", "early_warning_leg_km", "early_warning_map_margin_km",
                          "early_warning_near_best",
@@ -237,6 +236,18 @@ function PlanAirTasking.validate()
                          "scramble_min_leg_km", "scramble_killzone_margin_km", "scramble_tail_chase_deg",
                          "raid_radius_km", "raid_heading_deg" }) do
         if type(AIR_DEFENSE[f]) ~= "number" or AIR_DEFENSE[f] < 0 then bad("AIR_DEFENSE needs a non-negative " .. f) end
+    end
+    -- the mission's own (its data/awacs_orbit_distances.lua)
+    for _, f in ipairs({ "enemy_fighter_base_km", "contested_airspace_km" }) do
+        if type(AWACS_ORBIT_DISTANCES) ~= "table" or type(AWACS_ORBIT_DISTANCES[f]) ~= "number"
+           or AWACS_ORBIT_DISTANCES[f] < 0 then
+            bad("AWACS_ORBIT_DISTANCES (the mission's data/awacs_orbit_distances.lua) needs a non-negative " .. f)
+        end
+    end
+    for _, f in ipairs({ "min_x", "min_z", "max_x", "max_z" }) do
+        if type(MISSION.map_bounds_m) ~= "table" or type(MISSION.map_bounds_m[f]) ~= "number" then
+            bad("MISSION.map_bounds_m (the mission's mission_settings.lua: the map's edges) needs " .. f)
+        end
     end
     for _, c in ipairs(COALITIONS) do
         if type(AIR_DEFENSE.early_warning_max) ~= "table" or type(AIR_DEFENSE.early_warning_max[c]) ~= "number" then
@@ -2338,9 +2349,9 @@ local function earlyWarningPoints(ctx)
     return pts
 end
 
--- Whether q lies at least margin_m inside the map's edges (AIRSPACE.map_bounds_m).
+-- Whether q lies at least margin_m inside the map's edges (MISSION.map_bounds_m).
 local function insideMap(q, margin_m)
-    local b = AIRSPACE.map_bounds_m
+    local b = MISSION.map_bounds_m
     return q.x >= b.min_x + margin_m and q.x <= b.max_x - margin_m
        and q.z >= b.min_z + margin_m and q.z <= b.max_z - margin_m
 end
@@ -2348,8 +2359,8 @@ end
 -- Where an AWACS may orbit: own (not contested) airspace on own held ground, the whole
 -- race-track clear of enemy kill zones by early_warning_clearance_km and
 -- early_warning_map_margin_km inside the map's edges (the airspace grid reaches past
--- them), at least early_warning_fighter_base_km from every enemy fighter base and
--- early_warning_front_km from the contested airspace (the centre and both ends since
+-- them), at least AWACS_ORBIT_DISTANCES.enemy_fighter_base_km from every enemy fighter base and
+-- AWACS_ORBIT_DISTANCES.contested_airspace_km from the contested airspace (the centre and both ends since
 -- 2026-10-05, bug 59: only the centre was held to them). Each { centre, ends = { a, b } },
 -- the legs across the line to the nearest enemy fighter base.
 local function orbitCandidates(ctx, enemies)
@@ -2363,8 +2374,8 @@ local function orbitCandidates(ctx, enemies)
             local q = { x = a.x0 + (i - 0.5) * a.cell_m, z = a.z0 + (j - 0.5) * a.cell_m }
             local toward, near = nearestBase(ctx, q, enemies)
             if insideMap(q, edge) and DivideAirspace.kindFor(a, q, ctx.coalition) == "own" and inOwnTerritory(ctx, q)
-               and near >= D.early_warning_fighter_base_km * 1000
-               and not DivideAirspace.nearestFront(a, q, D.early_warning_front_km * 1000)
+               and near >= AWACS_ORBIT_DISTANCES.enemy_fighter_base_km * 1000
+               and not DivideAirspace.nearestFront(a, q, AWACS_ORBIT_DISTANCES.contested_airspace_km * 1000)
                and clearOfThreats(ctx, q, clearance) then
                 local e1, e2 = raceTrack(q, q, ctx.plan.world.airbases[toward].pos, leg)
                 local ok = true
@@ -2372,8 +2383,8 @@ local function orbitCandidates(ctx, enemies)
                     local _, eNear = nearestBase(ctx, e, enemies)
                     if not (insideMap(e, edge) and DivideAirspace.kindFor(a, e, ctx.coalition) == "own"
                             and inOwnTerritory(ctx, e) and clearOfThreats(ctx, e, clearance)
-                            and eNear >= D.early_warning_fighter_base_km * 1000
-                            and not DivideAirspace.nearestFront(a, e, D.early_warning_front_km * 1000)) then ok = false end
+                            and eNear >= AWACS_ORBIT_DISTANCES.enemy_fighter_base_km * 1000
+                            and not DivideAirspace.nearestFront(a, e, AWACS_ORBIT_DISTANCES.contested_airspace_km * 1000)) then ok = false end
                 end
                 if ok then out[#out + 1] = { centre = { x = round(q.x), z = round(q.z) }, ends = { e1, e2 } } end
             end
@@ -2475,7 +2486,7 @@ local function planEarlyWarning(ctx)
                 end
                 local after = 0
                 for i, p in ipairs(pts) do if not seen[i] then after = after + p.w end end
-                local b = AIRSPACE.map_bounds_m
+                local b = MISSION.map_bounds_m
                 local edgeKm = math.huge
                 for _, q in ipairs({ c.ends[1], c.ends[2] }) do
                     edgeKm = math.min(edgeKm, q.x - b.min_x, b.max_x - q.x, q.z - b.min_z, b.max_z - q.z)

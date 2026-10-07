@@ -7,17 +7,19 @@
 -- (shared_mission_framework\development_docs\plan.md, step 1).
 
 MISSION = {
-    -- Where its scripts are, under Saved Games\DCS\Scripts\: its own (this file, its data and
-    -- overrides) and the shared framework's.
+    -- Where its scripts are, under Saved Games\DCS\Scripts\: its own (this file and its
+    -- data) and the shared framework's.
     scripts_folder   = "kola_f16",
     framework_folder = "shared_mission_framework",
 
-    -- Its own data files (the map and the scenario), in its scripts folder, loaded after the
-    -- framework's shared data and before its overrides (load_framework.lua).
+    -- Its own data files, in its scripts folder, loaded after the framework's shared data
+    -- (load_framework.lua): the map, the scenario, and the settings each mission has its own
+    -- values for (the framework holds no value for those).
     data_files = {
         "data\\clusters.lua", "data\\zones.lua", "data\\airbase_codes.lua", "data\\airbase_classes.lua",
         "data\\player_slots.lua", "data\\coalition_rosters.lua", "data\\airbase_footprints.lua",
         "data\\forested_airfields.lua", "data\\airfield_frequencies.lua",
+        "data\\radio_channels.lua", "data\\awacs_orbit_distances.lua",
     },
 
     -- Who it is: dcs.log and the screen.
@@ -54,6 +56,12 @@ MISSION = {
     map = "Kola",
     -- Mission clock offset from UTC (pydcs terrain/kola: +3 h); places the sun. DCS start_time is local.
     utc_offset_h = 3,
+    -- The map's edges, DCS metres (x north, z east); the airspace grid reaches past them, the
+    -- map doesn't (AWACS orbits keep inside them, Kola bug 47). From DCS World\Mods\terrains\
+    -- Kola\MissionGenerator\nodesMap.lua (nodesMapBorders); Caucasus's file carries the very
+    -- same numbers, so they may be ED's template rather than Kola's true edges (pydcs gives
+    -- x -315 to 900 km, z -900 to 855.5 km). Kola's airbases all lie inside them.
+    map_bounds_m = { min_x = -285184, min_z = -557056, max_x = 393216, max_z = 884736 },
     -- Magnetic variation, degrees east, by longitude, when DCS's magvar module (DCS
     -- World\bin, as the mission editor and the DTC use it) can't be loaded in the mission or
     -- answers 0 (it does outside the game). Approximate 2021 values across the map (Bodø,
@@ -68,10 +76,4 @@ MISSION = {
     -- Russian SA-11's ring showed on the F-16's HSD, a CJTF Red one's didn't; every Red system
     -- here is Russian-made). A coalition not listed spawns as its CJTF country.
     sam_site_country = { red = "RUSSIA" },
-
-    -- Shared settings this mission sets differently: files in overrides\, each written like
-    -- the shared data file it changes but holding only the values that differ, applied in
-    -- this order once every data file is loaded (lib/mission_overrides.lua). Kola's values
-    -- are the shared defaults, so it has none.
-    overrides = {},
 }

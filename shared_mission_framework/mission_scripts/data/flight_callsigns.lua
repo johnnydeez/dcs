@@ -9,7 +9,8 @@
 -- Numbers run 1–9 per name, then the next name in the list (a flight number never has two
 -- digits, so "Viper one two" is always flight 1, jet 2). Realistic names for now (John,
 -- 2026-10-05); flavour names can come later in the same place.
--- Human flights get none: the player's own callsign is RADIO_CALLS.player_callsign.
+-- Human flights get none: a player is called by their jet's callsign from the mission file
+-- (SendRadioCalls.playerCallsign), else RADIO_CALLS.player_callsign.
 
 FLIGHT_CALLSIGNS = {
     -- a mission type that names its flights whatever they fly

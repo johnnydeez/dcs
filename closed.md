@@ -1,6 +1,10 @@
-# Kola F-16 Random Tasking — Closed issues
+# DCS missions: closed issues
 
-Roadmap items and fixed bugs that are done, moved here from `roadmap.md` and `bugs.md` so those files only hold open work. Each keeps its original number and text, as it stood when it was closed, with the discussion that led to it. What was actually built, and how it behaves, is in `plan.md` (*As built*); since 2026-10-06 that section, with every other one about how the code works, is in the shared mission framework's `shared_mission_framework\development_docs\as_built.md`, under the same names (and `kola_data_tools\` is the framework's `map_data_tools\`, `kola_f16\`'s logic its `mission_scripts\`, `radio_calls\` its `radio_calls\`).
+**The one closed list for the whole repository** (John, 2026-10-07: one `closed.md` at the root, as with `bugs.md`). Fixed bugs from `bugs.md` and finished roadmap items from any mission's or the framework's `roadmap.md` move here, so those files only hold open work. Each keeps its original number and text, as it stood when it was closed, with the discussion that led to it, and a line saying when and why it was closed.
+
+**What each one is for:** a bug closed from 2026-10-07 on keeps its `**For:**` line from `bugs.md` (a mission, or `framework`). Everything closed before that was Kola's, from Kola's own `roadmap.md` and `bugs.md`, and carries no `**For:**` line; most of the code it names is shared framework code now.
+
+Until 2026-10-07 this was Kola's `development_docs\closed.md`. What was actually built, and how it behaves, is in the shared mission framework's `shared_mission_framework\development_docs\as_built.md` (a `plan.md` section named below that isn't in Kola's `plan.md` is there, under the same name; `kola_data_tools\` is the framework's `map_data_tools\`). An `event_logs\…` path is in the mission folder of the mission it was found in (`missions\<mission>\event_logs\`); before 2026-10-07, always Kola's.
 
 ---
 
@@ -849,6 +853,8 @@ Fixed bugs from `bugs.md`, each as it stood when it was closed (status line: wha
 
 ### Bug 19. A flight that misses its landing flies off in a straight line until its fuel runs out
 
+**Followed up 2026-10-07 as bug 75** (`bugs.md`): the cause researched (AI wingmen don't land once their lead has landed) and three fixes to try; the workaround below stays until one works.
+
 **Status:** fixed 2026-10-02; the landing orders didn't hold in the 19:29 run, so orphaned wingmen are now removed 8 min after their flight's last landing (below; not flown). First fix: Every AI flight now has the directive `landing` (`AIR_CONTROL.landing`): once a flight is on its way home (sent home, a jet of it landed, or past its planned landing), a jet that gets `away_km` (20) farther from its landing base than its closest since, or a flight still up `overdue_s` (20 min) after its planned landing (or its last order), gets a new landing order straight to its base: `CONTROL … land: MSN7025_SEAD_2 lost after its landing: 45 km from Vuojarvi and getting farther (it was 2 km away); sent to land at Vuojarvi`. At most 2 orders, and never while a jet of the flight is on the ramp (a landed one is removed after 3 min; a late wingman not yet up), so no landed jet is sent up again. Packages: a suppression flight still in the air but off its attack and past its planned landing counts as landed for the wait (`decide_launches.lua`), so the mission retries or cancels instead of waiting on it.
 
 **Seen:** `event_logs\2026-10-01_141412.log`, grep `MSN5025_SEAD_2`.
@@ -1300,3 +1306,17 @@ Then patch what's real: fresh sightings and tracks moved forward to the call (ab
 **Proposed fix (decide with John):** the bearing said = grid bearing − variation at the player (and the same for the contacts' tracks, and for the airfield brief's wind and runway in use, which use the same variation); `age_s` from the time the position was read. The newest-sighting / move-forward fix above isn't needed for the bearing error.
 
 **To fix (when picked up):** one run with the check line on. Note a call's time and group, put the HSD or radar cursor on that contact and read the bearing from the jet (the F-16's instruments are the reference Darkstar must match), and take an F10 ruler screenshot at the same moment. Then recompute the call from the logged positions offline (`kola_data_tools/kola_proj.py`) and compare all three.
+
+### Bug 69. The F-16's COMM 1 / COMM 2 volume knobs did nothing
+
+**For:** framework (found in Kola).
+
+**Closed 2026-10-07** (John, after the Caucasus flight of 2026-10-06 22:43: the COMM 1 / COMM 2 volume knobs work; a change applies from the next call, not to a call already playing). **Status before closing:** open; logging built 2026-10-06 to find out why (the code reads the same knobs as SRS, arguments 430 / 431, and the player applies them: both checked offline, the export script in luae with a stubbed cockpit, the player with UDP readings).
+
+**Seen:** John, 00:16 run: turning the COMM 1 / COMM 2 knobs didn't change the calls' volume. `dcs.log` shows our export script loaded (`KOLA-RADIOS … sending the jet's radios`), but nothing recorded whether a reading ever reached the radio player: it printed to its window only. With no fresh reading it plays every call at full volume, which would look exactly like this.
+
+**Built:** the radio player writes everything it says to `radio_calls\radio_player.log` (rewritten at each start, git-ignored): the jet's radios as first heard and at every change (volume in 0.05 steps), "no word from the jet's radios … every call plays at full volume" when the readings stop, and each call heard (on which radio, at what volume), not heard (why) or dropped. The export script writes `KOLA-RADIOS … first reading of the jet's radios: {…}` to `dcs.log` once, and the first failure to read or send.
+
+**Check after the next flight:** `dcs.log` for `first reading`; `radio_player.log` for `hearing the jet's radios`, the volume lines as the knobs turn, and `at volume` on each call.
+
+**2026-10-06 17:47 run** (`event_logs\2026-10-06_174721.log`): the readings arrive: `dcs.log` `first reading of the jet's radios` (UHF 305.000 and VHF 127.000, both off, the cold jet), and `radio_player.log` logs each change, John's retuning to 262.000 / 140.000, and the UHF volume going down 1.00 → 0.00 in 0.05 steps and back up (bug 72). Every call heard was played `at volume 1.00`, so whether a call at a lower knob setting sounds quieter wasn't heard.

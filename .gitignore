@@ -7,6 +7,8 @@ __pycache__/
 
 # Kola event logs: one per mission run, written by the mission script
 missions/kola_f16_random_tasking/event_logs/
+# Caucasus event logs, the same
+missions/caucasus_multiplayer_random_tasking/event_logs/
 
 # Radio calls (shared by every mission): the mission's calls file and the two logs, rewritten every run
 shared_mission_framework/radio_calls/mission_calls.jsonl

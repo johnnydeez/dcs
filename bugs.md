@@ -1,12 +1,18 @@
-# Kola F-16 Random Tasking: bugs and fixes
+# DCS missions: bugs and fixes
 
-Bugs found in runs, with what was seen and the fix proposed, to come back to. Each entry says where the evidence is. When one is fixed, it moves to `closed.md` (under *Bugs*, with its number and the fix), and any as-built facts go in the framework's `as_built.md`. Numbers aren't reused.
+**The one bug list for the whole repository** (John, 2026-10-07: one file, not one per mission, so nothing is tracked in two places). Every mission and the shared mission framework log their bugs here.
 
-**Since 2026-10-06 Kola runs on the shared mission framework** (`shared_mission_framework\`): most of the code these bugs name is shared now (`shared_mission_framework\mission_scripts\`, `radio_calls\`, `map_data_tools\`; `kola_data_tools\` is now `map_data_tools\`), so a fix there reaches every mission on it. A `plan.md` section named here that isn't in Kola's `plan.md` any more (*The controller*, *Radio calls*, *Stages 5–6* …) is in `shared_mission_framework\development_docs\as_built.md`, under the same name. A fix that changes behaviour means re-recording the offline harness's baselines right after it (framework `plan.md`, *Picking this up*).
+**Every bug says what it is for**, on a `**For:**` line right under its heading: the mission (`Kola`, `Caucasus`, …) when the fault is in that mission's own files or data, or `framework` when it is in the shared code or data (`shared_mission_framework\`), which reaches every mission on it. Add where it was found when that differs (`framework (found in Caucasus)`).
+
+Bugs found in runs, with what was seen, the cause and the fix proposed, to come back to. Each entry says where the evidence is; an `event_logs\…` path is in the mission folder of the mission it was found in (`missions\<mission>\event_logs\`). When one is fixed, it moves to the repository's one `closed.md`, next to this file (under *Bugs*, as `### Bug n.`, keeping its number and its `**For:**` line, with when and why it was closed), and any as-built facts go in the framework's `as_built.md`. Numbers run across every mission and aren't reused.
+
+Bugs 3–72 were found in Kola and lived in Kola's `development_docs\bugs.md` until 2026-10-07. Most of the code they name is shared now (`shared_mission_framework\mission_scripts\`, `radio_calls\`, `map_data_tools\`; `kola_data_tools\` is now `map_data_tools\`). A `plan.md` section named in them that isn't in Kola's `plan.md` any more (*The controller*, *Radio calls*, *Stages 5–6* …) is in `shared_mission_framework\development_docs\as_built.md`, under the same name. A fix that changes behaviour means re-recording the offline harness's baselines right after it (framework `plan.md`, *Picking this up*).
 
 ---
 
 ## 3. Scrambles keep firing at patrols on their race-tracks
+
+**For:** framework (found in Kola).
 
 **Status:** open, accepted for now (John, 2026-10-01, after the run with bug 2 fixed: "a little annoying, but acceptable for now"). Seen again in `event_logs\2026-10-01_141412.log`: four Blue scrambles (MSN2901, 2903, 2904, 2905) at one Su-33 patrol, MSN5016_CAP, on its race-track over Red's own airspace, all stood down; MSN2903 7 s after spawning. With bug 2 fixed each jet goes back on alert, so it's only noise.
 
@@ -34,6 +40,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 6. Su-24M SEAD flights spawn with no weapons
 
+**For:** Kola and Caucasus (each mission's `data\coalition_rosters.lua`, Caucasus's copied from Kola's; found in Kola).
+
 **Status:** worked around 2026-10-01 (John: remove it from the roster for now, with a comment why). The Su-24M is out of Red's `suppression_of_air_defenses` roster (`data/coalition_rosters.lua`); finding the pylon DCS rejects is still open.
 
 **Guard built 2026-10-02, not flown:** the ammo check 5 s after spawn (`logAmmo`) hands any jet with no weapon aboard (its gun aside), while its loadout lists weapon pylons, to the controller (`ControlAirFlights.unarmed`), which removes it on the ramp: `CONTROL … stand down: … carry no weapons (its loadout 'SEAD' lists 4 weapon pylons); removed on the ramp; the flight isn't flying` (or `the rest of the flight flies`). The `dcs.log` warning now reads `carries no weapons`. Whatever waits on a removed SEAD flight's site sees it still in the fight, so the gate flies that SEAD flight once more (`_AGAIN`, likely unarmed again) and then cancels: no flight goes without the SEAD it needs.
@@ -53,6 +61,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 ---
 
 ## 13. Su-34s blow up on the ramp seconds after spawning
+
+**For:** framework (found in Kola).
 
 **Status:** worked around 2026-10-01 (John: open parking only for now). The Su-34's profile allows only terminal 104 (open-air) spots; the DCS test of spot size is still open.
 
@@ -79,6 +89,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 32. The leash read a Red fighter flying straight at Blue as "heading away"
 
+**For:** framework (found in Kola).
+
 **Status:** open (found by John 2026-10-02, during the 14:55 run). **The decision was right, the reading was wrong** (John: CAP was covering that area, so standing the scramble down was fine; reading the Red fighter as going home was not). The right reason would have been "covered by patrol", and the leash doesn't look at patrol cover at all.
 
 **Seen:** `event_logs\2026-10-02_145532.log`; grep `MSN7903_SCRAM`, `MSN2905_SCRAM`.
@@ -103,6 +115,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 35. A SEAD retry flies straight back into the site that just shot the first flight down
 
+**For:** framework (found in Kola).
+
 **Status:** open (found 2026-10-02, review of the 14:55 run).
 
 **Seen:** `event_logs\2026-10-02_145532.log`; grep `retry`. Both rotations retried at once, as the rotation's next flight, with the same base, route and profile: MSN7023_SEAD_AGAIN spawned at 04:11:59, 1 s after MSN7023's last jet died, and MSN2025_SEAD_AGAIN at 04:13:09, 1 s after MSN2025's. Both retries were lost like the first (bug 33). 4 jets per side against one site in ~15 min. John, after the 00:57 run: losing some SEAD is fine, losing most isn't.
@@ -119,6 +133,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 ---
 
 ## 36. A low SEAD flight reached its launch point, fired nothing and flew home
+
+**For:** framework (found in Kola).
 
 **Status:** fix built 2026-10-02, not flown (copied to DCS). Found by John 2026-10-02 in the 16:03 run, the first with bug 33's profile: low from takeoff or low before the rings, pop-up to 1,800 m on afterburner 8 km before a launch point 45 km out. **No SEAD flight fired a missile all run:** MSN2025 (F-16s, Monchegorsk SA-10) was at its launch point at 4,941 ft for 40 s with no HARM before fighters jumped it. MSN2025_SEAD_AGAIN fought at its pop-up (bug 39).
 
@@ -152,6 +168,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 38. Blue's AWACS adds nothing to the picture until it reaches its station, ~26 min into the mission
 
+**For:** framework (found in Kola).
+
 **Status:** open (John, 2026-10-02, 16:03 run: "it has a radar, it's flying at altitude"). **The first fix is built, not flown; copied to DCS 2026-10-02 with bug 36's fix** (John, 2026-10-02): the `AWACS` task moved from the station waypoint to the takeoff waypoint (`spawn_aircraft_groups.lua`), so it runs from wheels-up; the orbit stays on the station waypoint. The next run shows whether cause 2 was it: `seen by awacs` lines while the E-3A is still on its way out. Cause 1 (far base, far station) is untouched. **Seen working in the 17:15 run** (`event_logs\2026-10-02_171553.log`): the E-3A (takeoff 04:01:27 from Bodo) gave Blue its first `seen by awacs` contact at 04:09:04 (MSN7016_CAP, 132 km from Rovaniemi), 12 min before it reached its station at 04:21:36. So cause 2 was real and is fixed; move to `closed.md` once John agrees. **Cause 1 settled too, 2026-10-04** (John: neither side would launch without AWACS coverage): both AWACS now start in the air on their station at mission start (`takeoff = "air"`; `plan.md`, *Defensive air*), not flown yet.
 
 **Seen:** `event_logs\2026-10-02_160358.log`; grep `MSN2001_AEW`, `seen by awacs`. The E-3A took off from Bodø at 04:01:27 (the held base farthest from the enemy, by design), was at ~29,300 ft by 04:12, and reached its station at 04:27:22. Its first contact (`seen by awacs`) was at 04:26:04, a minute before the station. Until then Blue's picture held 0–1 contacts, all from ground radars or a patrol (`PICTURE` 04:05 / 04:10 / 04:15 / 04:20: 0, 1, 1, 2 contacts). Red's A-50 behaved the same way: on station at 04:06:32 (it launched much nearer the front), first contact 04:05:04.
@@ -167,6 +185,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 ---
 
 ## 39. A SEAD flight that fights at its pop-up passes its launch point during the fight and goes home with every missile
+
+**For:** framework (found in Kola).
 
 **Status:** open (found by John 2026-10-02, 16:03 run). No fix yet (log only). Different from bug 36: there the flight reached its launch point unbothered and flew on without a shot; here a fight at the pop-up made it miss the launch point altogether.
 
@@ -207,6 +227,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 40. A SEAD flight reaches its launch point a third of the way up its pop-up, and the SA-10 kills it there before it fires
 
+**For:** framework (found in Kola).
+
 **Status:** part fixed 2026-10-02, not flown (copied to DCS). Found in the 16:50 run, the first with bug 36's fix (pop-up to 2,400 m, press-on leg). **Built** (John: get the fixes in): a `popup_top` waypoint `popup_climb_km` (3) past the pop-up point, already at the pop-up altitude, so the AI climbs hard there and is up before its launch point (steerpoint `TOP`; the `EngageGroup` stays on the pop-up waypoint). The launch distance is unchanged (John: the salvo gets through from close in). **Still open:** suspect 3, the SA-10 not on the RWR list (watch `RADAR_WARNING` in the next run; the test mission if it shows again).
 
 **Seen:** `event_logs\2026-10-02_165055.log`; grep `MSN2025_SEAD`, `SAM_KOSH_SA10_1`. 2× F-16C (4 HARMs each) from Kirkenes on the Koshka Yavr SA-10, step 1 of Blue's rotation, flying low from takeoff (Kirkenes is close).
@@ -238,6 +260,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 41. The controller's kill zones don't know the base-defense Tors and Pantsirs
 
+**For:** framework (found in Kola).
+
 **Status:** fix built 2026-10-02, not flown (John agreed after the behaviour was laid out; copied to DCS). `SamReach.baseDefenses` lists the enemy base-defense radar SAMs (`AIR_ROUTING.base_defense_roles`) with their longest unit's reach, as the planner sizes them; `AssessFlightSituations.enemyKillZone` and the scrambles' `enemyKillZone` check them after the SAM sites, at 85 % of that reach at any height, live groups only, and the `except` sets (route threats, a SEAD flight's own target) apply. So the fight's break-off, the go cold, the leash, the scrambles' "under enemy SAM cover" and the intercept point's 10 km margin all see them. Expected: fewer jets lost chasing or fighting into an airfield's Tor or Pantsir; a few bandits and raids escape there; slightly fewer scrambles. Checked in a luae harness. Found 2026-10-02, 17:48 run, watched by Claude.
 
 **Seen:** `event_logs\2026-10-02_174852.log`; grep `MSN2024_SEAD_1`, `DEF_VUOJ_radar_missile_launchers_1`. After its salvo (which killed the Sodankyla SA-10's search and tracking radars, bug 40), MSN2024_SEAD_1 (F-16C) took the Red SEAD Su-34s that came hot at it (`defend` 04:12:54, 31 km, allowed: its HARMs were gone). The fight took it to 8,800–12,700 ft and east toward Vuojarvi. 04:13:56 the Vuojarvi base Tor M2 (`DEF_VUOJ_radar_missile_launchers_1_1`) fired at it from 13 km; 04:13:59 `back on way home: breaking off: inside the kill zone of SAM_SODA_SA10_1`; 04:14:14 destroyed by the Tor.
@@ -250,6 +274,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 43. Kill zones still counted a SAM site whose radars were dead
 
+**For:** framework (found in Kola).
+
 **Status:** fix built 2026-10-04, not flown (John agreed; copied to DCS; checked in a luae harness). Found in the AI-only run `event_logs\2026-10-03_141509.log` (69 min).
 
 **Seen:** both Kittila Patriot tracking radars were destroyed at 04:31:50 (MSN7023_SEAD_AGAIN). After that, MSN7035_DEAD broke off 4 fights in 5 s each "inside the kill zone of SAM_KITT_Patriot_1" (04:49-04:56), and Red refused scrambles at 05:04 and 05:06 "under enemy SAM cover" of the same Patriot. The launch gate had already launched MSN7035 *because* the Patriot was out of the fight.
@@ -260,6 +286,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 44. A fight was timed out in the middle of the missile exchange
 
+**For:** framework (found in Kola).
+
 **Status:** fix built 2026-10-04, not flown (copied to DCS; harness-checked).
 
 **Seen:** same run; both SEAD duels ended `back on way home: 3 min on …, time is up` the moment the missiles were in the air (04:20:56, 04:36:54), and the jets were hit 1-33 s later. A defend called at 80-95 km and closing takes about `max_engage_s` (3 min) to reach shot range.
@@ -269,6 +297,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 ---
 
 ## 45. SEAD flights fought each other after their salvoes
+
+**For:** framework (found in Kola).
 
 **Status:** fix built 2026-10-04, not flown (John: option (a); copied to DCS; harness-checked). The SEAD attack itself is unchanged.
 
@@ -282,6 +312,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 46. A SEAD site that survived both tries blocked a coalition's attacks for the rest of the run
 
+**For:** framework (found in Kola).
+
 **Status:** fix built 2026-10-04, not flown (copied to DCS; harness-checked). Also the "come back later" half of bug 35.
 
 **Seen:** same run. Every Blue attack mission (MSN2037, 2038, 2039, 2040, 2042) waited on `SAM_VUOJ_SA10_1`. After MSN2026 and MSN2026_SEAD_AGAIN left 1 of its 3 radars dead (it needs 2), MSN2037 was cancelled at 04:44:59 and the rest would follow; the rotation never came back to it. The Koshka Yavr SA-10 did the same to MSN2029 and MSN2030 (cancelled 04:49:56).
@@ -293,6 +325,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 ---
 
 ## 50. The radar picture's first-detection ranges are far beyond the 250 km the coverage call assumes
+
+**For:** framework (found in Kola).
 
 **Status:** open (found 2026-10-04, same log). Log only, no fix yet. Goes with the "AWACS and low flyers" item in `plan.md` (*Still to watch*) and Darkstar's coverage call (bug 42).
 
@@ -314,6 +348,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 57. A SEAD retry spawned 1 s after the first flight was down, with its HARMs still in the air
 
+**For:** framework (found in Kola).
+
 **Status:** fix built 2026-10-05, not flown (John: "a dumb retry after 5 minutes and look at the target state again"; copied to DCS).
 
 **Seen:** `event_logs\2026-10-05_103126.log`, grep `MSN2029_SEAD`. MSN2029's last jet died at 04:45:25; `MSN2029_SEAD_AGAIN` spawned at 04:45:26. MSN2029's HARMs destroyed the SA-11's search radar (its only critical radar) at 04:46:17, so the site was out of the fight 51 s later, but the copy flew the whole sortie and went home `no shot`. Every retry this run came 1 s after the flight before it was down (MSN2026, MSN7023).
@@ -323,6 +359,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 ---
 
 ## 58. Red SEAD flights went cold 10 s into their salvo, the lead with all 4 aboard
+
+**For:** framework (found in Kola).
 
 **Status:** fix built 2026-10-05, not flown (copied to DCS; checked with stubbed situations).
 
@@ -336,6 +374,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 59. Kuusamo scrambled six times at Blue's E-3A
 
+**For:** framework (found in Kola).
+
 **Status:** fix built 2026-10-05, not flown (John: "an AWAC that vulnerable would be scrambled and shot down, it's probably too close to the front. fix it."; copied to DCS).
 
 **Seen:** same log, grep `MSN2001_AEW`. MSN7901, 7903, 7905, 7906, 7907, 7908, every ~17 min: "scramble: … after MSN2001_AEW (E-3A), enemy airspace, 14 min from SAM_ALAK_SA6_1; intercept 60 km out", each stood down on the ramp 3 min later, "back over its own airspace, heading away". The E-3A's race-track (centre 191 km from Alakurtti, 210 km from Koshka Yavr and Luostari, 254 km from Kuusamo) had a leg pointing at Alakurtti.
@@ -348,6 +388,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 60. A MiG-31 patrol fought on low on fuel and went down with empty tanks
 
+**For:** framework (found in Kola).
+
 **Status:** fix built 2026-10-05, not flown (John: "add a fuel watch to the controller"; copied to DCS; checked with stubbed situations).
 
 **Seen:** same log, grep `MSN7016_CAP`. About 1 % a minute on station; 19 % at 04:43, when it took on MSN2029_SEAD (killed both Hornets, R-33 and R-40R down to 1,850 ft); 9 % at 04:45, 1 % from 04:50, `DESTROYED … no killer recorded, 1,847 ft` at 04:54. DCS's own return at bingo didn't bring it home.
@@ -357,6 +399,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 ---
 
 ## 56. SA-10 rings missing from the F-16's HSD, inconsistently
+
+**For:** framework (found in Kola).
 
 **Status:** open, parked (John, 2026-10-05: "a problem for another day"). Log only.
 
@@ -378,6 +422,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 
 ## 62. Patrols "on station" at takeoff, and relieved by a jet still on its takeoff roll
 
+**For:** framework (found in Kola).
+
 **Status:** fix built 2026-10-06, not flown (copied to DCS; checked in a luae harness with stubbed DCS).
 
 **Seen:** Viper 1 (Ivalo), Viper 5 and Viper 6 (Alakurtti) and Hornet 1 (Ivalo) said "on station" 1–5 s after "airborne": their race-tracks lie within 20 km of their bases, and the watcher counted a patrol within `on_station_km` (20) of its race-track as on station. The controller had the same test for a handover: `handover: relieved by MSN2017_CAP, on station (3 km from the race-track)` 16 s after Viper 6's takeoff, so Viper 5 was sent home at once. The other way round, Viper 5 never said off station or checked out: that needed it 40 km from its station, and it landed 2 km from it.
@@ -390,6 +436,8 @@ Bugs found in runs, with what was seen and the fix proposed, to come back to. Ea
 **Check:** `RADIO_CALL.*on_station` after the flight's `WAYPOINT … on station` line, never seconds after `airborne`; `handover:` only after the relief's on-station waypoint; an `off_target` / `check_out` for every relieved patrol.
 
 ## 63. Darkstar told Weasel 4 "back to your tasking", then "RTB" 5 s later
+
+**For:** framework (found in Kola).
 
 **Status:** open, parked (John, 2026-10-06): option (a) below "sounds good", but SEAD is mostly working, so no SEAD behaviour changes for now. Build (a) when SEAD is opened up again.
 
@@ -412,17 +460,25 @@ So the controller never asks, when it ends the fight, whether the mission can st
 
 ## 64. A scramble sent home said "off target"
 
+**For:** framework (found in Kola).
+
 **Status:** fix built 2026-10-06, not flown. Ragin 3 (MSN2903_SCRAM), leashed home without a fight, said "Ragin three, off target, RTB". Interceptors now have their own condition (`intercept`) in `pilot_phrases.json`: "terminating" / "off intercept", then RTB.
 
 ## 65. A scramble's check-in spoke the DCS type name
+
+**For:** framework (found in Kola).
 
 **Status:** fix built 2026-10-06, not flown. "Darkstar, Ragin three, airborne Alakurtti, intercept on Su-34 at Ivalo": the watcher passed the raid's DCS type as a place-style target. Now the raid's type goes as `target_type`, worded by the helper like the Fox and splash calls (NATO name or designation): "intercept on the Fullback"; "scramble, intercept" when the type isn't known.
 
 ## 66. The flight-call listener failed on destroyed buildings
 
+**For:** framework (found in Kola).
+
 **Status:** fix built 2026-10-06, not flown. `dcs.log`: `flight calls: event 8 failed: … announce_flight_activity.lua:240: attempt to index local 'unitName' (a number value)`, 3×, from John's GBU-38s at Kalevala: a map object's name is a number. `nameOf` in the watcher now returns text names only.
 
 ## 67. "Departing" was said after the jet had taken off
+
+**For:** framework (found in Kola).
 
 **Status:** fix built 2026-10-06, not flown (luae harness: taxi, a runway crossing and a parallel taxiway not counted, lined up counted once, no second call at takeoff). John: backwards for airfield traffic.
 
@@ -430,25 +486,17 @@ So the controller never asks, when it ends the fight, whether the mission can st
 
 ## 68. A lone wingman ignored its landing orders and flew on until the mission ended
 
+**For:** framework (found in Kola).
+
 **Status:** fix built 2026-10-06, not flown (luae harness: removed 8 min after its last order while flying away; a jet closing on its base after two orders never removed).
 
 **Seen:** `MSN7024_SEAD_2` (Su-34), its lead shot down: heading 050 at 26,000 ft for 13 min, straight past Koshka Yavr; `land: … lost after its landing` at 05:02:04 and 05:04:04 (`max_orders` 2), still flying at mission end. The orphan removal needed a landing in its flight, and there was none.
 
 **Fix:** after its last landing order, a jet still getting farther from its base (`away_km` past its closest since that order) `orphan_remove_after_s` (8 min) later is removed and counted as landed: `>>orphan<< removed: by the controller: MSN7024_SEAD_2 171 km from Koshka Yavr (it was 66 km away) still flying away 8 min after its last landing order; counted as landed (…)`.
 
-## 69. The F-16's COMM 1 / COMM 2 volume knobs did nothing
-
-**Status:** open; logging built 2026-10-06 to find out why (the code reads the same knobs as SRS, arguments 430 / 431, and the player applies them: both checked offline, the export script in luae with a stubbed cockpit, the player with UDP readings).
-
-**Seen:** John, 00:16 run: turning the COMM 1 / COMM 2 knobs didn't change the calls' volume. `dcs.log` shows our export script loaded (`KOLA-RADIOS … sending the jet's radios`), but nothing recorded whether a reading ever reached the radio player: it printed to its window only. With no fresh reading it plays every call at full volume, which would look exactly like this.
-
-**Built:** the radio player writes everything it says to `radio_calls\radio_player.log` (rewritten at each start, git-ignored): the jet's radios as first heard and at every change (volume in 0.05 steps), "no word from the jet's radios … every call plays at full volume" when the readings stop, and each call heard (on which radio, at what volume), not heard (why) or dropped. The export script writes `KOLA-RADIOS … first reading of the jet's radios: {…}` to `dcs.log` once, and the first failure to read or send.
-
-**Check after the next flight:** `dcs.log` for `first reading`; `radio_player.log` for `hearing the jet's radios`, the volume lines as the knobs turn, and `at volume` on each call.
-
-**2026-10-06 17:47 run** (`event_logs\2026-10-06_174721.log`): the readings arrive: `dcs.log` `first reading of the jet's radios` (UHF 305.000 and VHF 127.000, both off, the cold jet), and `radio_player.log` logs each change, John's retuning to 262.000 / 140.000, and the UHF volume going down 1.00 → 0.00 in 0.05 steps and back up (bug 72). Every call heard was played `at volume 1.00`, so whether a call at a lower knob setting sounds quieter wasn't heard.
-
 ## 70. Both jet-down calls went unheard
+
+**For:** framework (found in Kola).
 
 **Status:** fix built 2026-10-06, not flown; the cause is likely, not proven (no player log in that run).
 
@@ -458,6 +506,8 @@ So the controller never asks, when it ends the fight, whether the mission can st
 
 ## 71. Hits and bomb impacts said nothing about where a weapon landed or how much damage it did
 
+**For:** framework (found in Kola).
+
 **Status:** built 2026-10-06, not flown (luae harness with stubbed DCS). John, after the 00:16 run: his GBU-38s at Kalevala were logged as `HIT` on the Mi-8 static and two ZU-23s, twice, but nothing said how close they fell or how hurt the Mi-8 was (he thought he saw 8 % damage), so a miss and a weak hit couldn't be told apart.
 
 **Built:**
@@ -465,6 +515,8 @@ So the controller never asks, when it ends the fight, whether the mission can st
 - `HIT` lines end with the life the target has left a second after the hit (`life now 92 %`, or `destroyed`).
 
 ## 72. The radio went silent for the last ~5 minutes, though the calls were being sent
+
+**For:** framework (found in Kola).
 
 **Status:** open, logged 2026-10-06 (John: "we can log that one"); not investigated further, no fix.
 
@@ -489,3 +541,75 @@ So the controller never asks, when it ends the fight, whether the mission can st
 - A knob turned during a call: apply it live (the player plays a call in one piece with `winsound`, which has no volume control while playing), or at least to the next call, and say so in the log.
 - To prove the rest in one test: turn COMM 1 down to zero and back up, with both radios on, and listen for COMM 2 calls during it and UHF calls after it (a long enough run after turning it up).
 - The wording `not heard, no radio tuned to 262.000` is misleading when a radio is tuned to it but off or at zero volume: it should say so ("UHF on 262.000 is off").
+
+---
+
+## 73. The Sukhumi SA-10 shot down all 16 HARMs of both SEAD tries, and blocks Blue's western attacks
+
+**For:** framework (found in Caucasus).
+
+**Status:** open, logged 2026-10-07. No fix chosen.
+
+**Seen:** `missions\caucasus_multiplayer_random_tasking\event_logs\2026-10-06_224344.log` (John's first Caucasus flight), grep `SAM_SUKH_SA10_1`, `MSN2025_SEAD`.
+- MSN2025_SEAD (Weasel 1, 2× FA-18C from Kobuleti), 09:11:53–09:12:03: 8 AGM-88 from 45–50 km, fired from 1,062–2,000 ft. The lead was at 1,999 ft at its "top of the pop-up" waypoint. The SA-10's launchers fired about 13 SA5B55 at the incoming HARMs, from 29 km down to 18 km. All 8 are `IMPACT … gone in the air`, 3–5 km above the ground and 14–21 km short of the site.
+- MSN2025_SEAD_AGAIN (Wild 1), 09:36:54–09:37:06: 8 more from 44–50 km, fired from 1,085–2,045 ft. All gone in the air 5–6 km short, 1.2–1.6 km up. The SA-10 and its escort Tor (`SAM_SUKH_SA10_1_escort_1`, 8 SA9M338K) both fired at them.
+- The site took no damage. MSN2028_SEAD waits on it (`waiting for SAM_SUKH_SA10_1's SEAD flight to come back (MSN2025_SEAD_LATER)`), and MSN2031, 2034, 2036, 2039 and 2040 list it in their `after`.
+
+**Not specific to Caucasus** (John asked 2026-10-07 why Caucasus fires from farther out than Kola; it doesn't):
+- `launch_km` 45 is shared (`data\air_tasking.lua`, `suppression_of_air_defenses`), and both missions fire from the same distances.
+- Kola since 2026-10-02: HARMs at SA-10s fired from 35–54 km in 11 runs; an SA-10 part was hit in 4 of them (10-02 17:48, 10-03 14:15, 10-04 14:20, 10-04 22:39).
+- The Kola kill from 35–41 km (2026-10-01 14:14 run) was before `launch_km` went to 45 (bug 33: the sites fired back at the pop-up from 39–50 km).
+- **The pop-up isn't reached by Blue in either mission:** `popup_altitude_m` 2,400 (~7,900 ft), but Blue's "top of the pop-up" lines show 2,000–2,400 ft here and 2,300–4,600 ft in Kola. Red's Su-34s reached 7,800–7,900 ft here. A HARM fired from 1,000–2,000 ft has a long, low-energy flight, so the S-300 gets plenty of time to shoot it down.
+
+**Cause:** not known yet. Likely factors: low launch altitude, a 45 km shot, and the SA-10's own defence against the missiles. A 2-ship salvo of 8 doesn't saturate 8+ launchers.
+
+**Options (decide with John):**
+- A pop-up that really reaches its altitude before the shot (why Blue's doesn't is a question of its own).
+- A closer launch point for long-range sites only, accepting bug 33's return fire.
+- Two SEAD flights at once on an SA-10, to saturate it.
+- A DEAD follow-up while the site reloads.
+
+## 74. A SEAD flight on the Mineralnye Vody SA-10 reached its launch point with the radar dark, pressed on and both jets died without a shot
+
+**For:** framework (found in Caucasus).
+
+**Status:** open, logged 2026-10-07. No fix chosen.
+
+**Seen:** same log, grep `MSN2026_SEAD`.
+- MSN2026_SEAD (Weasel 2, 2× FA-18C from Kobuleti) flew a 47-waypoint route across the main Caucasus ridge to `SAM_MINV_SA10_1`, a rear-area site guarding Mineralnye Vody. Its "low level" legs were at 8,000–14,000 ft above sea level over the mountains.
+- At its launch point (09:20:48, 46 km out, 7,835 ft, 3,409 ft above the ground): `its radar not seen`. The jets' warning receivers held the Mineralnye Vody SA-11 and SA-8 but not the SA-10. The flight pressed on (bug 36's press-on).
+- The SA-10 lit up and fired at 43 km (09:21:01 and 09:21:04; `TRACKING` 09:21:07), 4 SA5B55 in all. Both jets were destroyed at 09:21:35 and 09:21:39, and both pilots were killed.
+- Not one HARM was fired, even after the site's radar was on them. The only reaction logged is Weasel 2-1's `defending` call.
+
+**Also a planning question:** this deep rear-area SA-10 was attacked in the first wave, while both front SA-10s (Sukhumi, Gudauta) still stood. It is not in Blue's rotation. Most likely it was planned because the route of the player DEAD task on the Mineralnye Vody SA-8 (MSN2024, `after SAM_SUKH_SA10_1, SAM_MINV_SA10_1`) crosses it.
+
+**Related:** Kola bugs 36, 39 and 40 (no shot at the launch point, a fight at the pop-up, the SA-10 killing the flight before it fires).
+
+**Cause / fix:** to look into with John. Questions:
+- A long-range site that is dark at the launch point: press on into its ring, or hold outside it?
+- Why did the Hornets not fire once the site was tracking them?
+- Should a deep SEAD on a rear site wait until the front sites are down?
+
+---
+
+## 75. AI wingmen don't land once their lead has landed (bug 19's cause, still open)
+
+**For:** framework (found in Kola, seen again in Caucasus).
+
+**Status:** open, logged 2026-10-07; researched, no fix built. Bug 19 (`closed.md`) put in the workaround: landing orders, and the controller removing a jet still up 8 min after its lead landed, counted as landed. That hides it but the cause is still there. **Fixes to try in this order** (John, 2026-10-07): 1, then 2, then 3, one per test flight, each judged on its `>>orphan<<` lines.
+
+**Seen** (every `>>orphan<<` line in all Kola and Caucasus event logs, counted 2026-10-07):
+- **Always a wingman (`_2`); every lead landed.** 27 times a wingman was still in the air when its lead touched down: 6 landed, 18 were removed by the controller or lost, 3 were still up at mission end.
+- **Two shapes.** Kola: the wingman flies off in a straight line at its holding altitude (~4,200–4,450 ft, 300–315 kt), from about the lead's touchdown (bug 19). Caucasus (`missions\caucasus_multiplayer_random_tasking\event_logs\2026-10-06_224344.log`, grep `POSITION     MSN2025_SEAD_2`, `MSN2025_SEAD_AGAIN_2`, `MSN7016_SEAD_2`): all 3 orphaned; each flew the pattern at 6,240 ft, came down to ~1,000 ft at 140–180 kt (final), went around on afterburner (fuel 51 → 36 % in 2 min) and climbed back, until the controller removed it.
+- **Our landing orders are ignored.** With a jet of the flight on the ground, `GiveOrders.land` gives each jet in the air its own order on its unit controller; the log always follows with `no answer to land_at …: not seen following it in 60 s`.
+
+**Ruled out: parking or traffic at the base.** Checked each orphan against ramp spawns and takeoffs at the same base from 5 min before to 8 min after the lead's touchdown: most orphans had none, and several wingmen that did land had them.
+
+**Cause (from DCS users' reports, matching what we see):** a DCS AI wingman follows its lead in the landing too. It waits for the lead to clear the runway, and once the lead has parked and shut down, there is nothing left to follow, so it either holds and flies on, or keeps going around ([forum: AI wingmen](https://forum.dcs.world/topic/7807-question-about-ai-wingmen/); [formation landings](https://forum.dcs.world/topic/230088-formation-takeoffs-and-landings-as-2)). Reportedly, single jets of a group can't be given a mission while another of the group is on the ground ([forum thread](https://forum.dcs.world/topic/277371-tasking-with-wingman-on-ground/); the forum refused a direct read, so not confirmed): that fits our ignored orders. Leads on their own land reliably.
+
+**Fixes, in John's order:**
+1. **Force a pair landing.** DCS has an AI option for this (found 2026-10-07 in `DCS World\MissionEditor\modules\me_action_db.lua`): `LANDING_OPTIONS`, option id **36**, values `0` straight-in (the default), `1` **force pair landing**, `2` restrict pair landing, `3` overhead break; in the mission editor "Landing Options" under Set Option, airplanes only (next to it, id 37 `ALLOW_LINE_UP_RW`, the formation takeoff). Set `Controller:setOption(36, 1)` in each AI 2-ship's start options (`spawn_aircraft_groups.lua`, with the other options at the first waypoint), and again with every order that sends a flight home or to land (`GiveOrders`), in case a new task resets it. Both jets then land together, so there is no lead to wait for. Check: whether DCS also honours it after a `setTask`, and whether both jets touch down (two `LAND` lines seconds apart, no `possibly orphaned`).
+2. **Land the wingman first.** While both jets are still in the air on the way home (the `landing` directive, or the order that sends the flight home), send the wingman to land ahead of its lead, e.g. the lead given a short hold or a longer route in (an `Orbit` near the base for a minute or two) and the wingman the straight-in landing, so it never waits behind a landed lead. The reported players' workaround. Uncertain: DCS lands a group as a group, and a separate order to one jet of an airborne group may pull it out of formation in ways we don't control.
+3. **Despawn and respawn the wingman as its own flight.** When its lead touches down and the wingman is still up: remove it and spawn the same jet (type, loadout, fuel, skill, callsign) as a 1-ship group at its position, altitude, heading and speed (an air start, as scrambles and the AWACS use), with one waypoint: land at its base. A lone jet leads its own group, and leads land. Watch: the flight's bookkeeping (the new group counted as the old wingman for the scheduler, the event log, the radio and the gate), and that the swap isn't visible (no weapons or fuel change).
+
+**Check after each:** grep `>>orphan<<`: `not orphaned` should replace `removed`; and `LAND` for both jets of each 2-ship.

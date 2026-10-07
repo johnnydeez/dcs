@@ -1,18 +1,22 @@
-# Kola F-16 Random Tasking — Roadmap
+# DCS missions: roadmap
 
-What's coming after session 10 (2026-09-30), when the mission became playable by humans. Each item says what it's for, what already exists, a proposed approach and the questions to settle before building. Details are decided with John as each item comes up, step by step, like the rest of the project.
+**The one roadmap for the whole repository** (John, 2026-10-07: one file at the root, with `bugs.md` and `closed.md`). Where every mission and the shared mission framework are headed. Each item says what it's for, what already exists, a proposed approach and the questions to settle before building. Details are decided with John as each item comes up, step by step, like the rest of the project.
 
-`plan.md` stays the status and the build log; this file is the list of where the mission is headed. When an item is built and run, its "as built" notes go into the framework's `as_built.md`, and the item moves to `closed.md` (so this file doesn't grow forever). Item numbers stay as they are, so references elsewhere keep working: items 1–3, 5, 10–13, 16, the performance item and parts 4a / 4b of item 4 are in `closed.md`.
+**Every item says what it is for**, on a `**For:**` line right under its heading: a mission (`Kola`, `Caucasus`, …) when it changes only that mission's own files or data, or `framework` when it changes the shared code or data (`shared_mission_framework\`) and so reaches every mission on it. Name where it came from when that helps (`framework (from Kola's roadmap)`), and the missions' own data it needs (`framework, and each mission's data`).
+
+Each mission's `plan.md` (and the framework's) stays the status and the build log; this file is the list of where things are headed. When an item is built and run, its "as built" notes go into the framework's `as_built.md` (or the mission's `plan.md` for a mission's own), and the item moves to the root's `closed.md`, keeping its number (so this file doesn't grow forever). Numbers run across the whole repository and aren't reused: items 1–3, 5, 10–13, 16, the performance item and parts 4a / 4b of item 4 are in `closed.md`.
+
+**Items 1–16 and the optional ones came from Kola's `development_docs\roadmap.md`** (moved here 2026-10-07), so Kola is the example and its numbers the defaults in them; items 17 and 18 from the framework `plan.md`'s *Later*. Since 2026-10-06 every item from Kola's roadmap is framework work: each changes shared code (`mission_scripts\`, `radio_calls\`, `map_data_tools\`), so once built it reaches every mission. What would be one mission's alone (its map, its rosters, its slots) is noted in an item when it comes up. "`plan.md`, *As built*" and the other sections about how the code works: `shared_mission_framework\development_docs\as_built.md`. An `event_logs\…` path is Kola's (`missions\kola_f16_random_tasking\event_logs\`) unless it says otherwise.
 
 Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means Red unless it says otherwise.
-
-**Framework work (2026-10-06):** Kola now runs on the shared mission framework (`shared_mission_framework\`), and **every item on this roadmap is framework work**: each changes shared code (`mission_scripts\`, `radio_calls\`, `map_data_tools\`), so once built it reaches every mission on the framework (the Caucasus random tasking next), with Kola's values as the shared defaults. What would be Kola's alone (its map, its rosters, its slots) is noted in an item when it comes up. Items stay numbered and kept here for now; whether the framework gets its own `roadmap.md` is open (framework `plan.md`, *Open*). "`plan.md`, *As built*" and the other sections about how the code works: `shared_mission_framework\development_docs\as_built.md`.
 
 **Order (John, 2026-09-30; items 10–12 added 2026-10-01; item 5 pulled forward and built 2026-10-02; item 13, airfield info, added and built 2026-10-02 outside the order; item 14, every mission type for players, and item 15, airfield traffic, added 2026-10-03 with no place in the order yet; item 7, AI radio calls, pulled forward 2026-10-05, its MVP (Darkstar spoken) built and flown the same day, and the AI pilots' and airfield calls built that night; item 16, SEAD that meets fighters, added 2026-10-05 and closed the same day, not needed; items 12 and 13 closed 2026-10-05):** ~~radar functions → scrambles → event log~~ → ~~performance in VR~~ (done for now, 2026-10-01) (all in `closed.md`) → ~~every run-time flight decision under the controller (item 11)~~ → ~~SEAD ingress doctrine (item 10)~~ → ~~SEAD against the air defenses: a standing rotation (item 12)~~ (all in `closed.md`) → **AI behaviour logic (item 4, the controller's further directives; next in the order)** → ~~AWACS calls (text)~~ (item 5, in `closed.md`) → cruise missiles → AI radio calls (MVP and pilots / airfields done; the rest) → Skynet IADS → fog of war. CAP visibility (making patrol routes and times easy to see) was cut on 2026-09-30: John can see the dotted station lines on the map fine for now. Fog of war is last on purpose: John is actively working on and debugging the mission and needs the full map. Five optional extras sit at the end, with no place in the order yet: radar jamming, helicopters, fun callsigns, the threat picture on the map for players (after fog of war), and a Wild Weasel wingman for SEAD flights (added 2026-10-02).
 
 ---
 
 ## 14. Players can fly every mission type, scrambles included (John, 2026-10-03)
+
+**For:** framework (from Kola's roadmap).
 
 **Goal:** a human player can take any mission type the AI flies. That includes the scramble: the player waits on alert, and when the controller decides a scramble from their base they get (n) seconds to take it; if they don't, it goes to the AI as now.
 
@@ -37,6 +41,8 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 ---
 
 ## 15. Airfield traffic in the comms menu (John, 2026-10-03)
+
+**For:** framework (from Kola's roadmap).
 
 **Goal:** what's moving at a base right now, in its `Airfield info` text (item 13): how many aircraft are taking off, landing and taxiing, and who. So a player knows before taxiing out or coming in what they'll share the runway and taxiways with.
 
@@ -63,6 +69,8 @@ Traffic: 1 taking off, 2 landing, 3 taxiing
 ---
 
 ## 4. AI behaviour logic: conditional orders to flights in the air
+
+**For:** framework (from Kola's roadmap).
 
 **Goal:** fewer, more meaningful losses (air denial), by having the script give AI flights conditional orders while they fly, instead of only a plan at spawn. John (2026-09-30): "the only way we will reduce losses is to start using our AI logic to begin giving conditional in-game commands to flights." It won't be perfect, because the DCS AI is built to fight; the aim is the best scenario we can make.
 
@@ -154,6 +162,8 @@ MSN2025 lost both jets:
 
 ## 6. Cruise missile attacks (ideally from the ground, else from the air)
 
+**For:** framework (from Kola's roadmap).
+
 **Goal:** long-range missile strikes on high-value targets, part of the Ukraine-war feel: missiles for deep strikes instead of risking airframes (a session 8 doctrine idea).
 
 **Where it stands:**
@@ -181,6 +191,8 @@ MSN2025 lost both jets:
 ---
 
 ## 7. AI radio calls: flights announce their intentions
+
+**For:** framework (from Kola's roadmap).
 
 **Status:** **MVP built and flown 2026-10-05** (John: "working, and is awesome"): Darkstar, Blue's AWACS, speaks its picture calls and immediate threat calls in a Windows voice through our own radio player. As built: `plan.md`, *Radio calls*. **The AI pilots and airfields talk** (designed with John 2026-10-05 evening, built the same night, steps 5–9 below; first tested by John 2026-10-05 late: "insanely cool so far, probably needs a few fixes"): AI flights' mission calls and airfield traffic calls, from a watcher beside the controller, on channels the jet's own radios tune (our export script, as SRS does), with callsigns and a reworked queue; *Flights and airfields talk* below. Darkstar's orders to the AI flights (step 14) built 2026-10-05 night, flown in the 2026-10-06 00:16 run (each order matched its `CONTROL` line); fixes from that run (bugs 62, 64–70) built 2026-10-06, not flown. The pilots' answers and reports (step 15) built 2026-10-06, not flown. Next: Azure voices (step 10). Pulled forward from its place in the order on 2026-10-05.
 
@@ -342,6 +354,8 @@ Steps 5–9 built 2026-10-05 late, harness-tested, first heard in the 21:02 test
 
 ## 8. Skynet IADS: SAM networks that behave like real air defences
 
+**For:** framework (from Kola's roadmap).
+
 **Goal:** SAM sites that fight as a network instead of each radar on its own: early-warning radars share one picture, SAM sites stay dark until a target is close, and radars shut down when a HARM comes at them. That means ambushes, little RWR warning, and SEAD that actually has to work (John: "sounds really cool").
 
 **Where it stands:** nothing built. What its README says (moved from the `plan.md` backlog):
@@ -372,6 +386,8 @@ Steps 5–9 built 2026-10-05 late, harness-tested, first heard in the 21:02 test
 ---
 
 ## 9. Fog of war: showing Red installations without revealing the whole map (last)
+
+**For:** framework (from Kola's roadmap).
 
 **Goal:** players see what Blue intelligence would plausibly know, not the planner's full picture. Enough to plan a mission, with real uncertainty left.
 
@@ -407,7 +423,54 @@ Steps 5–9 built 2026-10-05 late, harness-tested, first heard in the 21:02 test
 
 ---
 
+## 17. Both coalitions playable
+
+**For:** framework (from the framework `plan.md`'s *Later*, 2026-10-06).
+
+The Afghanistan plan's requirement: "nothing in the shared library knows which side the players are on". The ~69 Blue assumptions become per-coalition (slots, brief, comms menu, air picture calls, the radio, *Airfield info*). Its own step after the split, so the split stays a pure move.
+
+---
+
+## 18. Map data in a per-map folder, if two missions ever share a map
+
+**For:** framework (from the framework `plan.md`'s *Later*, 2026-10-06; its decision 2).
+
+---
+
+## 19. Darkstar for every human player: a frequency per slot, heard on each player's own PC
+
+**For:** framework, and each mission's data (its slots' Darkstar frequencies).
+
+**Status:** designed with John 2026-10-07, not built.
+
+**Goal:** more than one human player, each with their own Darkstar: their picture and threat calls addressed by their own callsign, the bearings from their own jet, heard on their own PC through their own jet's radios. Kept apart the real-world way, by frequency, not by hiding calls: everyone on a frequency hears every call on it (John: "I like the idea of just having different frequencies for each of us for DARKSTAR").
+
+**Where it stands (2026-10-07):**
+- Darkstar calls each player by their jet's callsign from the mission file (`SendRadioCalls.playerCallsign`, since 2026-10-07), but once per group (the group's first player): a second human in the same group gets no calls.
+- Every Darkstar call to a player is on the one AWACS channel (`RADIO_CHANNELS.awacs`), so on one PC every player's calls would be heard.
+- The mission writes its calls to a file on the host's PC; the helper (`speak_mission_calls.py`) words and voices them there and hands each to the radio player (TCP, 127.0.0.1 only), which plays what the host's jet is tuned to. A player on another PC hears nothing.
+- What already works on any PC: the export script (`export_cockpit_radios.lua`, one line in `Export.lua`) reads that PC's own jet's radios, and the radio player plays only what they're tuned to.
+
+**The design (John, 2026-10-07):**
+- **A Darkstar frequency per player slot** (John: per slot, so a new jet or a dynamic slot just gets a new frequency): in each mission's own data (beside `RADIO_CHANNELS`), clear of its map's tower frequencies like the AWACS channel now; one per F-16 slot, and a rule that gives a slot not listed (a new or dynamic one) the next free one. Each slot's frequency in its brief ("Darkstar UHF 273.000").
+- **Darkstar's picture and threat calls to a player** go on their slot's frequency, addressed by the jet's callsign, the bearings from that jet.
+- **Per jet, not per group:** two players in one group each get their own calls (a separated wingman too, as a real controller talks to each element: "Python 1-2, threat, 090/15, hot").
+- **Unchanged on the shared frequencies:** Darkstar's orders to AI flights and the AI pilots' answers (AWACS channel), the AI's mission calls (mission channel) and airfield traffic (tower frequencies): anyone can tune and monitor them.
+- **Each other player runs only the radio player** (`radio_player.py`) and the export script's line in their `Export.lua`, no helper, no voices. The host's helper sends every voiced call to every radio player it knows (the host's own and each friend's, over ZeroTier, which John and his friends use when they play); each player plays only what its own jet is tuned to. John: his friends can run the Python program on their side.
+- **The radio player** listens on its ZeroTier address too (today 127.0.0.1 only). **The helper** reads a short list of where to send (each friend's ZeroTier address), in a local file git-ignores (it's John's network).
+- **The audio travels** as the voiced WAV (a long picture ~1 MB; fine over ZeroTier). If it ever lags: send the call's text and let each PC voice it (then each runs the helper too).
+- **A setup page** for a friend: Python, the repository's `radio_calls\` folder, the `Export.lua` line, a Windows firewall rule for the port on ZeroTier, starting the radio player.
+
+**Open:**
+- How a dynamic slot's frequency is told to its player when it isn't in the brief beforehand (its brief in the comms menu, as now?).
+- Whether Darkstar's on-screen picture text stays per group or goes per jet with the radio.
+- Order: not placed yet (John, 2026-10-07).
+
+---
+
 ## Optional, later: the SEAD wingman flies Wild Weasel (John, 2026-10-02)
+
+**For:** framework (from Kola's roadmap).
 
 **Goal:** give the second jet of a SEAD 2-ship a job of its own, since in most salvoes it does nothing. John: SEAD works now, so this waits; don't change the SEAD flights for it until it's picked up.
 
@@ -423,6 +486,8 @@ Steps 5–9 built 2026-10-05 late, harness-tested, first heard in the 21:02 test
 ---
 
 ## Optional, later: radar jamming
+
+**For:** framework (from Kola's roadmap).
 
 **Goal:** jamming aircraft make the enemy's radar picture worse: a bearing without a range, contacts found later, and burn-through as they get closer. That gives escort jammers and self-protection pods a real effect on scrambles and AWACS calls.
 
@@ -441,6 +506,8 @@ Steps 5–9 built 2026-10-05 late, harness-tested, first heard in the 21:02 test
 
 ## Optional, later: helicopters
 
+**For:** framework (from Kola's roadmap).
+
 **Goal:** helicopters in the air war: attack helicopters working the front (Ka-52 / Mi-28 for Red, AH-64 for Blue), transport and utility flights behind it, and air defences and fighters that answer them.
 
 **Where it stands:** nothing built (John, 2026-09-30: "we aren't doing helicopters yet"). The radar picture (item 1) already lists enemy helicopters as contacts. Scrambles (item 2) skip them for now.
@@ -453,6 +520,8 @@ Steps 5–9 built 2026-10-05 late, harness-tested, first heard in the 21:02 test
 ---
 
 ## Optional, later: fun callsigns for human and AI flights
+
+**For:** framework (from Kola's roadmap).
 
 **Status (2026-10-05 evening):** pulled into item 7 (*Flights and airfields talk*, design 6, step 5): realistic names first (John), one per flight for the whole mission, a retry the same name with a new number. Flavour names stay this item, from the same data file, later.
 
@@ -478,6 +547,8 @@ Steps 5–9 built 2026-10-05 late, harness-tested, first heard in the 21:02 test
 ---
 
 ## Optional, later: the threat picture on the map for players
+
+**For:** framework (from Kola's roadmap).
 
 **Goal:** once fog of war (item 9) hides the full map, draw Blue's own radar picture (item 1) for Blue players, so they see the air threat the way their side's radars see it (John: "might be a really cool way to see the threat picture for the human players").
 

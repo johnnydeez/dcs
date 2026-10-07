@@ -285,7 +285,7 @@ local function callAll()
                 done[groupId] = true
                 local text, groups, inCoverage = pictureFor(sideName, unit)
                 trigger.action.outTextForGroup(groupId, text, P.show_s, false)
-                SendRadioCalls.picture(sideName, group:getName(), groups, inCoverage)   -- spoken too
+                SendRadioCalls.picture(sideName, unit, groups, inCoverage)   -- spoken too
                 if P.log_calls then
                     local first = groups[1]
                     WriteEventLog.add(sideName, "PICTURE_CALL", group:getName(), string.format("to %s: %s%s",

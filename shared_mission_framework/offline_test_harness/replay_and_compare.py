@@ -45,6 +45,12 @@ MISSIONS = {
         "saved_world": os.path.join(HARNESS_FOLDER, "baselines", "kola", "saved_world_from_2026-10-06_0016_run.lua"),
         "plan_dump": "kola_last_plan.lua",
     },
+    "caucasus": {
+        "scripts_name": "caucasus_f16",
+        "scripts_folder": os.path.join(REPOSITORY_FOLDER, "missions", "caucasus_multiplayer_random_tasking", "caucasus_f16"),
+        "saved_world": os.path.join(HARNESS_FOLDER, "baselines", "caucasus", "saved_world_from_2026-10-06_2127_run.lua"),
+        "plan_dump": "caucasus_last_plan.lua",
+    },
 }
 
 # Each test: its name, the replay mode, its seeds, and the files compared (plan_dump: the

@@ -154,7 +154,9 @@ AIRCRAFT_PROFILE = {
         attack_altitude_m = { airborne_early_warning = 9000 },
     },
     ["E-3A"] = {
-        base_classes = { "hub", "bomber" }, min_runway_m = 2500, parking = { 104 },
+        -- 2,300 m (John, 2026-10-06: it can use Tbilisi-Lochini, 2,345 m in DCS; was 2,500).
+        -- It starts in the air on its station, so this decides only where it lands.
+        base_classes = { "hub", "bomber" }, min_runway_m = 2300, parking = { 104 },
         flight_size = { 1, 1 }, combat_radius_km = 1600,
         cruise_speed_mps = 200, cruise_altitude_m = 9000,
         attack_altitude_m = { airborne_early_warning = 9000 },

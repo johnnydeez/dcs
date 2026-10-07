@@ -2,9 +2,9 @@
 
 > **What this is:** the spec and build state of the Kola F-16C mission generator. When the mission loads, a script rolls the battlefield (who holds which airfield), fills it with ground defenses, SAM networks and targets, plans both coalitions' air war for a ~6-hour window, and briefs human players on their taskings.
 >
-> **Where to look:** *Where we are* (pick up here) → *Backlog* → *Kola's map and scenario* → *Reference*. **How the code works** (*As built* by stage, *Architecture*, *DCS facts learned the hard way*, *Design, not built yet*, and every other section this file used to have) is in the shared mission framework's `shared_mission_framework\development_docs\as_built.md` since 2026-10-06, under the same names: a section named here or in `roadmap.md`, `bugs.md`, `closed.md` that isn't in this file is there. Features coming next, in John's order, are in **`roadmap.md`**; bugs found in runs, to come back to, are in **`bugs.md`**; finished roadmap items (1–3, 5, 10–13, 16 and parts 4a / 4b so far) and fixed bugs move to **`closed.md`**, keeping their numbers. Session-by-session history (run logs, before/after numbers) was cut on 2026-09-30; it's in git (`notes/kola_f16_generator_plan.md` in commits up to `4c49af9`).
+> **Where to look:** *Where we are* (pick up here) → *Backlog* → *Kola's map and scenario* → *Reference*. **How the code works** (*As built* by stage, *Architecture*, *DCS facts learned the hard way*, *Design, not built yet*, and every other section this file used to have) is in the shared mission framework's `shared_mission_framework\development_docs\as_built.md` since 2026-10-06, under the same names: a section named here or in `roadmap.md`, `bugs.md`, `closed.md` that isn't in this file is there. Features coming next, in John's order, are in the repository's one **`roadmap.md`** (at its root); bugs found in runs, to come back to, are in the repository's one **`bugs.md`** (at its root, every mission's and the framework's, since 2026-10-07); finished roadmap items (1–3, 5, 10–13, 16 and parts 4a / 4b so far) and fixed bugs move to the repository's one **`closed.md`** (at its root), keeping their numbers. Session-by-session history (run logs, before/after numbers) was cut on 2026-09-30; it's in git (`notes/kola_f16_generator_plan.md` in commits up to `4c49af9`).
 >
-> **Paths** are relative to this mission folder (`missions/kola_f16_random_tasking/`, one up from `development_docs/`, where this file and `roadmap.md`, `bugs.md`, `closed.md` live) unless they say otherwise. Kola runs on the shared mission framework (`shared_mission_framework\`: its Lua in `mission_scripts\`, the radio in `radio_calls\`, the map tools in `map_data_tools\`); Kola's own scripts in `kola_f16\` are its settings (`mission_settings.lua`), its map and scenario data, and its entry `init.lua`. Companion: the Syria mission (`missions/syria_a2g/notes.md`); no shared code.
+> **Paths** are relative to this mission folder (`missions/kola_f16_random_tasking/`, one up from `development_docs/`, where this file lives; the roadmap, bugs and closed items are in the repository's one `roadmap.md`, `bugs.md` and `closed.md`, at its root, since 2026-10-07) unless they say otherwise. Kola runs on the shared mission framework (`shared_mission_framework\`: its Lua in `mission_scripts\`, the radio in `radio_calls\`, the map tools in `map_data_tools\`); Kola's own scripts in `kola_f16\` are its settings (`mission_settings.lua`), its map and scenario data, and its entry `init.lua`. Companion: the Syria mission (`missions/syria_a2g/notes.md`); no shared code.
 >
 > **Naming rule:** name things by what they are or what they do, in full words. No abbreviations in code names: `mobile_anti_aircraft_guns`, not `aaa_sp`; `shoulder_launched_missile_teams`, not `manpads_team`. Each name answers one question. Prose may still use common terms (AAA, SHORAD, MANPADS).
 >
@@ -205,7 +205,7 @@
 
 ## Backlog (not on the roadmap)
 
-Decide with John, step by step. Roadmap items are in `roadmap.md`.
+Decide with John, step by step. Roadmap items are in the root's `roadmap.md`.
 
 **Playability follow-ups** (session 10, none built):
 - **Spread the two taskings:** require the second human tasking's target ≥ ~75 km from the first, falling back to any target. On the 12:18 roll both went to Rovaniemi.
@@ -301,7 +301,7 @@ First step suggested: a loss summary per run, so later changes have a before and
 
 ## Kola's map and scenario
 
-Kola's own data on the shared framework: its names, folders and map facts in `kola_f16\mission_settings.lua` (`MISSION`: UTC +3, the magnetic-variation table Bodø +5° … Murmansk +16° with its self-test at Rovaniemi, Red's SAMs spawned as Russia, its files), its map and scenario data in `kola_f16\data\` (`MISSION.data_files`), and no overrides (Kola's values are the shared defaults). How each piece is used: the framework's `as_built.md`, the section named in each heading.
+Kola's own data on the shared framework: its names, folders and map facts in `kola_f16\mission_settings.lua` (`MISSION`: UTC +3, the magnetic-variation table Bodø +5° … Murmansk +16° with its self-test at Rovaniemi, Red's SAMs spawned as Russia, the map's edges, its files), its map and scenario data in `kola_f16\data\` (`MISSION.data_files`), and the settings each mission has its own values for, since 2026-10-06 (`radio_channels.lua`: AWACS UHF 262.000, mission VHF 140.000; `awacs_orbit_distances.lua`: 250 km from enemy fighter bases, 120 km from the contested airspace; framework `plan.md`, *Settings that differ by mission*). How each piece is used: the framework's `as_built.md`, the section named in each heading.
 
 ### Territory: the clusters (`data/clusters.lua`; *Stage 1: territory*)
 

@@ -27,6 +27,8 @@ _F = 1.0 / 298.257223563
 MAPS = {
     "Kola": {"central_meridian": 21.0, "scale_factor": 0.9996,
              "false_easting": -62702.0, "false_northing": -7543625.0},
+    "Caucasus": {"central_meridian": 33.0, "scale_factor": 0.9996,
+                 "false_easting": -99516.9999999732, "false_northing": -4998114.999999984},
 }
 
 _N = _F / (2.0 - _F)

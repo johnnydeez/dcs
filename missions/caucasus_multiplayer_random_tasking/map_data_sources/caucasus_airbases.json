@@ -1,0 +1,173 @@
+{
+  "_comment": "Caucasus airbase reference points in DCS projected metres (x=north, y=east). Extracted once from pydcs dcs/terrain/caucasus/airports.py (Airport.__init__ position) on 2026-10-06; lat/lon derived with shared_mission_framework/map_data_tools/map_projection.py (Caucasus). Names match the DCS airbase names; verify in-game with Log.dumpAirbases(). `code` is our own 4-letter key used in generated names (ZONE_<code>_<brg>_<km*10>); same codes as caucasus_f16/data/airbase_codes.lua.",
+  "airbases": [
+    {
+      "name": "Anapa-Vityazevo",
+      "x": -5412.41,
+      "y": 243128.82,
+      "lat": 45.00495,
+      "lon": 37.34782,
+      "code": "ANAP"
+    },
+    {
+      "name": "Batumi",
+      "x": -355810.703,
+      "y": 617386.188,
+      "lat": 41.6096,
+      "lon": 41.60024,
+      "code": "BATU"
+    },
+    {
+      "name": "Beslan",
+      "x": -148590.172,
+      "y": 843668.625,
+      "lat": 43.20571,
+      "lon": 44.60581,
+      "code": "BESL"
+    },
+    {
+      "name": "Gelendzhik",
+      "x": -50378.611,
+      "y": 298406.156,
+      "lat": 44.5729,
+      "lon": 38.01161,
+      "code": "GELE"
+    },
+    {
+      "name": "Gudauta",
+      "x": -196710.086,
+      "y": 516451.688,
+      "lat": 43.11433,
+      "lon": 40.56974,
+      "code": "GUDA"
+    },
+    {
+      "name": "Kobuleti",
+      "x": -317962.297,
+      "y": 635632.969,
+      "lat": 41.92992,
+      "lon": 41.86327,
+      "code": "KOBU"
+    },
+    {
+      "name": "Krasnodar-Center",
+      "x": 11685.205,
+      "y": 367933.516,
+      "lat": 45.08695,
+      "lon": 38.93998,
+      "code": "KRCE"
+    },
+    {
+      "name": "Krasnodar-Pashkovsky",
+      "x": 7717.637,
+      "y": 387878.804,
+      "lat": 45.03801,
+      "lon": 39.18814,
+      "code": "KRPA"
+    },
+    {
+      "name": "Krymsk",
+      "x": -6576.525,
+      "y": 294388.125,
+      "lat": 44.96794,
+      "lon": 37.99503,
+      "code": "KRYM"
+    },
+    {
+      "name": "Kutaisi",
+      "x": -284887.375,
+      "y": 683858.719,
+      "lat": 42.17762,
+      "lon": 42.48129,
+      "code": "KUTA"
+    },
+    {
+      "name": "Maykop-Khanskaya",
+      "x": -26437.275,
+      "y": 458048.844,
+      "lat": 44.68129,
+      "lon": 40.03525,
+      "code": "MAYK"
+    },
+    {
+      "name": "Mineralnye Vody",
+      "x": -51259.984,
+      "y": 705734.027,
+      "lat": 44.22785,
+      "lon": 43.08119,
+      "code": "MINV"
+    },
+    {
+      "name": "Mozdok",
+      "x": -83450.418,
+      "y": 834461.781,
+      "lat": 43.79171,
+      "lon": 44.60584,
+      "code": "MOZD"
+    },
+    {
+      "name": "Nalchik",
+      "x": -124932.167,
+      "y": 760421.183,
+      "lat": 43.514,
+      "lon": 43.63645,
+      "code": "NALC"
+    },
+    {
+      "name": "Novorossiysk",
+      "x": -40917.535,
+      "y": 279256.062,
+      "lat": 44.6681,
+      "lon": 37.77826,
+      "code": "NOVO"
+    },
+    {
+      "name": "Senaki-Kolkhi",
+      "x": -281782.469,
+      "y": 647279.469,
+      "lat": 42.24085,
+      "lon": 42.04801,
+      "code": "SENA"
+    },
+    {
+      "name": "Sochi-Adler",
+      "x": -164496.469,
+      "y": 462218.922,
+      "lat": 43.44435,
+      "lon": 39.94108,
+      "code": "SOCH"
+    },
+    {
+      "name": "Soganlug",
+      "x": -317828.047,
+      "y": 895407.188,
+      "lat": 41.64954,
+      "lon": 44.93836,
+      "code": "SOGA"
+    },
+    {
+      "name": "Sukhumi-Babushara",
+      "x": -220592.328,
+      "y": 564391.969,
+      "lat": 42.86109,
+      "lon": 41.125,
+      "code": "SUKH"
+    },
+    {
+      "name": "Tbilisi-Lochini",
+      "x": -315671.078,
+      "y": 896629.781,
+      "lat": 41.66703,
+      "lon": 44.95629,
+      "code": "TBIL"
+    },
+    {
+      "name": "Vaziani",
+      "x": -319064.875,
+      "y": 903148.531,
+      "lat": 41.62903,
+      "lon": 45.02723,
+      "code": "VAZI"
+    }
+  ]
+}

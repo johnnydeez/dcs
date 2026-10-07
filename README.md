@@ -3,6 +3,9 @@
 Scripted DCS World missions, one folder per mission. The Kola mission (and the Caucasus and Afghanistan missions to come) run on the shared mission framework; Syria shares nothing.
 
 ```
+bugs.md                  the one bug list for every mission and the framework (each bug says which)
+closed.md                fixed bugs and finished roadmap items, every mission's and the framework's, keeping their numbers
+roadmap.md               the one roadmap: where every mission and the framework are headed (each item says which)
 desanitize_dcs.py        shared setup: lets mission scripts load files (below)
 research/                DCS research that isn't tied to one mission (API findings, map research)
 shared_mission_framework/    the code every mission on it shares (Syria excepted)
@@ -22,9 +25,6 @@ missions/
   kola_f16_random_tasking/    F-16 tasking generator on Kola (air denial, human strike missions)
     development_docs/
       plan.md                 status and design: start at "Where we are"
-      roadmap.md              where the mission is headed next (features, open questions, order)
-      bugs.md                 bugs found in runs, to come back to
-      closed.md               finished roadmap items and fixed bugs, keeping their numbers
     event_logs/               one event log per mission run (git-ignored; see below)
     kola_f16_random_tasking.miz
     kola_f16/                 its scripts (settings, map and scenario data) → Saved Games\DCS\Scripts\kola_f16\

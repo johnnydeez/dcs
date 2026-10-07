@@ -28,21 +28,16 @@ RADIO_CALLS = {
     enabled     = true,
     coalitions  = { blue = true },
 
-    -- the player's callsign as spoken, the same for every slot until slots carry their
-    -- own (John, 2026-10-05: "Snake one one" for now)
+    -- the player's callsign as spoken when their jet has none: each player is called by
+    -- the callsign set on their slot in the mission file, "Python11" said "Python one one"
+    -- (John, 2026-10-07; SendRadioCalls.playerCallsign). "Snake one one" was every
+    -- player's callsign before that (John, 2026-10-05)
     player_callsign = "Snake one one",
     -- the controller's callsign as spoken, per coalition
     awacs_callsign  = { blue = "Darkstar", red = "Overlord" },
 
-    -- channels: each its own frequency, MHz, as on the F-16's radios (UHF AN/ARC-164,
-    -- VHF AN/ARC-222). The airfields use their real tower frequencies from the map
-    -- (data/airfield_frequencies.lua, VHF); a field the map gives none uses the common
-    -- traffic frequency.
-    channels = {
-        awacs    = { mhz = 262.000, radio = "UHF", label = "Darkstar (AWACS)" },
-        mission  = { mhz = 140.000, radio = "VHF", label = "mission (tactical common)" },
-        airfield = { radio = "VHF", common_traffic_mhz = 122.800 },
-    },
+    -- the channels and their frequencies are each mission's own (RADIO_CHANNELS, the
+    -- mission's data/radio_channels.lua): they must keep clear of its map's tower frequencies
 
     -- threat call: the highest-threat group that is hot, its range known, inside this
     threat_nm        = 40,

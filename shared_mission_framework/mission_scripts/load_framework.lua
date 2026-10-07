@@ -1,8 +1,7 @@
 -- Loads the shared mission framework and the mission on it, in order
 -- (shared_mission_framework\development_docs\plan.md, *Loading*):
---   config → lib → shared data (the defaults) → the mission's data (MISSION.data_files) →
---   the mission's overrides, merged (MISSION.overrides) → the data checks → gather →
---   stages → consumers (→ the one-off surveys a CONFIG flag asks for)
+--   config → lib → shared data → the mission's data (MISSION.data_files) → gather →
+--   stages → consumers (→ the one-off surveys a CONFIG flag asks for) → the data checks
 -- The mission's init.lua loads its mission_settings.lua (MISSION) first, then this, then
 -- calls LoadFramework.run(); run_mission.lua then plays the run sequence.
 --
@@ -17,9 +16,9 @@ local FRAMEWORK_FILES = {
     lib = {
         "lib\\util.lua", "lib\\logger.lua", "lib\\weather.lua", "lib\\placement.lua",
         "lib\\threat_routing.lua", "lib\\sam_reach.lua", "lib\\flight_callsigns.lua",
-        "lib\\mission_overrides.lua",
     },
-    -- the shared data: facts about DCS, recipes, and the tuning a mission may override
+    -- the shared data: facts about DCS, recipes, and the tuning every mission uses as is
+    -- (a setting a mission needs its own value of lives in every mission's data instead)
     data = {
         "data\\cloud_presets.lua", "data\\unit_pool.lua",
         "data\\base_defense_levels.lua", "data\\base_defense_composition.lua", "data\\base_defense_placement.lua",
@@ -92,14 +91,6 @@ function LoadFramework.run()
 
     if not loadAll(F, FRAMEWORK_FILES.data) then return false end
     if not loadAll(M, MISSION.data_files or {}) then return false end
-    -- the mission's own values for shared settings, merged now that every shared default
-    -- is loaded and before anything reads them
-    local ok, err = MissionOverrides.apply(M .. "overrides\\", MISSION.overrides)
-    if not ok then
-        Log.error("FATAL: mission overrides: " .. err)
-        trigger.action.outText(MISSION.log_tag .. " MISSION OVERRIDES ERROR — " .. err, 60)
-        return false
-    end
 
     if not loadAll(F, FRAMEWORK_FILES.stages) then return false end
     if not loadAll(F, FRAMEWORK_FILES.consumers) then return false end

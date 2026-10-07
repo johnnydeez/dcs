@@ -14,7 +14,5 @@ AIRSPACE = {
     sam_layers         = { long_range = true, medium_range = true },
     sam_reach_fraction = 1.0,   -- 1 = the full (high-altitude) engagement ring as drawn
     simplify_km        = 2,     -- front line drawn with points dropped within this of the line
-    -- the Kola map's own edges, m (DCS World\Mods\terrains\Kola\MissionGenerator\nodesMap.lua,
-    -- nodesMapBorders); the grid above reaches past them, the map doesn't
-    map_bounds_m       = { min_x = -285184, min_z = -557056, max_x = 393216, max_z = 884736 },
+    -- (the map's own edges, which the grid reaches past, are each mission's: MISSION.map_bounds_m)
 }

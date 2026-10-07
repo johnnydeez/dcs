@@ -1,13 +1,13 @@
--- Kola F-16 random tasking: entry point.
+-- Caucasus F-16 random tasking: entry point.
 -- Loaded by one ME trigger:  ONCE → TIME MORE 1 → DO SCRIPT
---   dofile(lfs.writedir() .. "Scripts\\kola_f16\\init.lua")
+--   dofile(lfs.writedir() .. "Scripts\\caucasus_f16\\init.lua")
 -- Requires a de-sanitized MissionScripting.lua (lfs / io).
 --
 -- This mission's settings first (mission_settings.lua: MISSION, its names, map facts, data
 -- files), then the shared mission framework loads everything
 -- (load_framework.lua) and plays the run sequence (run_mission.lua).
 
-local SCRIPT_DIR = lfs.writedir() .. "Scripts\\kola_f16\\"
+local SCRIPT_DIR = lfs.writedir() .. "Scripts\\caucasus_f16\\"
 
 local function load(path)
     local ok, err = pcall(dofile, path)

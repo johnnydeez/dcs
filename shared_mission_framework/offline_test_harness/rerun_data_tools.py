@@ -61,6 +61,21 @@ MISSIONS = {
                    + [os.path.join("missions", "kola_f16_random_tasking", "kola_f16", "data", name) for name in
                       ("airfield_frequencies.lua", "player_slots.lua", "zones.lua")],
     },
+    # only the mission's own tools: the shared ones (unit pool, loadouts, clouds) are Kola's run
+    "caucasus": {
+        "mission_folder": os.path.join("missions", "caucasus_multiplayer_random_tasking"),
+        "scripts_folder": "caucasus_f16",
+        "inputs": [os.path.join("missions", "caucasus_multiplayer_random_tasking", "caucasus_f16", "data", "clusters.lua")],
+        "runs": [
+            ("airfield_frequencies.py", ["{mission}"]),
+            ("miz_player_slots.py", ["{mission}", os.path.join(SAVED_GAMES, "Missions",
+                                                               "caucasus_multiplayer_random_tasking.miz")]),
+            ("miz_zones.py", ["{mission}", os.path.join(SAVED_GAMES, "Missions", "caucasus_multiplayer_rt_zones.miz"),
+                              "--terrain", os.path.join(SAVED_GAMES, "caucasus_zone_terrain.lua")]),
+        ],
+        "outputs": [os.path.join("missions", "caucasus_multiplayer_random_tasking", "caucasus_f16", "data", name)
+                    for name in ("airfield_frequencies.lua", "player_slots.lua", "zones.lua")],
+    },
 }
 
 

@@ -1,6 +1,6 @@
 -- Consumer: hands the mission's radio calls to the radio programs outside DCS, so they're
 -- heard, not only read (roadmap.md item 7; data/radio_calls.lua). Every call carries its
--- channel and frequency (RADIO_CALLS.channels), its priority and how long it may wait
+-- channel and frequency (RADIO_CHANNELS), its priority and how long it may wait
 -- (RADIO_CALLS.kinds). The AI pilots' calls and Darkstar's orders come in through
 -- SendRadioCalls.say (announce_flight_activity.lua, track_airfield_traffic.lua,
 -- announce_controller_orders.lua).
@@ -66,14 +66,14 @@ function SendRadioCalls.airfieldFrequency(base)
     if _airfieldMhz[base] == nil then
         local ok, id = pcall(function() return Airbase.getByName(base):getID() end)
         local f = ok and AIRFIELD_FREQUENCIES and AIRFIELD_FREQUENCIES[id]
-        _airfieldMhz[base] = f and f.vhf or RADIO_CALLS.channels.airfield.common_traffic_mhz
+        _airfieldMhz[base] = f and f.vhf or RADIO_CHANNELS.airfield.common_traffic_mhz
     end
     return _airfieldMhz[base]
 end
 
 -- "Darkstar UHF 262.000"-style text of a channel, for the brief.
 function SendRadioCalls.channelText(channel, base)
-    local c = RADIO_CALLS.channels[channel]
+    local c = RADIO_CHANNELS[channel]
     local mhz = channel == "airfield" and SendRadioCalls.airfieldFrequency(base) or c.mhz
     return string.format("%s %.3f", c.radio, mhz)
 end
@@ -103,7 +103,7 @@ function SendRadioCalls.say(sideName, kind, channel, facts, base)
     if not _file or not RADIO_CALLS.coalitions[sideName] then return end
     facts.call, facts.channel = kind, channel
     facts.frequency_mhz = channel == "airfield" and SendRadioCalls.airfieldFrequency(base)
-                          or RADIO_CALLS.channels[channel].mhz
+                          or RADIO_CHANNELS[channel].mhz
     facts.awacs = RADIO_CALLS.awacs_callsign[sideName]
     write(facts)
     for _, fn in ipairs(_listeners) do
@@ -127,7 +127,7 @@ end
 
 -- Darkstar's calls are on the AWACS channel.
 local function awacsCall(call)
-    call.channel, call.frequency_mhz = "awacs", RADIO_CALLS.channels.awacs.mhz
+    call.channel, call.frequency_mhz = "awacs", RADIO_CHANNELS.awacs.mhz
     return call
 end
 
@@ -138,10 +138,26 @@ local function groupFacts(g)
              aspect = g.aspect, track = g.track, age_s = g.age_s }
 end
 
+local DIGIT_WORDS = { ["0"] = "zero", ["1"] = "one", ["2"] = "two", ["3"] = "three", ["4"] = "four",
+                      ["5"] = "five", ["6"] = "six", ["7"] = "seven", ["8"] = "eight", ["9"] = "nine" }
+
+-- A player's callsign as spoken: their jet's callsign from the mission file ("Python11",
+-- set on the slot in the mission editor) → "Python one one". RADIO_CALLS.player_callsign
+-- when the jet has none that reads as a name and a number (John, 2026-10-07: each F-16
+-- slot carries its own callsign).
+function SendRadioCalls.playerCallsign(unit)
+    local ok, raw = pcall(function() return unit:getCallsign() end)
+    local name, digits = (ok and type(raw) == "string" and raw or ""):match("^(%a+)[%s%-]*([%d%s%-]+)$")
+    if not name then return RADIO_CALLS.player_callsign end
+    local words = {}
+    for d in digits:gmatch("%d") do words[#words + 1] = DIGIT_WORDS[d] end
+    return name:sub(1, 1):upper() .. name:sub(2) .. " " .. table.concat(words, " ")
+end
+
 -- CallAirPicture has shown a player the picture: say it too.
-function SendRadioCalls.picture(sideName, groupName, groups, inCoverage)
+function SendRadioCalls.picture(sideName, unit, groups, inCoverage)
     if not _file or not RADIO_CALLS.coalitions[sideName] then return end
-    local call = { to = RADIO_CALLS.player_callsign, player_group = groupName }
+    local call = { to = SendRadioCalls.playerCallsign(unit), player_group = unit:getGroup():getName() }
     if #groups == 0 then
         call.call = inCoverage and "picture_clean" or "no_coverage"
     else
@@ -177,7 +193,7 @@ local function threatRound(sideName)
                     local name = g.contact.group
                     if not called[name] or now - called[name] >= RADIO_CALLS.threat_repeat_s then
                         called[name] = now
-                        write(awacsCall({ call = "threat", to = RADIO_CALLS.player_callsign, player_group = groupName,
+                        write(awacsCall({ call = "threat", to = SendRadioCalls.playerCallsign(unit), player_group = groupName,
                                           groups = { groupFacts(g) } }))
                         WriteEventLog.add(sideName, "PICTURE_CALL", groupName, string.format(
                             "threat: %s, %03d/%dnm, %d ft, hot", g.type, g.bearing,
@@ -211,7 +227,7 @@ function SendRadioCalls.start()
     for sideName in pairs(RADIO_CALLS.coalitions) do
         TrackRadarPicture.on(sideName, "picture_updated", function() threatRound(sideName) end)
     end
-    Log.info(string.format("--- Radio calls: to %s; picture every %d s, threat calls inside %d nm; AWACS %s, mission %s; %s ---",
+    Log.info(string.format("--- Radio calls: to each player by their jet's callsign (else %s); picture every %d s, threat calls inside %d nm; AWACS %s, mission %s; %s ---",
         RADIO_CALLS.player_callsign, AIR_PICTURE_CALLS.call_every_s, RADIO_CALLS.threat_nm,
         SendRadioCalls.channelText("awacs"), SendRadioCalls.channelText("mission"), RADIO_CALLS.calls_file))
 end
