@@ -2,7 +2,7 @@
 -- static objects, airbases, their controllers, events, the comms menu, map drawings, user
 -- flags), so a mission's consumers run under luae.exe. Loaded after stub_dcs.lua.
 --
--- Level 1, everything stands still (shared_mission_framework plan.md, *How the transfer
+-- Level 1, everything stands still (shared_mission_framework framework_design.md, *How the transfer
 -- is tested*, test B): a spawned group stays where it spawned, a jet on the ramp never takes
 -- off, an air start stays in the air where it started, no radar sees anything, and no
 -- player is in the mission. Orders to a controller are recorded and change nothing.

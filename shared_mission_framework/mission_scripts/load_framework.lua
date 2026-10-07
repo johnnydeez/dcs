@@ -1,5 +1,5 @@
 -- Loads the shared mission framework and the mission on it, in order
--- (shared_mission_framework\development_docs\plan.md, *Loading*):
+-- (shared_mission_framework\framework_design.md, *Loading*):
 --   config → lib → shared data → the mission's data (MISSION.data_files) → gather →
 --   stages → consumers (→ the one-off surveys a CONFIG flag asks for) → the data checks
 -- The mission's init.lua loads its mission_settings.lua (MISSION) first, then this, then
@@ -15,7 +15,7 @@ LoadFramework = {}
 local FRAMEWORK_FILES = {
     lib = {
         "lib\\util.lua", "lib\\logger.lua", "lib\\weather.lua", "lib\\placement.lua",
-        "lib\\threat_routing.lua", "lib\\sam_reach.lua", "lib\\flight_callsigns.lua",
+        "lib\\threat_routing.lua", "lib\\sam_reach.lua", "lib\\flight_callsigns.lua", "lib\\player_menus.lua",
     },
     -- the shared data: facts about DCS, recipes, and the tuning every mission uses as is
     -- (a setting a mission needs its own value of lives in every mission's data instead)

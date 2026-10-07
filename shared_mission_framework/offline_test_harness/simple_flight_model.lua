@@ -1,5 +1,5 @@
 -- Offline test harness, test B level 2: AI aircraft fly their planned routes, simply
--- (shared_mission_framework plan.md, *How the transfer is tested*). Loaded after
+-- (shared_mission_framework framework_design.md, *How the transfer is tested*). Loaded after
 -- stub_dcs_world.lua; SimpleFlightModel.install() before the mission's init.lua runs.
 --
 -- Not a flight model, only enough movement for the mission's in-air code to run:

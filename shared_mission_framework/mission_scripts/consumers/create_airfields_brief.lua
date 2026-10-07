@@ -1,4 +1,5 @@
--- Consumer: a short brief for every Blue airfield in Blue's comms menu (\ > F10. Other...),
+-- Consumer: a short brief for every Blue airfield in each Blue player group's comms menu
+-- (\ > F10. Other..., lib/player_menus.lua),
 -- so a player can land and turn around at any base, not only the one they spawned at
 -- (roadmap.md item 13, John, 2026-10-02):
 --   Airfield info > <base>      one text per base, built when it's opened:
@@ -248,10 +249,6 @@ local function fieldText(field)
     return table.concat(lines, "\n")
 end
 
-local function show(side, text)
-    trigger.action.outTextForCoalition(side, text, MESSAGE_S, true)
-end
-
 local _fields = {}   -- base name → its facts (Blue bases), for the calls below
 
 -- The runway in use for the wind at Blue base `name` now (its number), or nil (calm, no
@@ -302,22 +299,26 @@ function CreateAirfieldsBrief.start(plan)
         end
     end
     if #fields == 0 then return end
-    local menu = missionCommands.addSubMenuForCoalition(side, "Airfield info")
-    local pages = math.ceil(#fields / MENU_PAGE)
-    for p = 1, pages do
-        local sub = menu
-        if pages > 1 then
-            sub = missionCommands.addSubMenuForCoalition(side, string.format("%s–%s",
-                fields[(p - 1) * MENU_PAGE + 1].name, fields[math.min(p * MENU_PAGE, #fields)].name), menu)
+    -- each player group gets its own menu (lib/player_menus.lua): the text shows on the
+    -- screen of the player who opened it only
+    PlayerMenus.add(side, function(menu)
+        local top = menu.sub("Airfield info")
+        local pages = math.ceil(#fields / MENU_PAGE)
+        for p = 1, pages do
+            local sub = top
+            if pages > 1 then
+                sub = menu.sub(string.format("%s–%s", fields[(p - 1) * MENU_PAGE + 1].name,
+                    fields[math.min(p * MENU_PAGE, #fields)].name), top)
+            end
+            for i = (p - 1) * MENU_PAGE + 1, math.min(p * MENU_PAGE, #fields) do
+                local field = fields[i]
+                menu.command(field.name, sub, function()
+                    local ok, text = pcall(fieldText, field)
+                    if ok then menu.show(text, MESSAGE_S)
+                    else Log.warn(string.format("airfield brief: %s: %s", field.name, tostring(text))) end
+                end)
+            end
         end
-        for i = (p - 1) * MENU_PAGE + 1, math.min(p * MENU_PAGE, #fields) do
-            local field = fields[i]
-            missionCommands.addCommandForCoalition(side, field.name, sub, function()
-                local ok, text = pcall(fieldText, field)
-                if ok then show(side, text)
-                else Log.warn(string.format("airfield brief: %s: %s", field.name, tostring(text))) end
-            end)
-        end
-    end
+    end)
     Log.info(string.format("--- Airfield info: %d Blue bases in the comms menu ---", #fields))
 end

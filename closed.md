@@ -4,7 +4,7 @@
 
 **What each one is for:** a bug closed from 2026-10-07 on keeps its `**For:**` line from `bugs.md` (a mission, or `framework`). Everything closed before that was Kola's, from Kola's own `roadmap.md` and `bugs.md`, and carries no `**For:**` line; most of the code it names is shared framework code now.
 
-Until 2026-10-07 this was Kola's `development_docs\closed.md`. What was actually built, and how it behaves, is in the shared mission framework's `shared_mission_framework\development_docs\as_built.md` (a `plan.md` section named below that isn't in Kola's `plan.md` is there, under the same name; `kola_data_tools\` is the framework's `map_data_tools\`). An `event_logs\…` path is in the mission folder of the mission it was found in (`missions\<mission>\event_logs\`); before 2026-10-07, always Kola's.
+Until 2026-10-07 this was Kola's `development_docs\closed.md`. What was actually built, and how it behaves, is in `shared_mission_framework\framework_design.md` (a `plan.md` section named below that isn't in the root's `plan.md` is there, under the same name, or in a mission's `mission_design.md`; `kola_data_tools\` is the framework's `map_data_tools\`). An `event_logs\…` path is in the mission folder of the mission it was found in (`missions\<mission>\event_logs\`); before 2026-10-07, always Kola's.
 
 ---
 

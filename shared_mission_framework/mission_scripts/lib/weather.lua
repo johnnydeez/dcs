@@ -1,7 +1,7 @@
 -- Weather: turns the mission's raw env.mission weather / date / start_time into the
 -- planner's vocabulary (plan.world.weather, plan.world.time). Pure functions over plain
 -- data — the only DCS reads (atmosphere.* point queries) happen in gather.lua and are
--- passed in as `measured`. Also the solar math for day/night at high latitude (plan.md, Weather and time).
+-- passed in as `measured`. Also the solar math for day/night at high latitude (framework_design.md, Weather and time).
 --
 -- Field names below were pinned from a real 2.9 plan dump (kola_last_plan.lua):
 --   clouds{ base, thickness, density, iprecptns, preset }   preset = "PresetN" | "RainyPresetN" | nil

@@ -5,7 +5,7 @@ compares the result with a recorded baseline.
     python replay_and_compare.py kola                      after a change: same as the baseline?
     python replay_and_compare.py kola --test plan          one test only
 
-Two tests (shared_mission_framework plan.md, *How the transfer is tested*), each seed one
+Two tests (shared_mission_framework framework_design.md, *How the transfer is tested*), each seed one
 luae.exe run of replay_mission.lua (the mission's real init.lua over stub_dcs.lua and
 stub_dcs_world.lua):
     plan      test A: planning only, seeds 1-5

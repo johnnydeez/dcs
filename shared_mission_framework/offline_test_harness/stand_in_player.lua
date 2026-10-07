@@ -1,6 +1,6 @@
 -- Offline test harness, test B level 2: one stand-in player, so the mission's player code
 -- runs (the air picture and threat calls, Darkstar's picture on the radio, airfield traffic
--- calls, PLAYER_IN) (shared_mission_framework plan.md, *How the transfer is tested*).
+-- calls, PLAYER_IN) (shared_mission_framework framework_design.md, *How the transfer is tested*).
 -- Loaded after simple_flight_model.lua; StandInPlayer.install(side name).
 --
 -- At SPAWN_AT_S, an F-16C appears in the air in the slot group of the coalition's player-

@@ -4,7 +4,7 @@
 -- The logic is the shared mission framework's (shared_mission_framework\mission_scripts\,
 -- shared with the Caucasus random tasking and the Afghanistan campaign); anything that names
 -- this mission, its map or its files lives here instead
--- (shared_mission_framework\development_docs\plan.md, step 1).
+-- (plan.md at the repository root, *History*, step 1).
 
 MISSION = {
     -- Where its scripts are, under Saved Games\DCS\Scripts\: its own (this file and its

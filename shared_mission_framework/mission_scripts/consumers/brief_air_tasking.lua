@@ -2,7 +2,8 @@
 --   BriefAirTasking.startText(plan)  the on-screen text at mission start: the weather and
 --                                    one short entry per human flight (where to spawn,
 --                                    takeoff, TOT, what)
---   BriefAirTasking.start(plan)      Comms menu entries (\ > F10. Other...) for the human flights' coalition:
+--   BriefAirTasking.start(plan)      Comms menu entries (\ > F10. Other...), each player group of
+--                                    the human flights' coalition its own (lib/player_menus.lua):
 --     Human taskings > <flight> > Frag         the tasking: times, target (degrees and
 --                                              decimal minutes for the F-16, MGRS,
 --                                              elevation), loadout, threats, the SEAD
@@ -153,9 +154,9 @@ local function threatsById()
 end
 
 -- The loadout's weapons, counted: "2x GBU-31(V)1/B - JDAM…, 2x AIM-120C …".
-local function loadoutText(m)
+local function loadoutText(loadout)
     local counts, order = {}, {}
-    for _, py in ipairs(m.loadout and m.loadout.pylons or {}) do
+    for _, py in ipairs(loadout and loadout.pylons or {}) do
         local w = py.weapon or py.CLSID
         if not counts[w] then order[#order + 1] = w end
         counts[w] = (counts[w] or 0) + 1
@@ -163,6 +164,26 @@ local function loadoutText(m)
     local parts = {}
     for _, w in ipairs(order) do parts[#parts + 1] = string.format("%dx %s", counts[w], w) end
     return #parts > 0 and table.concat(parts, "\n    ") or "clean"
+end
+
+-- Every player slot at a human flight's base (data/player_slots.lua): any player there can
+-- fly it, in whichever aircraft the slot holds; by group name. Falls back to the slot its
+-- route starts at.
+local function slotsAt(m)
+    local out = {}
+    for _, s in ipairs(PLAYER_SLOTS and PLAYER_SLOTS[m.launch_base] or {}) do out[#out + 1] = s end
+    table.sort(out, function(a, b) return a.group < b.group end)
+    if #out == 0 then out[1] = { group = m.player_slot.group, spot = m.player_slot.spot, type = m.aircraft_type } end
+    return out
+end
+
+-- The aircraft types of those slots, in slot order, each once.
+local function typesAt(m)
+    local out, seen = {}, {}
+    for _, s in ipairs(slotsAt(m)) do
+        if not seen[s.type] then seen[s.type], out[#out + 1] = true, s.type end
+    end
+    return out
 end
 
 -- Distance (m) from p to the segment a-b.
@@ -258,10 +279,15 @@ end
 
 local function fragText(m)
     local byId, threats = missionsById(), threatsById()
+    local slots, slotNames = slotsAt(m), {}
+    for i, s in ipairs(slots) do slotNames[i] = string.format("%s (spot %s)", s.group, s.spot) end
+    local slotCount = #slots
     local cat = _plan.target_catalog and _plan.target_catalog.targets or {}
     local lines = {
-        string.format("%s  %s  (1x %s, PLAYER)", m.id, missionName(m.mission_type), m.aircraft_type),
-        string.format("FROM  %s, slot %s (spot %s)", m.launch_base, m.player_slot.group, m.player_slot.spot),
+        slotCount == 1 and string.format("%s  %s  (1x %s, PLAYER)", m.id, missionName(m.mission_type), slots[1].type)
+            or string.format("%s  %s  (1-%d players: %s)", m.id, missionName(m.mission_type), slotCount,
+                table.concat(typesAt(m), ", ")),
+        string.format("FROM  %s, %s %s", m.launch_base, slotCount == 1 and "slot" or "slots", table.concat(slotNames, ", ")),
         string.format("RADIO  Darkstar %s, mission %s, %s traffic %s", SendRadioCalls.channelText("awacs"),
             SendRadioCalls.channelText("mission"), m.launch_base, SendRadioCalls.channelText("airfield", m.launch_base)),
         string.format("TAKEOFF %s   %s %s   HOME ~%s   (mission start %s)", at(m.takeoff_s),
@@ -333,7 +359,17 @@ local function fragText(m)
     end
     lines[#lines + 1] = ""
     lines[#lines + 1] = "LOADOUT (as planned for an AI jet)"
-    lines[#lines + 1] = "    " .. loadoutText(m)
+    local types = typesAt(m)
+    if #types == 1 then
+        lines[#lines + 1] = "    " .. loadoutText(types[1] == m.aircraft_type and m.loadout
+            or (AIRCRAFT_LOADOUT[types[1]] or {})[m.mission_type])
+    else
+        for _, t in ipairs(types) do
+            lines[#lines + 1] = "  " .. t .. ":"
+            lines[#lines + 1] = "    " .. loadoutText(t == m.aircraft_type and m.loadout
+                or (AIRCRAFT_LOADOUT[t] or {})[m.mission_type])
+        end
+    end
     lines[#lines + 1] = ""
     threatSection(m, byId, threats, lines)
 
@@ -397,7 +433,8 @@ local function steerpointText(m)
     return table.concat(lines, "\n")
 end
 
--- "MSN2003 STRIKE from Rovaniemi (slot Q3): T/O 08:14, TOT 08:41 — <what>"
+-- "MSN2003 STRIKE from Rovaniemi (slot Q3): T/O 08:14, TOT 08:41 — <what>"; with more
+-- than one player slot at the base, "(slots 10, 11)".
 local function shortLine(m, byId)
     local what
     if m.station then
@@ -407,8 +444,10 @@ local function shortLine(m, byId)
     else
         what = m.target_label or m.target
     end
-    return string.format("%s %s from %s (slot %s): T/O %s, %s %s — %s", m.id, missionName(m.mission_type),
-        m.launch_base:upper(), m.player_slot.spot, at(m.takeoff_s), m.station and "on station" or "TOT", at(m.tot_s), what)
+    local spots = {}
+    for i, s in ipairs(slotsAt(m)) do spots[i] = s.spot end
+    return string.format("%s %s from %s (%s %s): T/O %s, %s %s — %s", m.id, missionName(m.mission_type),
+        m.launch_base:upper(), #spots == 1 and "slot" or "slots", table.concat(spots, ", "), at(m.takeoff_s), m.station and "on station" or "TOT", at(m.tot_s), what)
 end
 
 -- ── the air tasking order ───────────────────────────────────────
@@ -512,24 +551,20 @@ end
 
 -- ── menus and the start text ────────────────────────────────────
 
-local function show(side, text, seconds)
-    trigger.action.outTextForCoalition(side, text, seconds or MESSAGE_S, true)
-end
-
--- `items` = { { name, text function } } as commands under `parent`, MENU_PAGE per submenu.
-local function addPaged(side, parent, title, items)
+-- `items` = { { name, text function } } as commands under `parent`, MENU_PAGE per submenu,
+-- in one player group's menu (lib/player_menus.lua).
+local function addPaged(menu, parent, title, items)
     if #items == 0 then return end
-    local menu = missionCommands.addSubMenuForCoalition(side, title, parent)
+    local top = menu.sub(title, parent)
     local pages = math.ceil(#items / MENU_PAGE)
     for p = 1, pages do
-        local sub = menu
+        local sub = top
         if pages > 1 then
-            sub = missionCommands.addSubMenuForCoalition(side, string.format("%d–%d", (p - 1) * MENU_PAGE + 1,
-                math.min(p * MENU_PAGE, #items)), menu)
+            sub = menu.sub(string.format("%d–%d", (p - 1) * MENU_PAGE + 1, math.min(p * MENU_PAGE, #items)), top)
         end
         for i = (p - 1) * MENU_PAGE + 1, math.min(p * MENU_PAGE, #items) do
             local item = items[i]
-            missionCommands.addCommandForCoalition(side, item[1], sub, function() show(side, item[2]()) end)
+            menu.command(item[1], sub, function() menu.show(item[2](), MESSAGE_S) end)
         end
     end
 end
@@ -583,24 +618,18 @@ function BriefAirTasking.start(plan)
     local byId = missionsById()
 
     -- built once: positions don't change
-    local human = missionCommands.addSubMenuForCoalition(side, "Human taskings")
-    local summary = {}
+    local taskings, summary = {}, {}
     for _, id in ipairs(res.human_missions) do
         local m = byId[id]
         -- the frag is built again when asked for: it says how the SEAD flights it needs are doing
         local frag, steer = fragText(m), steerpointText(m)
         summary[#summary + 1] = shortLine(m, byId)
-        local sub = missionCommands.addSubMenuForCoalition(side,
-            string.format("%s %s from %s", m.id, missionName(m.mission_type), m.launch_base), human)
-        missionCommands.addCommandForCoalition(side, "Frag", sub, function() show(side, fragText(m), FRAG_MESSAGE_S) end)
-        missionCommands.addCommandForCoalition(side, "Steerpoints", sub, function() show(side, steer, STEERPOINT_MESSAGE_S) end)
+        taskings[#taskings + 1] = { m = m, steer = steer }
         Log.info("HUMAN TASKING " .. (frag:gsub("\n", "\n    ")) .. "\n    " .. (steer:gsub("\n", "\n    ")))
     end
     local summaryText = #summary > 0 and table.concat(summary, "\n") or "No human taskings this time."
-    missionCommands.addCommandForCoalition(side, "All human taskings", human, function() show(side, summaryText) end)
 
     -- the air tasking order: states change, so the texts are built when asked for
-    local order = missionCommands.addSubMenuForCoalition(side, "Air tasking order")
     -- attack missions by start, each tagged with the SEAD flights it waits on; SEAD flights
     local attacks, seads = {}, {}
     for _, m in ipairs(res.missions) do
@@ -623,22 +652,36 @@ function BriefAirTasking.start(plan)
     end
     table.sort(attacks, function(a, b) return a[3] < b[3] end)
     table.sort(seads, function(a, b) return a[3] < b[3] end)
-    addPaged(side, order, "Attack missions", attacks)
-    addPaged(side, order, "SEAD flights", seads)
     local stations = {}
     for _, st in ipairs(res.stations or {}) do
         stations[#stations + 1] = { st.id, function() return stationText(st, byId) end }
     end
-    addPaged(side, order, "Patrols and AWACS", stations)
-    missionCommands.addCommandForCoalition(side, "All flights", order, function()
+    local function allFlights()
         local lines = {}
         for _, m in ipairs(res.missions) do
             lines[#lines + 1] = flightLine(m, byId) .. " — " .. ScheduleAirTaskingOrders.statusOf(m.id)
         end
-        show(side, table.concat(lines, "\n"))
+        return table.concat(lines, "\n")
+    end
+
+    -- each player group gets its own menu, so what one player opens shows on their screen only
+    PlayerMenus.add(side, function(menu)
+        local human = menu.sub("Human taskings")
+        for _, e in ipairs(taskings) do
+            local m = e.m
+            local sub = menu.sub(string.format("%s %s from %s", m.id, missionName(m.mission_type), m.launch_base), human)
+            menu.command("Frag", sub, function() menu.show(fragText(m), FRAG_MESSAGE_S) end)
+            menu.command("Steerpoints", sub, function() menu.show(e.steer, STEERPOINT_MESSAGE_S) end)
+        end
+        menu.command("All human taskings", human, function() menu.show(summaryText, MESSAGE_S) end)
+        local order = menu.sub("Air tasking order")
+        addPaged(menu, order, "Attack missions", attacks)
+        addPaged(menu, order, "SEAD flights", seads)
+        addPaged(menu, order, "Patrols and AWACS", stations)
+        menu.command("All flights", order, function() menu.show(allFlights(), MESSAGE_S) end)
+        -- clears a long-lasting frag or steerpoint list once it's entered
+        menu.command("Hide text", nil, function() menu.show(" ", 1) end)
     end)
-    -- clears a long-lasting frag or steerpoint list once it's entered
-    missionCommands.addCommandForCoalition(side, "Hide text", nil, function() show(side, " ", 1) end)
     watchStaticKills(plan)
     Log.info(string.format("--- Briefing: %d human taskings, %d attack missions, %d SEAD flights and %d stations in the %s comms menu ---",
         #res.human_missions, #attacks, #seads, #stations, sideName:upper()))

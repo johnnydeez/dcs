@@ -6,7 +6,7 @@
 -- airfield strike and destruction of air defenses, one flight per mission, each waiting
 -- on the SEAD flights its route needs, filling what
 -- the airborne cap leaves. Each coalition is planned from the target catalog and its own
--- bases only, never from the other coalition's air plan (plan.md, "No side reads the other side's plan").
+-- bases only, never from the other coalition's air plan (framework_design.md, "No side reads the other side's plan").
 -- Reads plan.world, plan.territory, plan.target_catalog, the planned units and static
 -- objects (for the positions of each target's critical objects) and the enemy SAM sites
 -- and base defenses (the threats routes go around) + data/air_tasking.lua,
@@ -140,7 +140,7 @@
 --   the attack tasks go on the waypoint with carries_attack_tasks
 --   times are mission time in seconds (timer.getTime())
 -- Ids: MSN<number>_<mission type's group_name_tag> (MSN2002_CAP), the DCS group name; Blue
--- numbers from 2001, Red from 7001 (plan.md "Naming and ids"; Red was 5001 until 2026-10-02, bug 21); scrambles, spawned at run
+-- numbers from 2001, Red from 7001 (framework_design.md "Naming and ids"; Red was 5001 until 2026-10-02, bug 21); scrambles, spawned at run
 -- time, from 2901 / 7901 (MSN2901_SCRAM). Units are <id>_<n>. A station is
 -- CAP_<CODE>_<kind>_<n> / AEW_<CODE>_1.
 
@@ -179,6 +179,20 @@ end
 
 local function clock(s)
     return string.format("%02d:%02d", math.floor(s / 3600), math.floor(s % 3600 / 60))
+end
+
+-- The aircraft types players fly: every type with a player slot in the mission
+-- (data/player_slots.lua), sorted by name. A human tasking is open to all of them; the
+-- first plans its route and timing.
+function PlanAirTasking.playerAircraftTypes()
+    local seen, out = {}, {}
+    for _, slots in pairs(PLAYER_SLOTS or {}) do
+        for _, s in ipairs(slots) do
+            if not seen[s.type] then seen[s.type], out[#out + 1] = true, s.type end
+        end
+    end
+    table.sort(out)
+    return out
 end
 
 -- ── data checks ─────────────────────────────────────────────────
@@ -309,8 +323,10 @@ function PlanAirTasking.validate()
     else
         if type(H.missions) ~= "number" or H.missions < 0 then bad("HUMAN_TASKING needs a non-negative missions") end
         if H.coalition ~= "red" and H.coalition ~= "blue" then bad("HUMAN_TASKING.coalition must be red or blue") end
-        local t = H.aircraft_type
-        if not AIRCRAFT_PROFILE[t] then bad(string.format("HUMAN_TASKING: aircraft_type '%s' has no profile", tostring(t))) end
+        local playerTypes = PlanAirTasking.playerAircraftTypes()
+        for _, t in ipairs(playerTypes) do
+            if not AIRCRAFT_PROFILE[t] then bad(string.format("player slots: aircraft type '%s' has no profile", t)) end
+        end
         local s = H.startup_s
         if type(s) ~= "table" or type(s[1]) ~= "number" or type(s[2]) ~= "number" or s[1] > s[2] then
             bad("HUMAN_TASKING needs startup_s = { min, max }")
@@ -323,12 +339,14 @@ function PlanAirTasking.validate()
             elseif as ~= "mission" and e[1] ~= SUPPRESSION and e[1] ~= PATROL then
                 bad(string.format("HUMAN_TASKING: '%s' is planned as %s, which players can't fly", e[1], as))
             end
-            if AIRCRAFT_PROFILE[t] and m and e[1] ~= SUPPRESSION and e[1] ~= PATROL
-               and type(AIRCRAFT_PROFILE[t].attack_altitude_m[e[1]]) ~= "number" then
-                bad(string.format("HUMAN_TASKING: profile '%s' has no attack_altitude_m.%s", t, e[1]))
-            end
-            if not (AIRCRAFT_LOADOUT[t] and AIRCRAFT_LOADOUT[t][e[1]]) then
-                bad(string.format("HUMAN_TASKING: '%s' has no %s loadout (the brief lists it)", tostring(t), e[1]))
+            for _, t in ipairs(playerTypes) do
+                if AIRCRAFT_PROFILE[t] and m and e[1] ~= SUPPRESSION and e[1] ~= PATROL
+                   and type(AIRCRAFT_PROFILE[t].attack_altitude_m[e[1]]) ~= "number" then
+                    bad(string.format("HUMAN_TASKING: profile '%s' has no attack_altitude_m.%s", t, e[1]))
+                end
+                if not (AIRCRAFT_LOADOUT[t] and AIRCRAFT_LOADOUT[t][e[1]]) then
+                    bad(string.format("HUMAN_TASKING: '%s' has no %s loadout (the brief lists it)", t, e[1]))
+                end
             end
             if type(e[2]) ~= "number" or e[2] <= 0 then bad(string.format("HUMAN_TASKING: '%s' needs a positive weight", e[1])) end
         end
@@ -2663,16 +2681,26 @@ end
 
 -- ── human flights ───────────────────────────────────────────────
 
--- The bases a human flight can launch from: held bases that can launch
--- HUMAN_TASKING.aircraft_type and have a player slot whose spot exists. Returns the base
--- names and, per base, its slot { group, spot, terminal_index, parking (the spot) }.
+-- The bases a human flight can launch from: held bases with a player slot whose spot
+-- exists and whose aircraft type can launch there. Returns the base names and, per base,
+-- its first such slot { group, spot, terminal_index, parking (the spot) }: where the
+-- flight's route starts. The brief lists every slot at the base (any player there can fly it).
 local function humanSlotBases(ctx)
+    local fits = {}   -- base → { aircraft type → true }: the player types that can launch there
+    for _, t in ipairs(PlanAirTasking.playerAircraftTypes()) do
+        for _, name in ipairs(launchBases(ctx, t)) do
+            fits[name] = fits[name] or {}
+            fits[name][t] = true
+        end
+    end
     local bases, slotAt = {}, {}
-    for _, name in ipairs(launchBases(ctx, HUMAN_TASKING.aircraft_type)) do
+    for _, name in ipairs(ctx.held) do
         for _, slot in ipairs(PLAYER_SLOTS[name] or {}) do
-            for _, s in ipairs(ctx.plan.world.airbases[name].parking) do
-                if not slotAt[name] and s[4] == slot.terminal_index then
-                    slotAt[name] = { group = slot.group, spot = slot.spot, terminal_index = slot.terminal_index, parking = s }
+            if fits[name] and fits[name][slot.type] then
+                for _, s in ipairs(ctx.plan.world.airbases[name].parking) do
+                    if not slotAt[name] and s[4] == slot.terminal_index then
+                        slotAt[name] = { group = slot.group, spot = slot.spot, terminal_index = slot.terminal_index, parking = s }
+                    end
                 end
             end
         end
@@ -2759,14 +2787,16 @@ end
 -- HUMAN_TASKING.missions human flights, each taking off startup_s after mission start.
 -- Each tries its mission types in weighted random order (types another human flight
 -- already has go last, for variety), first from slot bases no other human flight uses,
--- then from any slot base. Returns the plan entries.
+-- then from any slot base. A flight is open to every player aircraft type; it is planned
+-- (route, timing, loadout) for the first of them. Returns the plan entries.
 local function planHumanMissions(ctx)
     local H = HUMAN_TASKING
     local bases, slotAt = humanSlotBases(ctx)
+    local playerTypes = PlanAirTasking.playerAircraftTypes()
     local out, usedBases, usedTypes = {}, {}, {}
     if #bases == 0 then
-        Log.warn(string.format("  %s: no held base with a player slot can launch an %s — no human flights",
-            ctx.coalition:upper(), H.aircraft_type))
+        Log.warn(string.format("  %s: no held base with a player slot can launch its slot's aircraft (%s) — no human flights",
+            ctx.coalition:upper(), #playerTypes > 0 and table.concat(playerTypes, ", ") or "no player slots"))
         return out
     end
     for n = 1, H.missions do
@@ -2788,7 +2818,7 @@ local function planHumanMissions(ctx)
                 if pass == 2 or not usedBases[b] then list[#list + 1] = b end
             end
             if #list > 0 and not m then
-                local human = { aircraft_type = H.aircraft_type, bases = list, count = 1, takeoff_s = takeoff,
+                local human = { aircraft_type = playerTypes[1], bases = list, count = 1, takeoff_s = takeoff,
                                 slot_at = slotAt }
                 for _, mt in ipairs(fresh) do
                     m = planHumanMission(ctx, mt, human, failures)

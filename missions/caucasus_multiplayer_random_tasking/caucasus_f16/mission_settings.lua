@@ -3,7 +3,7 @@
 --
 -- The logic is the shared mission framework's (shared_mission_framework\mission_scripts\,
 -- shared with Kola and later the Afghanistan campaign); anything that names this mission,
--- its map or its files lives here instead (shared_mission_framework\development_docs\plan.md,
+-- its map or its files lives here instead (plan.md at the repository root, *History*,
 -- step 7). Started from Kola's mission_settings.lua.
 
 MISSION = {

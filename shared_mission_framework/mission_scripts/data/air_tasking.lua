@@ -269,7 +269,7 @@ AIR_TASKING_PER_COALITION = {
     },
 }
 
--- Which targets ground attack missions go after (plan.md "Attack missions", air denial — jets
+-- Which targets ground attack missions go after (framework_design.md "Attack missions", air denial — jets
 -- work the front, not the enemy's rear):
 --   max_km_past_contested  a target lies in the contested airspace or at most this far
 --                          from it (so at most this deep in enemy airspace)
@@ -338,8 +338,9 @@ AIR_PACKAGE = {
 
 -- Human flights (session 10): Blue missions planned for players, listed at mission start
 -- and in the F10 menu, flown from a player slot (data/player_slots.lua). Planned like the
--- AI's (same targets near the front, routes and SEAD flights), but one
--- aircraft of aircraft_type from a held base with a player slot, and timed from mission
+-- AI's (same targets near the front, routes and SEAD flights), but from a held base with
+-- a player slot, open to every player there (one or more, in any aircraft type the
+-- mission's slots hold; planned for the first type by name), and timed from mission
 -- start: takeoff after a cockpit startup of startup_s, over the target when the route
 -- gets there; the AI SEAD flights it needs are timed around it. Never spawned: the player
 -- spawns in on the slot. Planned after defensive air and before the AI attack missions.
@@ -354,13 +355,12 @@ AIR_PACKAGE = {
 HUMAN_TASKING = {
     coalition     = "blue",
     missions      = 2,
-    aircraft_type = "F-16C_50",
     mission_types = { { "strike", 3 }, { "airfield_strike", 2 }, { "destruction_of_air_defenses", 2 },
                       { "suppression_of_air_defenses", 2 }, { "combat_air_patrol", 1 } },
     startup_s     = { 600, 1200 },
 }
 
--- Defensive air (plan.md "Defensive air"). Planned before the attack missions
+-- Defensive air (framework_design.md "Defensive air"). Planned before the attack missions
 -- ("support up first"), so the patrols and the AWACS always have their share of the cap.
 --
 -- Kill zones (John, 2026-09-27: SAMs don't fire out to their full drawn range, so jets

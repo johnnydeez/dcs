@@ -1,6 +1,6 @@
 -- Offline test harness, test B level 2: what a group's sensors detect
 -- (Controller:getDetectedTargets), simply, so the mission's radar picture, scrambles,
--- bandit calls and Darkstar have contacts to work with (shared_mission_framework plan.md,
+-- bandit calls and Darkstar have contacts to work with (shared_mission_framework framework_design.md,
 -- *How the transfer is tested*). Loaded after stub_dcs_world.lua; SimpleSensors.install().
 --
 --   radar  (any detection kind but RWR) every enemy aircraft in the air within reach of one

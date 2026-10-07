@@ -3,7 +3,7 @@
 --
 -- Not a simulation. Everything here is simple and fixed, so the same code with the same
 -- seed always gives the same result: the harness compares a run before and after a
--- change, it doesn't judge whether a plan is realistic (shared_mission_framework plan.md,
+-- change, it doesn't judge whether a plan is realistic (shared_mission_framework framework_design.md,
 -- *How the transfer is tested*).
 --
 -- What it stands in for:

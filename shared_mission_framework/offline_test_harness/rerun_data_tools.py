@@ -1,5 +1,5 @@
 """Offline test harness, test D: re-runs the map data tools for a mission and compares what
-they write with a recorded baseline (shared_mission_framework plan.md, *How the transfer is
+they write with a recorded baseline (shared_mission_framework framework_design.md, *How the transfer is
 tested*), so changing or moving the tools can't silently change the data they make.
 
     python rerun_data_tools.py kola --record-baseline    the baseline, before a change

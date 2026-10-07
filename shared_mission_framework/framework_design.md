@@ -1,18 +1,140 @@
-# Shared Mission Framework — As built
+# Shared Mission Framework — Design
 
-> **What this is:** how the shared mission framework works: the architecture, every stage and consumer, the radio, the data tools, the DCS facts learned the hard way, and the design not built yet. Moved here from Kola's `plan.md` on 2026-10-06 (framework `plan.md`, step 6), under the same section names, so references to "plan.md, *The controller*" and the like in Kola's docs and code comments land here.
+> **What this is:** how the shared mission framework is designed and how it works: the shared tools, libraries and data used to create and run custom (multiplayer) DCS missions. The Lua that plans and runs a mission inside DCS, the radio calls outside it, the Python tools that build a map's data, the data that holds on any map, and the offline test harness. Kola (`missions\kola_f16_random_tasking\`), the Caucasus random tasking (`missions\caucasus_multiplayer_random_tasking\`) and later the Afghanistan campaign (`missions\afghanistan_campaign\`) run on it; a fix or a change made once applies to every mission. Syria shares nothing.
 >
-> **Kola was the first mission on it,** so examples, numbers and run notes come from Kola runs. Bug and roadmap numbers are Kola's ("Kola bug 41": the repository's one `bugs.md`, at its root, since 2026-10-07; the root's one `closed.md` and `roadmap.md`). The numbers in shared settings hold for every mission; a setting individual to a mission lives only in each mission's own data, never as an override of the library (framework `plan.md`, *Settings that differ by mission*). Each mission's map and scenario (clusters, rosters, player slots, zones, airbases) is in that mission's own plan (Kola: *Kola's map and scenario*).
+> **Where else to look:** status, what's next, what to check in the next run, how to pick work up, and the history (Kola's runs, the split step by step): the repository's one **`plan.md`**, at its root. Where things are headed: **`roadmap.md`**; bugs: **`bugs.md`**; finished items and fixed bugs: **`closed.md`** (all at the root, each item saying what it is for). Each mission's own map, scenario and settings: its **`mission_design.md`** (Kola: *Kola's map and scenario*). Until 2026-10-07 this file was `development_docs\as_built.md` (and before 2026-10-06 most of it was Kola's `plan.md`), so older notes and code comments say "plan.md, *The controller*" or "as_built.md": the section names are the same here.
 >
-> **Paths:** Lua files (`stages/…`, `consumers/…`, `lib/…`, `data/…`) are in `shared_mission_framework\mission_scripts\`, except a mission's own data files (`data/clusters.lua`, `data/zones.lua`, `data/player_slots.lua`, `data/coalition_rosters.lua`, `data/airbase_*.lua`, `data/forested_airfields.lua`, `data/airfield_frequencies.lua`: `MISSION.data_files`, in the mission's scripts folder). `radio_calls/` and `map_data_tools/` are in `shared_mission_framework\`.
+> **Kola was the first mission on it,** so examples, numbers and run notes come from Kola runs. Bug and roadmap numbers are the repository's ("Kola bug 41": found in Kola). The numbers in shared settings hold for every mission; a setting individual to a mission lives only in each mission's own data, never as an override of the library (*Settings that differ by mission*).
 >
-> **Where to look:** *Architecture* → *As built* (by stage, then the consumers, the tools, *DCS facts learned the hard way*, *Performance*) → *Design, not built yet*. Plans: each mission's own `development_docs\`; the roadmap, bugs and closed items: the repository's one `roadmap.md`, `bugs.md`, `closed.md`, at its root; the split itself: this folder's `plan.md`.
+> **Paths:** Lua files (`stages/…`, `consumers/…`, `lib/…`, `data/…`) are in `shared_mission_framework\mission_scripts\`, except a mission's own data files (`data/clusters.lua`, `data/zones.lua`, `data/player_slots.lua`, `data/coalition_rosters.lua`, `data/airbase_*.lua`, `data/forested_airfields.lua`, `data/airfield_frequencies.lua`, `data/radio_channels.lua`, `data/awacs_orbit_distances.lua`: `MISSION.data_files`, in the mission's scripts folder). `radio_calls/`, `map_data_tools/` and `offline_test_harness/` are in `shared_mission_framework\`.
+>
+> **In this file:** *Direction* → *Decided* → *What the code showed* → *Layout* → *Settings that differ by mission* → *Loading* → *Architecture* → *As built* (by stage, then the consumers, the tools, *DCS facts learned the hard way*, *Performance*) → *Reading a run* (what to grep) → *How the transfer is tested* (the offline test harness) → *Design, not built yet*.
+
+---
+
+## Direction
+
+**Naming rule:** name things by what they are or what they do, in full words, folders included. No abbreviations in code names: `mobile_anti_aircraft_guns`, not `aaa_sp`; `shoulder_launched_missile_teams`, not `manpads_team`. Each name answers one question. Prose may still use common terms (AAA, SHORAD, MANPADS).
+
+**Air denial** (since Kola's session 8, 2026-09-26). The air war was redesigned from air superiority to air denial, like Ukraine:
+- jets stay under their own SAM umbrella;
+- ground attack works the front;
+- losses should be rare and meaningful;
+- standoff weapons are coming.
+
+Flight structures, weapons, tactics and strategy change step by step, with the details decided with John as they come up. Rules are judged by what real forces would do.
+
+---
+
+## Decided (John, 2026-10-06, when the framework was split out of Kola)
+
+1. **No duplicated code.** Every piece of logic lives in one place, the framework, so a change or bug fix reaches every mission. **A setting that is individual to a mission lives only with that mission's files, never as an override of the library** (John, 2026-10-06, replacing the first design's shared default + mission override: "we don't want each custom mission overriding stuff from the library, that gets messy"; *Settings that differ by mission*).
+2. **Map data stays with the mission** for now (zones, airbases, slots, frequencies…). It moves to a per-map folder only if two missions ever share a map.
+3. **The name:** `shared_mission_framework`. Inside it, the folders say what they hold (*Layout*).
+4. **Docs** (John, 2026-10-07): **one `plan.md`, `roadmap.md`, `bugs.md` (and `closed.md`) at the repository's root** for every mission and the framework, the one place to look for development (each roadmap item and bug saying which it is for); **this `framework_design.md`** for how the framework is designed and works (until 2026-10-07 `development_docs\as_built.md` and the design parts of the framework's own `plan.md`); **a `mission_design.md` in each mission's folder** for that mission's own design (its map, scenario and settings). Code comments that cite a Kola bug number say so: "Kola bug 41".
+5. **When:** the whole rework plan first (the framework's plan, now the root `plan.md`'s *History*), then the steps; John flies Kola after the first few (steps 1–3), before anything is moved into the framework.
+
+---
+
+## What the code showed (2026-10-06)
+
+Read before planning, so the split follows what the files actually hold:
+- **The logic barely knows it's on Kola.** In `lib/`, `stages/` and `consumers/`, Kola base and map names appear almost only in comments. The one real hard-coded spot is the magnetic-variation self-test at Rovaniemi (`kola_f16/consumers/call_air_picture.lua`, `plan.world.airbases["Rovaniemi"]`).
+- **The map lives in data and in the Python tools:** `zones`, `clusters`, `airbase_codes`, `airbase_classes`, `airbase_footprints`, `forested_airfields`, `player_slots`, `airfield_frequencies`, the magnetic-variation fallback table (`AIR_PICTURE_CALLS.fallback_magnetic_variation`), the UTC offset (`CONFIG.UTC_OFFSET_H`), the projection (`kola_data_tools/kola_proj.py`) and `kola_data_tools/kola_airbases.json`.
+- **Kola's identity is written into a few places:** `SCRIPT_DIR = Scripts\kola_f16\` (`init.lua`), the `[KOLA]` log tag (`lib/logger.lua`, `init.lua`), `kola_last_plan.lua` (`CONFIG.PLAN_DUMP_FILE`), the event log's folder and `kola_event_logs` fallback (`data/event_log.lua`) and its header line, the radio's `calls_file` and `start_command` (absolute paths into the Kola folder, `data/radio_calls.lua`), the `KOLA-RADIOS` tag (`radio_calls/export_cockpit_radios.lua`), the window titles in `radio_calls/start_radio_calls.cmd`, the zone survey's `MISSION_DIR`, `kola_zone_terrain.lua` and `kola_zone_update.log` (`survey/survey_zone_terrain.lua`), and Red's SAMs spawned as country Russia (`init.lua`).
+- **Blue is assumed in ~69 places** (`side.BLUE`, `"blue"`, 34 files): players, the radio, *Airfield info*, the brief. Fine for Caucasus (players fly Blue). The Afghanistan plan needs every player feature on both coalitions; that is its own later step (*Later*), not part of the split.
+- **Size:** ~56,000 lines in all, most of it generated data (`aircraft_pylons` 15,678, `airbase_footprints` 9,985, `zones` 3,209). The logic is ~17,000 lines of Lua and ~2,600 of Python.
+
+---
+
+## Layout
+
+```
+shared_mission_framework\             (repository root, beside missions\)
+  framework_design.md                 this file: how the framework is designed and how it works
+  mission_scripts\                    the Lua that runs inside DCS; copied to Saved Games\DCS\Scripts\shared_mission_framework\
+    load_framework.lua                loads the framework, then the mission's data, in order (new)
+    run_mission.lua                   the run sequence, today in Kola's init.lua (moved)
+    config.lua                        CONFIG defaults (mission identity and map facts come from the mission)
+    gather.lua
+    lib\                              util, logger, weather, placement, threat_routing, sam_reach, flight_callsigns
+    data\                             shared data and shared defaults (below)
+    stages\                           every stage
+    consumers\                        every consumer, control_air_flights\ included
+    survey\                           the in-DCS surveys (zone terrain, airbase footprints, parked-aircraft probe)
+  radio_calls\                        the radio player, helper, phrase banks, voices, radio sound, export script
+  map_data_tools\                     the Python that builds data from DCS and a map (today kola_data_tools\)
+  offline_test_harness\               stubbed DCS + replay tests, kept this time (*How the transfer is tested*)
+
+missions\kola_f16_random_tasking\
+  kola_f16\                           the mission's own scripts; copied to Saved Games\DCS\Scripts\kola_f16\
+    init.lua                          names the mission and its folders, then hands over to load_framework.lua
+    mission_settings.lua              identity and map facts: name, log tag, folders, UTC offset, magnetic variation, map edges
+    data\                             map data, scenario data, and the settings each mission has its own values for (below)
+  map_data_sources\                   kola_airbases.json and other inputs the map tools read for this map
+  kola_f16_random_tasking.miz, mission_design.md, event_logs\
+
+missions\caucasus_multiplayer_random_tasking\   the same shape (scripts folder caucasus_f16)
+```
+
+### Which file goes where
+
+**Framework, shared as is** (facts about DCS, true on every map):
+
+| File | Why |
+|---|---|
+| `unit_pool`, `aircraft_pylons` (offline only), `aircraft_loadouts` (+ `AIRCRAFT_LOADOUT_OPTIONS`), `aircraft_profiles`, `cloud_presets` | Generated from the DCS install or about aircraft types, not maps |
+| `sam_site_recipes`, `base_defense_placement`, `fixed_ground_target_recipes`, `convoy_recipes` | How a system or a target is built and placed |
+
+**Framework, shared tuning** (every mission uses it as is; a setting found to differ by mission moves out of these into every mission's data, *Settings that differ by mission*):
+
+| File | Holds |
+|---|---|
+| `config` | `CONFIG` (debug flags, placement clearances, drawing switches; identity and map facts move to `mission_settings.lua`) |
+| `air_tasking` | `AIR_MISSION_TYPE`, `AIR_STANDOFF_WEAPONS`, `AIR_DEAD_WEAPONS`, `AIR_WEAPON_TYPE`, `AIR_TASKING_PER_COALITION`, `AIR_TARGETING`, `AIR_TASKING_TIMING`, `AIR_TASKING_SKILL`, `AIR_PACKAGE`, `HUMAN_TASKING`, `AIR_DEFENSE`, `AIR_ROUTING` |
+| `air_control`, `radar_picture`, `air_picture_calls`, `radio_calls`, `event_log`, `ground_unit_sleep`, `airspace` | The controller, the picture, the calls, the radio's channels and kinds, the event log, sleeping units, the airspace grid |
+| `base_defense_levels`, `base_defense_composition`, `sam_site_density`, `fixed_ground_target_density`, `flight_callsigns` | How much of everything per roll; callsign names |
+
+The distances in these were set on Kola's ~1,400 × 1,000 km map (100 km fronts, a 30 km contested band, 250 km AWACS reach); a smaller map like Caucasus needs some of them different, and each one that does moves into the missions' data.
+
+**Mission, map data:** `zones`, `airbase_codes`, `airbase_classes`, `airbase_footprints`, `forested_airfields`, `player_slots`, `airfield_frequencies`; in `mission_settings.lua`: the UTC offset, the magnetic-variation fallback table and the airbase its start-up self-test reads, the map's edges (`map_bounds_m`).
+
+**Mission, its own settings** (moved out of the shared files, 2026-10-06): `radio_channels` (`RADIO_CHANNELS`: the AWACS, mission and airfield channels, clear of the map's tower frequencies), `awacs_orbit_distances` (`AWACS_ORBIT_DISTANCES`: how far AWACS orbits keep from enemy fighter bases and the contested airspace).
+
+**Mission, scenario data:** `clusters` (who holds what, how the roll goes), `coalition_rosters` (who fields which ground units, SAMs, aircraft, targets), and the country each coalition's SAMs spawn as (Red as Russia on Kola: from `init.lua` into data). Scenario data isn't code: a new mission may start from a copy of Kola's rosters and change them freely.
+
+**Python:**
+- `radio_calls\` moves whole into the framework (only one mission runs at a time, so one radio player and helper serve whichever runs; ports 47110–47112 stay). The phrase banks are shared; the test samples in `flight_phrase_wording.py` keep their Kola names (they're only examples).
+- `kola_data_tools\` becomes `map_data_tools\`: `dcslua.py`, `unit_pool.py`, `unit_role_overrides.json`, `cloud_presets.py`, `aircraft_loadouts.py` (+ its two JSON files) write into the framework's `data\`; `miz_zones.py`, `miz_player_slots.py`, `airfield_frequencies.py`, `update_zone_data.cmd` take the mission folder (and its map) as an argument and write into that mission's `data\`. `kola_proj.py` becomes a projection module with the parameters per map, taken from pydcs's `dcs/terrain/<map>/projection.py` as Kola's were.
+- `desanitize_dcs.py` stays at the repository root (it serves Syria too).
+
+---
+
+## Settings that differ by mission
+
+John, 2026-10-06 (decision 1): a parameter individual to a mission goes with the mission's files; no mission overrides the library. (The first design, built in step 2, was a shared default plus override files merged over it; it was retired the same day, before any mission but Caucasus used it: `lib\mission_overrides.lua`, `MISSION.overrides` and the harness's `test_mission_overrides.lua` are gone.)
+- **The rule:** when a setting turns out to need a different value on some mission, it leaves the shared data file completely and goes into **every** mission's own data (a file in its `data\`, listed in `MISSION.data_files`; a map fact in `mission_settings.lua`), Kola's included with Kola's value. The framework holds no value for it, so there is never a question of which one wins. Kola's harness proves the move changed nothing for Kola.
+- **What stays shared:** facts about DCS and aircraft (`aircraft_profiles`, the recipes, the unit pool) and tuning every mission uses as it is. A shared fact that was simply wrong is fixed in the framework (the E-3A's runway, 2026-10-06).
+- **Fails loudly:** a mission missing one of these files stops at load (`FATAL: could not load data\…`); a missing value is named by the data checks (`PlanAirTasking.checkData`).
+- **Moved so far** (2026-10-06): `RADIO_CHANNELS` (was `RADIO_CALLS.channels`), `AWACS_ORBIT_DISTANCES` (was `AIR_DEFENSE.early_warning_fighter_base_km` / `early_warning_front_km`), `MISSION.map_bounds_m` (was `AIRSPACE.map_bounds_m`). Next candidates, each when Caucasus shows it needs its own: the echelon and front distances, the contested band, SAM density, CAP stations, the airborne cap.
+- `CONFIG` likewise: shared in the framework's `config.lua`; the mission's identity and map facts live in `mission_settings.lua` (`MISSION.name`, `MISSION.log_tag`, `MISSION.scripts_folder`, `MISSION.repository_folder`, `MISSION.utc_offset_h`, …). A one-off survey flag (`CONFIG.SURVEY_FOOTPRINTS`) is set in `config.lua` for the one start that needs it and set back.
+
+## Loading
+
+Kola's `init.lua` today loads ~70 files from `Scripts\kola_f16\` in a fixed order, then runs the sequence. After the split:
+1. The mission editor trigger is unchanged (`dofile(lfs.writedir() .. "Scripts\\kola_f16\\init.lua")`), so the `.miz` isn't touched.
+2. The mission's `init.lua` loads its `mission_settings.lua`, then `Scripts\shared_mission_framework\load_framework.lua`.
+3. `load_framework.lua`, in order: framework `config` → `lib\*` → framework `data\*` (shared data) → the mission's `data\*` (map, scenario, its own settings) → `gather` → `stages\*` → `consumers\*` → the data checks (`checkData`).
+4. Then `run_mission.lua`: the run sequence that is in `init.lua` today, unchanged.
+5. The mission tells the framework which of its data files to load (a list in `mission_settings.lua`), so a mission can't miss one silently and a missing file is named at load.
+
+Globals don't clash between missions: only one mission runs at a time.
 
 ---
 
 ## Architecture
 
-**Relationship to other code.** Every mission on the framework (Kola, the Caucasus random tasking, later the Afghanistan campaign) runs the same Lua, radio and tools; a fix made once reaches each. A mission holds only what is its own: its settings and map facts (`mission_settings.lua`, `MISSION`), its map and scenario data, and the settings each mission has its own values for (radio channels, AWACS orbit distances; framework `plan.md`, *Settings that differ by mission*). The Syria mission is completely separate: no shared code, so it keeps working exactly as it does.
+**Relationship to other code.** Every mission on the framework (Kola, the Caucasus random tasking, later the Afghanistan campaign) runs the same Lua, radio and tools; a fix made once reaches each. A mission holds only what is its own: its settings and map facts (`mission_settings.lua`, `MISSION`), its map and scenario data, and the settings each mission has its own values for (radio channels, AWACS orbit distances; *Settings that differ by mission*). The Syria mission is completely separate: no shared code, so it keeps working exactly as it does.
 
 **The plan is one table.** The stages build one accumulating plain-data Lua table; each stage reads earlier keys and adds its own.
 - **Nothing spawns until planning is done**, so later stages (air tasking, brief) see the complete picture.
@@ -47,6 +169,7 @@ shared_mission_framework\mission_scripts\   → Scripts\shared_mission_framework
     threat_routing.lua           -- threat map, routes around rings, priced by airspace
     sam_reach.lua                -- how far a SAM site reaches at an altitude; kill zones; the enemy airfields' Tors / Pantsirs (SamReach)
     flight_callsigns.lua         -- the flights' callsigns
+    player_menus.lua             -- comms menus per player group (PlayerMenus)
   data\                          -- the shared data: facts about DCS, recipes, and the tuning every mission uses as is
     base_defense_levels.lua  base_defense_composition.lua  base_defense_placement.lua
     sam_site_recipes.lua  sam_site_density.lua
@@ -141,7 +264,7 @@ The player's flight has no pre-named group (dynamic spawn); it's matched by the 
 
 ### Run order (`run_mission.lua`)
 
-The mission's `init.lua` (loaded by its mission editor trigger) loads its `mission_settings.lua` (`MISSION`), then `load_framework.lua` (`LoadFramework.run()`: config → lib → shared data → the mission's data → gather, stages, consumers → the data checks; framework `plan.md`, *Loading*), then `run_mission.lua`, whose `RunMission.start()` runs the sequence `CONFIG.START_DELAY` in (airbase queries return empty at T+0):
+The mission's `init.lua` (loaded by its mission editor trigger) loads its `mission_settings.lua` (`MISSION`), then `load_framework.lua` (`LoadFramework.run()`: config → lib → shared data → the mission's data → gather, stages, consumers → the data checks; *Loading*), then `run_mission.lua`, whose `RunMission.start()` runs the sequence `CONFIG.START_DELAY` in (airbase queries return empty at T+0):
 
 `Gather` (+ player slots) → `RollTerritory` → `PlanBaseDefenses` → `PlanSamSites` → `DivideAirspace` → `PlanFixedGroundTargets` → `PlanConvoys` → `CatalogTargets` → `PlanAirTasking` (defensive air → human flights → AI attack packages) → plan dump (`Saved Games\DCS\<MISSION.plan_dump_file>`; Kola: `kola_last_plan.lua`).
 
@@ -167,7 +290,7 @@ Syria-style clusters: some always Blue, some always Red, contested ones rolled. 
 - **`p_red`** weights each contested cluster's roll.
 - **`requires_red`** makes a deep cluster roll only if its border neighbour already fell (evaluated in file order), so Russia can't hold Alta while Kirkenes stays NATO.
 
-The clusters (which bases, always Blue / always Red / contested, `p_red`, `requires_red`) are each mission's scenario data, `data/clusters.lua` in its scripts folder (Kola's: Kola `plan.md`, *Kola's map and scenario*).
+The clusters (which bases, always Blue / always Red / contested, `p_red`, `requires_red`) are each mission's scenario data, `data/clusters.lua` in its scripts folder (Kola's: Kola's `mission_design.md`, *Kola's map and scenario*).
 
 - **Echelon:** `front` ≤ `ECHELON_FRONT_KM` 100 km from the nearest enemy base, `mid` ≤ 200, else `rear`.
 - **Zones:** each zone inherits its cluster's side.
@@ -193,7 +316,7 @@ Every airbase gets a coalition-appropriate ground defense sized to how hard its 
 - **`strip`:** too short for any jet (< `AIRBASE_CLASS_JET_RUNWAY_M`, 1,500 m).
 - **`dispersal`:** any other field with no bigger role; a secondary field the air force flies fighters from in wartime (Finnish and Swedish dispersal doctrine).
 - **Mismatches:** `PlanBaseDefenses` warns at start-up when a class disagrees with the runway.
-- **Always heavy:** the bases a mission's `data/airbase_classes.lua` makes `hub` or `bomber` (Kola's: Kola `plan.md`, *Kola's map and scenario*).
+- **Always heavy:** the bases a mission's `data/airbase_classes.lua` makes `hub` or `bomber` (Kola's: Kola's `mission_design.md`, *Kola's map and scenario*).
 
 **Defense level.** What a base is matters more than where it sits: hubs and bomber bases are defended heavily anywhere, since long-range strikes reach the rear.
 ```
@@ -217,7 +340,7 @@ Rough size: heavy 5 groups / ~10 units, standard 2–4 / ~7, light 2 / ~5 (befor
    shoulder_launched_missile_teams  1        1         1
 ```
 
-**Rosters.** Which types each coalition fields per role is the mission's scenario data (`COALITION_DEFENSE_ROSTER` and the rest of `data/coalition_rosters.lua`, in its scripts folder). Coverage and realism beat exact type (John); only single-vehicle systems here, multi-vehicle SAMs belong to the SAM site recipes. Kola's rosters and what was left out on purpose: Kola `plan.md`, *Kola's map and scenario*.
+**Rosters.** Which types each coalition fields per role is the mission's scenario data (`COALITION_DEFENSE_ROSTER` and the rest of `data/coalition_rosters.lua`, in its scripts folder). Coverage and realism beat exact type (John); only single-vehicle systems here, multi-vehicle SAMs belong to the SAM site recipes. Kola's rosters and what was left out on purpose: Kola's `mission_design.md`, *Kola's map and scenario*.
 
 **Placement.**
 - **Trees are invisible to every DCS API** (proven by probe; don't re-investigate). So placement starts from ground that is open by construction, surveyed once into `data/airbase_footprints.lua`:
@@ -270,7 +393,7 @@ Target feel (John): **Ukraine-war density with mixed-age kit**, lived-in, built 
 - **Minimum per layer, placed first:** Red 3 long range + 2 early warning; Blue 1 long range + 2 early warning. Early warning goes rear-first; other layers go to the asset ring first, in clusters the side always holds, spread by area, with random tie-breaks so sites move between rolls.
 - **Spreading:** ≤ 1 long-range site per area; ≤ 2 sites per base in the rear; no two sites of one side within 3 km.
 
-**Systems** (`COALITION_SAM_SYSTEMS` in the mission's `data/coalition_rosters.lua`): per coalition and layer, weighted. Kola's: Kola `plan.md`, *Kola's map and scenario*.
+**Systems** (`COALITION_SAM_SYSTEMS` in the mission's `data/coalition_rosters.lua`): per coalition and layer, weighted. Kola's: Kola's `mission_design.md`, *Kola's map and scenario*.
 
 **How the systems perform in DCS** (researched 2026-09-23; engagement ranges high / low altitude):
 
@@ -303,7 +426,7 @@ Rings are drawn with ED's high-altitude figure; the low-altitude reach is much s
 **Validation** (`PlanSamSites.checkData`): every recipe part is in the pool; every escort role has rosters; every system entry names a recipe of its layer.
 
 **Known gaps:**
-- A map whose zones are small fits only short- and medium-range systems there (Kola's core: Kola `plan.md`, *Kola's map and scenario*).
+- A map whose zones are small fits only short- and medium-range systems there (Kola's core: Kola's `mission_design.md`, *Kola's map and scenario*).
 - No alarm-state or ROE orders (DCS defaults engage).
 
 ### Stage 3b: fixed ground targets (`stages/plan_fixed_ground_targets.lua`)
@@ -502,11 +625,11 @@ One Red supply convoy per mission (`CONVOYS_PER_COALITION`: Red 1, Blue 0).
 **Human taskings** (session 10; `HUMAN_TASKING` in `data/air_tasking.lua`, `planHumanMissions`). John's decisions:
 - the mission is also a sandbox: the brief lists the human taskings, and the player picks a base and spawns;
 - no assignment or completion tracking yet (the design leaves room for both);
-- 1 player for now, always 2 human taskings, every mission type allowed;
+- always 2 human taskings, every mission type allowed; open to every player (2026-10-07, John, multiplayer with an F/A-18 friend: "just have human missions available that we can pick up", alone or together), nobody assigned;
 - takeoff 10–20 min after mission start, TOT set by how far the target is.
 
 How it's built:
-- **Flight:** each human flight is 1× F-16C (`flown_by = "human"`, AI flights `"ai"`) from a held slot base whose runway fits, taking off `startup_s` (600–1200 s) after start. `human_missions` lists their ids.
+- **Flight:** each human flight (`flown_by = "human"`, AI flights `"ai"`) is from a held base with a player slot whose aircraft type fits there, taking off `startup_s` (600–1200 s) after start. The player aircraft types are the types in the mission's `PLAYER_SLOTS` (`PlanAirTasking.playerAircraftTypes`, by name); the flight is planned (route, timing, loadout) for the first and starts at the base's first such slot; any player at the base flies it, in whichever jet (the frag lists every slot there and each type's loadout). `human_missions` lists their ids.
 - **Mission types:**
   - strike / airfield strike / DEAD: planned like the AI's, with AI SEAD if the route needs it;
   - SEAD: a site the SEAD rotation opens with (step 1), the player being its SEAD flight in the site table;
@@ -688,7 +811,7 @@ send_radio_calls.lua  mission_calls.jsonl  speak_mission_calls.py  (Zira, SSML) 
   - **"Pushing" one second after takeoff:** Rovaniemi lies in contested airspace, so "out of own airspace" was true on the runway. Now the flight reaching its ingress waypoint (a SEAD flight: its first low-level or descent waypoint), told by the waypoint's script command (`AnnounceFlightActivity.waypoint`, beside `WriteEventLog.waypoint` and `ControlAirFlights.waypoint`).
   - **A false "final"** at Rovaniemi (Weasel 2 egressing low at ~450 kt past its own base, 5 min after takeoff), which used up the flight's final, so the real approach had none and "inbound" came after it. Now inbound only for a flight coming back to land (the watcher has seen it heading home, `AnnounceFlightActivity.headingHome`, or it is slow and low: ≤ 130 m/s, ≤ 1,500 m), and final only after that, at approach speed (≤ 110 m/s).
   - **"Splash" by a jet that had ejected** (Weasel 1-2's AIM-120 killed a Su-34 a second after 1-2 was shot down): a call from a jet already down is said by a jet of its flight still flying, or not at all.
-- **Darkstar's orders to AI flights** (Kola roadmap item 7, step 14; designed with John and built 2026-10-05 night, harness-tested; flown 2026-10-06 00:16, each order matching its `CONTROL` line, Kola `plan.md` *Where we are*). **A listener of the controller, not part of it** (John: "a watcher, not the controller directly"): `ControlAirFlights.say`, the one place every decision passes, also publishes it to listeners (`ControlAirFlights.onDecision`, like `TrackRadarPicture.on`) as `{ coalition, subject, decision, text, details }`; details carry a `reason` word (every directive intent now has one: `salvo_complete`, `salvo_over`, `pressed_too_far`, `no_shot`, `attack_time_up`, `sam_threat`, `raid_destroyed`, `raid_turned_away`, `raid_lost`, `deep_in_enemy_airspace`, `relieved`, `bingo`, `no_air_to_air`, `wingman_landed`, `lost_on_way_home`, `overdue`; a fight's end: `bandit_destroyed`, `bandit_lost`, `bandit_far`, `bandit_cold`, `time_up`, `out_of_missiles`, `no_jets_up`), and `threat`, `relief`, `units`, `targets`. The controller knows nothing of the radio. `consumers/announce_controller_orders.lua` (`AnnounceControllerOrders`) listens and speaks, on the AWACS channel in Darkstar's voice, to Blue AI flights with a callsign (not the AWACS):
+- **Darkstar's orders to AI flights** (Kola roadmap item 7, step 14; designed with John and built 2026-10-05 night, harness-tested; flown 2026-10-06 00:16, each order matching its `CONTROL` line, `plan.md`, *History*, *Kola runs*). **A listener of the controller, not part of it** (John: "a watcher, not the controller directly"): `ControlAirFlights.say`, the one place every decision passes, also publishes it to listeners (`ControlAirFlights.onDecision`, like `TrackRadarPicture.on`) as `{ coalition, subject, decision, text, details }`; details carry a `reason` word (every directive intent now has one: `salvo_complete`, `salvo_over`, `pressed_too_far`, `no_shot`, `attack_time_up`, `sam_threat`, `raid_destroyed`, `raid_turned_away`, `raid_lost`, `deep_in_enemy_airspace`, `relieved`, `bingo`, `no_air_to_air`, `wingman_landed`, `lost_on_way_home`, `overdue`; a fight's end: `bandit_destroyed`, `bandit_lost`, `bandit_far`, `bandit_cold`, `time_up`, `out_of_missiles`, `no_jets_up`), and `threat`, `relief`, `units`, `targets`. The controller knows nothing of the radio. `consumers/announce_controller_orders.lua` (`AnnounceControllerOrders`) listens and speaks, on the AWACS channel in Darkstar's voice, to Blue AI flights with a callsign (not the AWACS):
   - `engage` (decision `defend`): the bandit's BRAA from the flight's lead, as the picture holds it (`CallAirPicture.groupFrom`, grid-based magnetic like the picture calls; a bandit no radar holds, e.g. one that just fired: where it really is), type, "engage" / "commit". The same bandit to the same flight again within `RADIO_CALLS.orders.engage_fold_s` (90) isn't said (the break-off / re-engage cycle).
   - `resume` (`back on mission` / `back on way home`): only after an engage that was said, once; the reason ("good kill", "SAM threat, break off", "bandit cold") and "resume" or "continue RTB".
   - `return_to_base` (`go cold`, `leash home`, `handover` with the relief's callsign, `bingo`, `leave` with the bandit's BRAA at priority 1): the reason, then "RTB <base>".
@@ -782,7 +905,7 @@ Built 2026-10-01 (the performance-in-VR item, now in `closed.md`); run once in 2
 
 ### Player slots (`data/player_slots.lua`)
 
-- **Templates:** John places F-16C dynamic-spawn templates (group `f16_<base>`, one per base) in the mission's flyable `.miz` (`MISSION.flyable_mission_file`); DCS spawns the player on the template's exact spot. In the ME, the always-Blue / always-Red bases have their coalition set; contested ones are neutral and the script sets them.
+- **Templates:** John places dynamic-spawn templates (group `f16_<base>`; in Caucasus also `f18_<base>`, an FA-18C beside each F-16C, 2026-10-07) in the mission's flyable `.miz` (`MISSION.flyable_mission_file`); DCS spawns the player on the template's exact spot. In the ME, the always-Blue / always-Red bases have their coalition set; contested ones are neutral and the script sets them.
 - **Data file:** `map_data_tools/miz_player_slots.py <mission folder>` → the mission's `data/player_slots.lua` (`PLAYER_SLOTS[base]` = terminal index, spot name, group, type, position). Re-run it after moving or adding slots (not after renaming units: it keeps group names only).
 - **Unit names** match their group (`f16_rovaniemi-1-1`; John renamed them 2026-10-02: the templates were copies of Kallax's, Kola bug 24).
 - **Datalink in the templates:** country CJTF Blue (the AI's country; USA until 2026-10-02), each slot its own Link 16 STN (00201–00211), a team of itself only, no donors and an empty DTC. That is enough: AI flights show as datalink contacts without being in the team (the Caucasus test). A human 2-ship would list each other's STNs as team members; an AWACS donor would need the E-3A spawned with a fixed unit id (Kola bug 26).
@@ -791,7 +914,7 @@ Built 2026-10-01 (the performance-in-VR item, now in `closed.md`); run once in 2
 ### Brief (`consumers/brief_air_tasking.lua`)
 
 - **Start text** (3 min, `START_MESSAGE_S` 180): the weather plus one line per human tasking (base, slot, takeoff, TOT, what). Nothing else on screen at start (John).
-- **Comms menu** for Blue (`\` > F10. Other...; John: call it the comms menu, F10 means the map):
+- **Comms menu** for each Blue player group (`\` > F10. Other...; John: call it the comms menu, F10 means the map). Since 2026-10-07 (multiplayer) every group with a player in it gets its own menu (`lib/player_menus.lua`: built when a player is first seen in the group, checked every 5 s and at birth / entering a unit; removed when no player is left), and a text goes to that group only (`outTextForGroup`), so one player's frag or steerpoints don't cover another's screen:
   - `Human taskings > <MSN> > Frag / Steerpoints`, and `All human taskings`;
   - `Air tasking order > Attack missions / SEAD flights / Patrols and AWACS / All flights`, each flight with its state; an attack mission's menu entry is tagged with the SEAD flights it waits on ("09:41 STRIKE MSN2031 (after MSN2024, MSN2026 SEAD)"), a SEAD flight's text says which missions wait on it.
 
@@ -882,7 +1005,7 @@ The runtime can read the mission's weather, time and date, but can't change them
 
 - **A new map:** its projection parameters in `map_projection.py`'s `MAPS` (from pydcs, `dcs/terrain/<map>/projection.py`); a map not there stops the tools that need it, naming the known ones.
 - **Python versions:** `python` on PATH is a pyenv 3.7 shim; Python 3.10 is at `AppData\Local\Programs\Python\Python310` (the `.cmd` files use it when it's there).
-- **Offline test harness** (`shared_mission_framework\offline_test_harness\`, kept since framework step 0): stubbed DCS (`stub_dcs.lua`, `stub_dcs_world.lua`, a simple flight model, sensors and a stand-in player) runs a mission's real `init.lua` on a frozen saved world. `python replay_and_compare.py kola` (tests A–C: the plan, a 2-hour mission standing still and flying, the files loaded) and `python rerun_data_tools.py kola` (test D: the map tools) compare with recorded baselines; how to use them: framework `plan.md`, *Picking this up* and *How the transfer is tested*. Run them before handing a change to John; a change meant to alter behaviour means re-recording the baselines after checking every difference.
+- **Offline test harness** (`shared_mission_framework\offline_test_harness\`, kept since framework step 0): stubbed DCS (`stub_dcs.lua`, `stub_dcs_world.lua`, a simple flight model, sensors and a stand-in player) runs a mission's real `init.lua` on a frozen saved world. `python replay_and_compare.py kola` (tests A–C: the plan, a 2-hour mission standing still and flying, the files loaded) and `python rerun_data_tools.py kola` (test D: the map tools) compare with recorded baselines; how to use them: the root `plan.md`, *Picking this up in a new session*, and *How the transfer is tested* below. Run them before handing a change to John; a change meant to alter behaviour means re-recording the baselines after checking every difference.
 - **Random seeds in luae:** luae's `math.random` is the C `rand()`, and the first values after `math.randomseed(1..N)` are nearly linear in the seed. Seed with `seed * 7919` and discard ~50 values.
 
 ### DCS facts learned the hard way
@@ -917,6 +1040,80 @@ The runtime can read the mission's weather, time and date, but can't change them
 - **Rules of thumb:**
   - cost order: moving ground > AI aircraft > standing units with sensors > idle units / statics;
   - levers: `controller:setOnOff(false)` for far ground groups, statics for non-shooting targets, few infantry.
+
+---
+
+---
+
+## Reading a run
+
+The story is in the event log (`event_logs\<date>_<time>.log` in the mission's folder, git-ignored, one per run; see *Event log*). The examples are Kola's. Grep a unit or flight name for its whole life, or an event word:
+
+| Grep the event log | Shows |
+|---|---|
+| a name (`MSN2025_DEAD`, `MSN2025_DEAD_2`, `SAM_OLEN_SA11_1`) | everything it did and everything done to it |
+| `SPAWNED`, `LOADOUT`, `TAKEOFF`, `WAYPOINT`, `LAND` | each flight's life: spawn, what each jet carries, each waypoint reached (ingress = pushing; target with TOT late / early), landing |
+| `POSITION` | every airborne aircraft each minute: type, speed, heading, fuel, altitude, airspace, nearest enemy ring, km from station |
+| `SHOT`, `GUNS`, `HIT` | weapons fired (with target and range when DCS knows it), guns opening up, hits (with the life left a second later, `life now 92 %`); repeats folded into one line |
+| `IMPACT` | where a bomb or air-to-ground missile from an aircraft came down (grid reference as the F10 map), the objects within 150 m with their life before → after (or destroyed), or "gone in the air" (bug 71) |
+| `LINE_UP` | an AI jet at a Blue field lined up on a runway (its departing call is said then; bug 67) |
+| `DESTROYED`, `CRASHED`, `EJECTED`, `PILOT_DEAD` | every unit and object destroyed, by whom and with what; aircraft with altitude, airspace and ring |
+| `TARGET` | a mission's target objects destroyed ("3 of 6 critical") |
+| `CONTACT`, `TRACKING`, `PICTURE` | each coalition's radar picture: new / regained / stale / dropped contacts (new and regained say how far away the first sensor saw it, "seen by awacs MSN2001_AEW 212 km away") and airspace changes, a SAM radar's first track of a group, the 5-min summary |
+| `CONTROL` | **every controller decision**, in order, the decision first (2026-10-01; before that each had its own word: `SCRAMBLE`, `NO_SCRAMBLE`, `STOOD_DOWN`, `ALERT`, `LEASH`, `SUPPRESSION`, `DEFEND`, `DELAYED`, `RETRY`, `CANCELLED`). Grep `CONTROL.*<decision>` for one kind: |
+| `CONTROL.*watching` | a flight the controller watches, and its directives (a scramble: `leash on <raid>`) |
+| `CONTROL.*scramble`, `no scramble`, `stand down before launch`, `alert` | scramble decisions and refusals (once per reason), stood down before launch, jets back on alert |
+| `CONTROL.*leash` | a scramble sent home (`leash home`) or stood down on the ramp (`leash stand down`) |
+| `CONTROL.*go cold` | a SEAD flight sent home after its salvo, and why |
+| `CONTROL.*defend`, `leave`, `back on`, `leave threat` | the bandit call: an attack flight engaging a bandit (range, aspect, closing speed, radar missiles aboard), or sent home with no radar missiles to fight it (`leave:`); back on its mission or way home (why, how long); leaving a bandit to another flight (`leave threat`) |
+| `CONTROL.*wait`, `retry`, `cancel`, `launch late`, `launch early` | SEAD first: a flight waiting for the SEAD flight on a site it needs, a SEAD flight flying again (`<id>_AGAIN`; in the rotation, "the rotation's next flight"), a flight not launched and why (`not needed`, `… still in the fight after a second SEAD flight`, `<site>'s SEAD flight … was cancelled`), a flight launched late, a rotation flight pulled forward (`launch early`). Before 2026-10-02 they were about packages |
+| `CONTROL.*no shot` | a SEAD flight that reached its press-on point with every anti-radiation missile still aboard, sent home (before bug 36: at its launch point for 2 min) |
+| `CONTROL.*press on` | a SEAD flight with missiles aboard not turning to fight a bandit (too far, or finishing its salvo); it commits only when fired upon or inside 25 km (bug 39) |
+| `CONTROL.*salvo over` | a SEAD flight sent home 20 s after one of its jets fired its last anti-radiation missile (bug 40) |
+| `RADAR_WARNING` | a SEAD flight at its launch and press-on points: whether its site's radar is on its warning receivers, every radar that is, the lead's height above the ground (bug 36) |
+| `CONTROL.*handover`, `land:` | a patrol relieved on station and sent home; a jet lost on its way home given a new landing order, or a jet still up once another of its flight landed (`… still in the air`, each jet on its own order, bug 52) |
+| `CONTROL.*stand down:` | jets removed on the ramp because they spawned with no weapons |
+| `RAMP_LOSS` | a jet destroyed on the ramp before takeoff, within 2 min of spawning: a spawn failure, with base and spot |
+| `>>orphan<<` | bug 19's wingmen (`CONTROL` lines): `possibly orphaned` (still in the air when a jet of its flight landed), then how it ended: `not orphaned: landed … after`, `removed: by the controller` (8 min on, counted as landed; or, since bug 68, `… still flying away 8 min after its last landing order`, with no landing in its flight needed), or `lost`. Count them run to run to see whether it gets worse or better |
+| `UNIT_AWAKE`, `UNIT_ASLEEP`, `LATE_WAKE`, `AWAKE_COUNT`, `(asleep)` | sleeping ground units: a base's short-reach defenses waking and sleeping, an enemy within 10 km of a sleeping base (never expected), the 5-min count; hits and deaths of a sleeping unit end in `(asleep)` |
+| `PLAYER_IN`, `PLAYER_OUT` | players |
+| `PICTURE_CALL` | the air picture shown to a player every 2 min: how many groups, and the first (highest threat) line; `no radar coverage` when no sensor of the coalition reaches the player; `threat: …` a spoken threat call (a hot group inside 40 nm, roadmap item 7). What was said: `radio_calls/speak_mission_calls.log` |
+| `RADIO_CALL` | an AI pilot's radio call, or Darkstar's order to an AI flight (`… by Darkstar to Weasel 1`: `engage`, `resume`, `return_to_base`, `land_at`, `scramble_vector`; compare with that flight's `CONTROL` lines); since 2026-10-06 the pilot's `report` to Darkstar (bingo, salvo done, no emitter, Winchester) and Darkstar's `acknowledge`, the pilot's `answer` to an order (`… (n s after the order)`), and `no answer to <order> from <callsign>` when the flight wasn't seen following it: what (`airborne`, `pushing`, `fox`, `magnum`, `splash`, `defending`, `jet_down`, `off_target`, `check_out`, `taxi`, `departing`, `inbound`, `final`, `clear`, …), on which channel (with an airfield's frequency and runway), by which jet's callsign. Compare with the flight's own lines to see that each call matches what it did; the words: `radio_calls/speak_mission_calls.log`; heard or not (tuned, too old, dropped), at what volume, and the jet's radios as they changed: `radio_calls/radio_player.log` (since 2026-10-06; before, the player's window only) |
+| `== Mission end` | the summary: flights launched, losses by cause, ground losses, each flight's outcome |
+
+`dcs.log` keeps planning and debugging (grep the mission's log tag: `[KOLA]`, `[CAUCASUS]`):
+
+| Grep `dcs.log` | Shows |
+|---|---|
+| `PRELOAD`, `the sim froze` | the start-up preload cost per type, and any spawn over 1 s |
+| `HUMAN TASKING` | every frag and steerpoint list |
+| `SEAD order`, `SEAD rotation` | which enemy sites the rotation takes, in order (step, coverage, what goes before each), and every site not taken and why |
+| `Build summary:` | the roll's totals |
+| `asked for` | a unit type DCS swapped (Leopard-2 substitution) |
+| `carries no weapons` | a jet spawned without the weapons its loadout lists (removed on the ramp; `carries nothing` before 2026-10-02) |
+| `destroyed on the ramp` | a `RAMP_LOSS` |
+| `picture:`, `Scrambles:` | the radar sensors found and the alert bases, at start |
+| `WARN`, `ERROR` | anything that went wrong, including a failed event-log line |
+| `KOLA-RADIOS` (not `[KOLA]`) | the export script reading the jet's radios for the radio player ("sending the jet's radios to 127.0.0.1:47112"), its first reading of them (`first reading of the jet's radios: {…}`), the first failure to read or send, or why it couldn't load |
+| `Radio calls:`, `Flight calls:`, `Airfield calls:` | the radio's start lines: channels and frequencies, the calls file |
+
+---
+
+## How the transfer is tested (the offline test harness)
+
+Built for the split out of Kola (2026-10-06) and kept as the regression test for every change since: run it before and after each change (`plan.md`, *Picking this up in a new session*).
+
+The move is only right if Kola behaves exactly as before, so most tests compare against the step 0 baseline rather than judging by eye.
+
+**Test A. The same plan, byte for byte.** The harness stubs DCS, takes `plan.world` from saved plans (`kola_last_plan.lua` from a few recent runs: different territory rolls), seeds the random numbers the same way (seed × 7919, ~50 values discarded, as Kola's harness notes say), runs every stage and writes the plan. After each step the plans must be identical to the baseline. Any difference is a regression, or an intended change that is written down.
+
+**Test B. The same mission, 2 hours of mission clock.** The real scheduler, controller, radar picture, scrambles, event log and radio consumers over stubbed DCS on a saved plan (Kola's `real_plan_harness.lua` did this for item 11: 23 flights launched, no errors). Compared with the baseline: no errors; the same counts per event word (`SPAWNED`, `CONTROL` by decision, `RADIO_CALL` by kind, `CONTACT`…); the same `calls_file` lines.
+
+**Test C. Every file loaded once, from the right place.** The list of files loaded (logged by `load_framework.lua`) compared with today's `init.lua` list: none missing, none twice, none from the old folder. Every override line in `dcs.log` as expected (none for Kola).
+
+**Test D. The Python tools give the same data.** From their new place, with Kola's folder as the argument: `miz_zones.py` (needs `Saved Games\DCS\kola_zone_terrain.lua`), `miz_player_slots.py`, `airfield_frequencies.py`, `unit_pool.py`, `cloud_presets.py`, `aircraft_loadouts.py`; each output identical to the committed file. Radio: `phrase_bank_wording.py` and `flight_phrase_wording.py` check their files; `play_sample_awacs_calls.py` plays through the player; the `Export.lua` edit tried on a copy of John's file (the old Kola line replaced, SRS's line untouched).
+
+**Test E. John flies Kola** (after step 3, and after steps 4 and 5). In `dcs.log`: no `FATAL` / load errors; the loading lines (framework folder, mission folder, files loaded, overrides: none); `Build summary:` like a normal roll; the plan written to `kola_last_plan.lua`; the export script's `first reading of the jet's radios` (after step 5: from the framework's path, after one DCS restart). In the event log: a new file in `missions\kola_f16_random_tasking\event_logs\`, its header, `SPAWNED`, `CONTROL`, `RADIO_CALL` lines as in any run. By ear: Darkstar's picture, pilots' calls and airfield traffic heard, only when tuned. On the map: the usual drawings. Nothing else in the run should differ from a normal Kola run; anything that does is a bug of the move.
 
 ---
 

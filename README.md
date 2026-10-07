@@ -1,15 +1,16 @@
 # DCS missions
 
-Scripted DCS World missions, one folder per mission. The Kola mission (and the Caucasus and Afghanistan missions to come) run on the shared mission framework; Syria shares nothing.
+Scripted DCS World missions, one folder per mission. Kola and Caucasus (and the Afghanistan campaign to come) run on the shared mission framework; Syria shares nothing. Development: start with `plan.md`.
 
 ```
+plan.md                  the one plan: where every mission and the framework stand, what's next, how to pick work up
 bugs.md                  the one bug list for every mission and the framework (each bug says which)
 closed.md                fixed bugs and finished roadmap items, every mission's and the framework's, keeping their numbers
 roadmap.md               the one roadmap: where every mission and the framework are headed (each item says which)
 desanitize_dcs.py        shared setup: lets mission scripts load files (below)
 research/                DCS research that isn't tied to one mission (API findings, map research)
 shared_mission_framework/    the code every mission on it shares (Syria excepted)
-  development_docs/plan.md   the framework's plan: the split out of Kola, step by step
+  framework_design.md        how the framework is designed and how it works
   mission_scripts/           the Lua that runs in DCS → Saved Games\DCS\Scripts\shared_mission_framework\
   radio_calls/               spoken radio calls: radio player and helper, run outside DCS (below)
   map_data_tools/            offline Python tools that build data from DCS and a map (stdlib only, 3.7+);
@@ -23,12 +24,16 @@ missions/
     a2g_dynamic_syria/        scripts → Saved Games\DCS\Scripts\a2g_dynamic_syria\
     offline_test_harness.lua  runs the scripts outside DCS with luae.exe (usage in its header)
   kola_f16_random_tasking/    F-16 tasking generator on Kola (air denial, human strike missions)
-    development_docs/
-      plan.md                 status and design: start at "Where we are"
+    mission_design.md         Kola's own design: map, scenario, its settings
     event_logs/               one event log per mission run (git-ignored; see below)
     kola_f16_random_tasking.miz
     kola_f16/                 its scripts (settings, map and scenario data) → Saved Games\DCS\Scripts\kola_f16\
     map_data_sources/         inputs the map tools read for Kola (its airbases)
+  caucasus_multiplayer_random_tasking/   the same style on the Caucasus, multiplayer (F-16C and F/A-18C)
+    mission_design.md         its own design: map, scenario, its settings, players
+    caucasus_f16/             its scripts → Saved Games\DCS\Scripts\caucasus_f16\
+  afghanistan_campaign/       a persistent campaign, design only
+    mission_design.md         its design
 ```
 
 Each mission's script folder has the same name in the repo as in `Saved Games\DCS\Scripts\`, so deploying is a plain copy of that folder (for Kola: `kola_f16\` and the framework's `mission_scripts\` as `shared_mission_framework\`).
@@ -49,7 +54,7 @@ Git Bash:
 tail -n 40 -f "$(ls -t ~/Git/dcs/missions/kola_f16_random_tasking/event_logs/*.log | head -1)"
 ```
 
-Without the once-a-minute position lines, add `| Where-Object { $_ -notmatch 'POSITION' }` (PowerShell) or `| grep --line-buffered -v POSITION` (Git Bash) to the end. What each line means, and what to grep for: `development_docs/plan.md`, *Event log* and *Reading a run*.
+Without the once-a-minute position lines, add `| Where-Object { $_ -notmatch 'POSITION' }` (PowerShell) or `| grep --line-buffered -v POSITION` (Git Bash) to the end. What each line means, and what to grep for: `shared_mission_framework/framework_design.md`, *Event log* and *Reading a run*.
 
 ## Mission radio calls (Darkstar, AI pilots and airfields on the radio)
 

@@ -1,5 +1,5 @@
 -- Offline test harness: which lines of a mission's scripts a run executes, per file, so the
--- parts no harness run reaches are known (shared_mission_framework plan.md, *How the
+-- parts no harness run reaches are known (shared_mission_framework framework_design.md, *How the
 -- transfer is tested*: whatever never runs here is covered only by John's flight).
 --
 --   MeasureCoverage.start(folders)         before the mission loads: count every line run in
