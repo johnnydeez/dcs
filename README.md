@@ -60,7 +60,7 @@ Without the once-a-minute position lines, add `| Where-Object { $_ -notmatch 'PO
 
 Blue's radio, spoken in Windows voices with a radio sound, played to Windows' default sound output, for whichever mission on the shared framework is running (Kola today). Everything is in `shared_mission_framework/radio_calls/`, Python standard library only (3.7+; the scripts use Python 3.10 at `%LOCALAPPDATA%\Programs\Python\Python310` when it's there).
 
-**Who talks, on which channel.** You hear a channel only while one of your F-16's radios is on it (see *Your jet's radios* below):
+**Who talks, on which channel.** You hear a channel only while one of your jet's radios is on it (see *Your jet's radios* below):
 
 | Channel | Frequency | What's on it |
 |---|---|---|
@@ -79,7 +79,7 @@ Two programs run outside DCS:
 
 ### Your jet's radios (one line in DCS's Export.lua)
 
-The radio player plays a call only when one of your F-16's radios is on and tuned to that call's frequency, at that radio's volume knob, the way SRS does it. To read the radios it uses our own small script, `radio_calls\export_cockpit_radios.lua`, which DCS runs through its export system. It only reads the cockpit (UHF and VHF frequency, on / off, volume), twice a second, and sends that to the radio player on 127.0.0.1 (UDP 47112). It never changes anything in the jet. It keeps every other export script working, SRS included. It is not a mod and nothing in the DCS install folder changes.
+The radio player plays a call only when one of your jet's radios (F-16C: UHF and VHF; F/A-18C: COMM1 and COMM2) is on and tuned to that call's frequency, at that radio's volume knob, the way SRS does it. To read the radios it uses our own small script, `radio_calls\export_cockpit_radios.lua`, which DCS runs through its export system. It only reads the cockpit (each radio's frequency, on / off, volume), twice a second, and sends that to the radio player on 127.0.0.1 (UDP 47112). It never changes anything in the jet. It keeps every other export script working, SRS included. It is not a mod and nothing in the DCS install folder changes.
 
 **Setting it up (once per PC; for a friend too):**
 
@@ -89,13 +89,20 @@ The radio player plays a call only when one of your F-16's radios is on and tune
    pcall(function() dofile([[C:\Users\<you>\Git\dcs\shared_mission_framework\radio_calls\export_cockpit_radios.lua]]) end, nil) -- mission radio calls
    ```
 3. **Restart DCS once.** DCS reads Export.lua only when it starts. The first time, the radio player adds the line when a mission starts it, so that whole DCS session still plays every call; the filtering works from the next DCS start on. The same when the repository's radio folder moves (it did in October 2026, out of the Kola folder): the player corrects its line's path by itself, then one DCS restart.
-4. **Check it works:** start the radio player, sit in an F-16 cockpit. The player's window says "hearing the jet's radios from DCS: F-16C_50, UHF 262.000 on vol 0.60, VHF …". `dcs.log` has `COCKPIT-RADIOS … sending the jet's radios`.
+4. **Check it works:** start the radio player, sit in an F-16 or F/A-18 cockpit. The player's window says "hearing the jet's radios from DCS: F-16C_50, UHF 262.000 on vol 0.60, VHF …" (an F/A-18: "FA-18C_hornet, COMM1 … COMM2 …"). `dcs.log` has `COCKPIT-RADIOS … sending the jet's radios`.
 5. **Taking it out:** delete that one line from Export.lua (and restart DCS). With it gone the player plays every call, as before.
 
 Notes:
-- **Until the line is loaded**, or in a type the script doesn't read yet (only the F-16C for now), or in a spectator slot, every call is played, as before.
-- **To hear a channel:** tune your UHF (or VHF) to its frequency. The frag's `RADIO` line and the start text list them; each base's *Airfield info* shows its traffic frequency. Turn a radio's volume down or off to silence that channel.
-- **Multiplayer (not built yet):** the friend's PC will run only the radio player and this export line. The host's mission will send it the calls over ZeroTier, and it plays what the friend's jet is tuned to. Until that's built, calls play on the host's PC only.
+- **Until the line is loaded**, or in a type the script doesn't read yet (only the F-16C and the F/A-18C for now), or in a spectator slot, every call is played, as before.
+- **To hear a channel:** tune one of your radios to its frequency. Every frequency is in the Comms menu, *Radio frequencies* (your own Darkstar, the mission channel, each Blue field's traffic); each base's *Airfield info* shows its traffic frequency too. Turn a radio's volume down or off to silence that channel.
+
+### Multiplayer: the other players hear the radio too (roadmap item 19)
+
+- **Each player slot has its own Darkstar frequency** (Caucasus: `caucasus_f16\data\radio_channels.lua`, `awacs_per_player_slot`; UHF 273.000-277.500). On it: that player's own picture and threat calls, and every call Darkstar makes to all (its orders to AI flights, the AI check-ins and answers). So each player hears on their own frequency what one player hears today, and not the other's picture. The mission channel and the airfield channels are shared as before. A mission without the list (Kola) keeps everyone on one Darkstar frequency.
+- **The other players' PCs run only the radio player:** `radio_calls\start_radio_player_client.cmd`, which connects out to the host's radio helper over ZeroTier (TCP 47113 on the host's ZeroTier address, found by the helper itself) and plays what their own jet is tuned to. Their setup: `radio_calls\README_for_other_players.md`.
+- **On the host (once):** the first time the helper listens on ZeroTier, Windows asks whether Python may accept connections: allow it (ZeroTier counts as a Public network, so tick that too). In the server's advanced settings, **Allow player export** must be on, or the other players' radio players can't read their jets.
+- **The helper's window** says `other players: the radio player on <PC> (<address>) connected` when one connects, and each call `… and to 1 other player`.
+- **Radio presets in the `.miz`:** `python shared_mission_framework\map_data_tools\miz_radio_presets.py missions\<mission>` writes every player slot's presets from the mission's data (radio 1: ch 1 the slot's Darkstar, ch 2 Darkstar common, then the fields' UHF towers; radio 2: ch 1 the slot's field's tower, ch 2 the mission channel, then the other fields), keeping the old file as `<name>.miz.<date_time>.backup`. Close the mission in the editor first; run it again after adding or moving slots (after `miz_player_slots.py`). `--dry-run` prints them only.
 
 ### Starting it
 

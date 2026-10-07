@@ -11,6 +11,12 @@
 --   Next in:  09:55 MSN2009 CAP, 1x F-15C (airborne)
 --   Alert: 2 of 3 jets ready
 --
+-- Beside it, one place for every frequency a player tunes (roadmap.md item 19, John,
+-- 2026-10-07):
+--   Radio frequencies           their own Darkstar (their slot's,
+--                               SendRadioCalls.awacsFrequencyFor), the mission channel, and
+--                               each Blue base's traffic frequency
+--
 -- Bases are listed in alphabetical order by their DCS name, paged as the other menus.
 -- Wind: measured at the base (atmosphere.getWind 10 m above the field), the direction it
 -- blows from. Wind and runway numbers are magnetic (the variation as the air picture gets
@@ -249,6 +255,20 @@ local function fieldText(field)
     return table.concat(lines, "\n")
 end
 
+-- Every frequency a player tunes, for the player group `groupName`.
+local function frequenciesText(groupName, fields)
+    local lines = {
+        "RADIO FREQUENCIES",
+        string.format("Darkstar (yours): %s %.3f", RADIO_CHANNELS.awacs.radio, SendRadioCalls.awacsFrequencyFor(groupName)),
+        string.format("Mission (tactical common): %s", SendRadioCalls.channelText("mission")),
+        "Airfield traffic:",
+    }
+    for _, field in ipairs(fields) do
+        lines[#lines + 1] = string.format("  %s %s", field.name, SendRadioCalls.channelText("airfield", field.name))
+    end
+    return table.concat(lines, "\n")
+end
+
 local _fields = {}   -- base name → its facts (Blue bases), for the calls below
 
 -- The runway in use for the wind at Blue base `name` now (its number), or nil (calm, no
@@ -302,6 +322,7 @@ function CreateAirfieldsBrief.start(plan)
     -- each player group gets its own menu (lib/player_menus.lua): the text shows on the
     -- screen of the player who opened it only
     PlayerMenus.add(side, function(menu)
+        menu.command("Radio frequencies", nil, function() menu.show(frequenciesText(menu.group_name, fields), MESSAGE_S) end)
         local top = menu.sub("Airfield info")
         local pages = math.ceil(#fields / MENU_PAGE)
         for p = 1, pages do

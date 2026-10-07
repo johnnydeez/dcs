@@ -5,13 +5,20 @@
 -- SendRadioCalls.say (announce_flight_activity.lua, track_airfield_traffic.lua,
 -- announce_controller_orders.lua).
 --
--- Darkstar's two kinds of call, on the AWACS channel, both from the facts CallAirPicture
--- works out for its on-screen list:
+-- Darkstar's two kinds of call to a player, both from the facts CallAirPicture works out
+-- for its on-screen list, each to one player's jet (not their group's first player):
 --   picture  every time CallAirPicture shows a player the picture (every 2 min): the
 --            groups in threat order, or clean, or no radar coverage;
 --   threat   at once, on the radar picture's round (every 30 s), when the player's
 --            highest-threat hot group with a known range is inside RADIO_CALLS.threat_nm;
 --            the same group again for the same player only after threat_repeat_s.
+-- Their frequency: the player's slot's own Darkstar frequency
+-- (RADIO_CHANNELS.awacs_per_player_slot, the mission's data; roadmap.md item 19), else the
+-- AWACS channel. Darkstar's calls to all (SendRadioCalls.say on the AWACS channel: its
+-- orders, the pilots' check-ins and answers) then also carry every player's Darkstar
+-- frequency (frequencies_mhz), so each player hears them on their own; one player's
+-- picture and threat calls are on their frequency only. A mission with no per-slot list
+-- (Kola) has every player on the AWACS channel, as before.
 -- Each call is one JSON line in RADIO_CALLS.calls_file (emptied at mission start); the
 -- helper (radio_calls/speak_mission_calls.py) words it, speaks it and passes it to the
 -- radio player. Both are started here, once. Nothing here waits on them.
@@ -26,7 +33,7 @@
 SendRadioCalls = {}
 
 local _file                 -- the open calls file, or nil when off
-local _threatCalled = {}    -- player group name → contact group → mission time it was called
+local _threatCalled = {}    -- player unit name → contact group → mission time it was called
 local _nextId = 0           -- the last call id given
 local _listeners = {}       -- fn(sideName, call) for every call written through SendRadioCalls.say
 
@@ -71,6 +78,40 @@ function SendRadioCalls.airfieldFrequency(base)
     return _airfieldMhz[base]
 end
 
+-- The Darkstar frequency of a player's group, MHz: its slot's
+-- (RADIO_CHANNELS.awacs_per_player_slot, by the slot's group name; a dynamically spawned
+-- group whose name only starts with the slot's counts as that slot), else the AWACS channel.
+function SendRadioCalls.awacsFrequencyFor(groupName)
+    local slots = RADIO_CHANNELS.awacs_per_player_slot
+    if slots and groupName then
+        if slots[groupName] then return slots[groupName] end
+        local best
+        for slot in pairs(slots) do
+            if groupName:sub(1, #slot) == slot and (not best or #slot > #best) then best = slot end
+        end
+        if best then return slots[best] end
+    end
+    return RADIO_CHANNELS.awacs.mhz
+end
+
+local _awacsFrequencies   -- every Darkstar frequency, sorted, once worked out
+
+-- Every Darkstar frequency (the AWACS channel and each slot's own), sorted, or nil when the
+-- mission lists no slots' own.
+local function awacsFrequencies()
+    local slots = RADIO_CHANNELS.awacs_per_player_slot
+    if not slots or next(slots) == nil then return nil end
+    if not _awacsFrequencies then
+        local seen, list = { [RADIO_CHANNELS.awacs.mhz] = true }, { RADIO_CHANNELS.awacs.mhz }
+        for _, mhz in pairs(slots) do
+            if not seen[mhz] then seen[mhz] = true; list[#list + 1] = mhz end
+        end
+        table.sort(list)
+        _awacsFrequencies = list
+    end
+    return _awacsFrequencies
+end
+
 -- "Darkstar UHF 262.000"-style text of a channel, for the brief.
 function SendRadioCalls.channelText(channel, base)
     local c = RADIO_CHANNELS[channel]
@@ -104,6 +145,10 @@ function SendRadioCalls.say(sideName, kind, channel, facts, base)
     facts.call, facts.channel = kind, channel
     facts.frequency_mhz = channel == "airfield" and SendRadioCalls.airfieldFrequency(base)
                           or RADIO_CHANNELS[channel].mhz
+    -- to all: on every player's Darkstar frequency (set only when there are slots' own: a
+    -- nil assignment would still reorder the table, and so the call's line)
+    local all = channel == "awacs" and awacsFrequencies()
+    if all then facts.frequencies_mhz = all end
     facts.awacs = RADIO_CALLS.awacs_callsign[sideName]
     write(facts)
     for _, fn in ipairs(_listeners) do
@@ -125,9 +170,9 @@ function SendRadioCalls.on(sideName)
     return _file ~= nil and RADIO_CALLS.coalitions[sideName] == true
 end
 
--- Darkstar's calls are on the AWACS channel.
+-- Darkstar's call to one player: on the AWACS channel, the frequency their slot's.
 local function awacsCall(call)
-    call.channel, call.frequency_mhz = "awacs", RADIO_CHANNELS.awacs.mhz
+    call.channel, call.frequency_mhz = "awacs", SendRadioCalls.awacsFrequencyFor(call.player_group)
     return call
 end
 
@@ -172,7 +217,7 @@ function SendRadioCalls.picture(sideName, unit, groups, inCoverage)
     write(awacsCall(call))
 end
 
--- The radar picture's round: a threat call to each player with a hot group close in.
+-- The radar picture's round: a threat call to each player's jet with a hot group close in.
 local function threatRound(sideName)
     local now = timer.getTime()
     local side = sideName == "blue" and 2 or 1
@@ -182,12 +227,13 @@ local function threatRound(sideName)
             if not unit:isExist() then return end
             local group = unit:getGroup()
             local groupName = group and group:getName()
-            if not groupName or done[groupName] then return end
-            done[groupName] = true
+            local unitName = unit:getName()
+            if not groupName or not unitName or done[unitName] then return end
+            done[unitName] = true
             if not AIR_PICTURE_CALLS.on_the_ground and not unit:inAir() then return end
             local _, groups = CallAirPicture.pictureFor(sideName, unit)
-            local called = _threatCalled[groupName] or {}
-            _threatCalled[groupName] = called
+            local called = _threatCalled[unitName] or {}
+            _threatCalled[unitName] = called
             for _, g in ipairs(groups) do
                 if g.aspect == "hot" and g.range_known and g.range_nm <= RADIO_CALLS.threat_nm then
                     local name = g.contact.group
@@ -227,7 +273,11 @@ function SendRadioCalls.start()
     for sideName in pairs(RADIO_CALLS.coalitions) do
         TrackRadarPicture.on(sideName, "picture_updated", function() threatRound(sideName) end)
     end
-    Log.info(string.format("--- Radio calls: to each player by their jet's callsign (else %s); picture every %d s, threat calls inside %d nm; AWACS %s, mission %s; %s ---",
+    local slots = 0
+    for _ in pairs(RADIO_CHANNELS.awacs_per_player_slot or {}) do slots = slots + 1 end
+    Log.info(string.format("--- Radio calls: to each player by their jet's callsign (else %s); picture every %d s, threat calls inside %d nm; AWACS %s%s, mission %s; %s ---",
         RADIO_CALLS.player_callsign, AIR_PICTURE_CALLS.call_every_s, RADIO_CALLS.threat_nm,
-        SendRadioCalls.channelText("awacs"), SendRadioCalls.channelText("mission"), RADIO_CALLS.calls_file))
+        SendRadioCalls.channelText("awacs"),
+        slots > 0 and string.format(" (and %d player slots' own Darkstar frequencies)", slots) or "",
+        SendRadioCalls.channelText("mission"), RADIO_CALLS.calls_file))
 end

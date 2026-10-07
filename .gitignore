@@ -14,6 +14,7 @@ missions/caucasus_multiplayer_random_tasking/event_logs/
 shared_mission_framework/radio_calls/mission_calls.jsonl
 shared_mission_framework/radio_calls/speak_mission_calls.log
 shared_mission_framework/radio_calls/radio_player.log
+shared_mission_framework/radio_calls/host_zerotier_address.txt
 
 # Shared mission framework offline test harness: each run's results, rewritten every run
 shared_mission_framework/offline_test_harness/output/

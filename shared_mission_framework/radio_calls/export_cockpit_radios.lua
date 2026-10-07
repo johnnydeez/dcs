@@ -5,11 +5,13 @@
 -- twice a second it reads the player's radios (frequency, on / off, volume knob) and sends
 -- them as one JSON line over UDP to 127.0.0.1:47112, where the radio player listens: a
 -- call is then played only when a radio is tuned to its frequency, at that radio's volume.
--- It reads the cockpit only (as SRS does, DCS-SRS-Modules\F16C.lua), never writes to it,
--- and never stops DCS's other export scripts (SRS's): it calls them as before.
+-- It reads the cockpit only (as SRS does, DCS-SRS-Modules\F16C.lua and FA18C.lua), never
+-- writes to it, and never stops DCS's other export scripts (SRS's): it calls them as before.
 --
 -- Aircraft it knows (DCS device numbers and cockpit volume knobs):
 --   F-16C: UHF AN/ARC-164 device 36, volume knob 430; VHF AN/ARC-222 device 38, knob 431.
+--   F/A-18C: COMM1 AN/ARC-210 device 38, volume knob 108; COMM2 AN/ARC-210 device 39,
+--            knob 123 (each radio tunes VHF and UHF both; roadmap.md item 19).
 -- Any other type (or no aircraft) is reported with no radios: the radio player then plays
 -- every call, as before.
 
@@ -30,10 +32,15 @@ local RADIOS_BY_TYPE = {
         { name = "UHF", device = 36, volume_knob = 430 },
         { name = "VHF", device = 38, volume_knob = 431 },
     },
+    FA18 = {
+        { name = "COMM1", device = 38, volume_knob = 108 },
+        { name = "COMM2", device = 39, volume_knob = 123 },
+    },
 }
 local TYPE_RADIOS = {
     ["F-16C_50"] = "F16", ["F-16D_50"] = "F16", ["F-16D_52"] = "F16", ["F-16D_50_NS"] = "F16",
     ["F-16D_52_NS"] = "F16", ["F-16I"] = "F16",
+    ["FA-18C_hornet"] = "FA18",
 }
 
 local udp = socket.udp()

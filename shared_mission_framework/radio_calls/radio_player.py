@@ -1,6 +1,6 @@
 """The radio player: plays AI radio calls to Windows' default sound output, as heard over a radio.
 
-    python radio_calls/radio_player.py [--port 47110] [--exit-with-dcs]
+    python radio_calls/radio_player.py [--port 47110] [--exit-with-dcs] [--host 10.147.17.1]
 
 It listens on a local port (127.0.0.1 only) for calls, puts the radio sound on each one
 (radio_sound.py, tuned in radio_sound_settings.json) and plays them one at a time: calls
@@ -17,17 +17,29 @@ At start this player makes sure DCS's Export.lua loads that script (one line, ad
 missing; nothing else in the file is touched); DCS reads Export.lua when it starts, so the
 first time it needs one DCS restart. README.md, "Mission radio calls", has the details.
 
+Another player's PC in multiplayer (roadmap.md item 19): with --host <the host's ZeroTier
+address> it also connects out to the host's radio helper (share_calls_with_other_players.py,
+TCP port 47113) and plays the calls it sends, the same as the host's own; it keeps trying
+every HOST_RETRY_S until the host's helper is there, and again whenever the connection
+goes, so either PC can start first. No firewall rule is needed on this PC: the connection
+goes out from here.
+
 A call is one TCP connection carrying one line of JSON, then the audio:
     {"speaker": "Darkstar", "frequency": 262.0, "audio_bytes": 123456, ...}\\n
     <audio_bytes bytes of a WAV file: the clean voice>
 Header fields, all but audio_bytes optional:
     speaker             for the log
     frequency           MHz the call is on; only played when a radio is tuned to it (above)
+    frequencies         MHz, a list: the call is on each of them (Darkstar's calls to all,
+                        on every player's own Darkstar frequency); played when a radio is
+                        tuned to any
     channel             for the log ("awacs", "mission", "airfield")
     priority            1 (combat, threat) to 3 (routine); waiting calls play in this order,
                         then in the order they came. urgent: true is priority 1 (older senders)
-    event_at            seconds since 1970 when it happened in the mission; its age counts
-                        from here (sent_at when missing)
+    age_s               seconds since it happened in the mission, as it was sent; its age
+                        counts from here (the sender's clock may differ from this PC's)
+    event_at            seconds since 1970 when it happened in the mission, by the sender's
+                        clock (older senders; sent_at when this is missing too)
     sent_at             seconds since 1970 when it was sent
     expires_s           not played if older than this when its turn comes
     replaces            a key ("picture:Snake one one"): a call waiting with the same key is
@@ -67,6 +79,11 @@ RADIOS_FRESH_S = 3.0            # the jet's radios as last reported count this l
 UNPLAYED_KEPT_S = 120.0         # a dropped call's id is remembered this long for its answers
                                 #   (ids start over each mission; answers come within a minute)
 TUNED_WITHIN_MHZ = 0.01
+HOST_PORT = 47113               # the host's radio helper, for another player's PC (--host)
+HOST_PROTOCOL = 1               # share_calls_with_other_players.PROTOCOL
+HOST_RETRY_S = 5
+HOST_SILENT_S = 45              # nothing from the host this long (it sends a heartbeat every
+                                #   15 s): the connection is gone, connect again
 EXPORT_SCRIPT = os.path.join(HERE, "export_cockpit_radios.lua")
 # everything the window shows, also kept in a file, rewritten at each start (git-ignored), so
 # a run can be read afterwards: the jet's radios as they changed, and each call heard, not
@@ -113,6 +130,8 @@ def read_call(connection):
 def describe(header):
     frequency = header.get("frequency")
     on = ("%.3f" % float(frequency)) if isinstance(frequency, (int, float)) else (frequency or "?")
+    if len(header.get("frequencies") or []) > 1:
+        on += " and every player's Darkstar"
     return "%s on %s%s" % (header.get("speaker", "?"), on,
                            " (%s)" % header["channel"] if header.get("channel") else "")
 
@@ -159,6 +178,8 @@ class CallsWaiting:
             return at is not None and time.time() - at <= UNPLAYED_KEPT_S
 
     def add(self, header, audio):
+        if header.get("age_s") is not None:      # its age by this PC's clock
+            header["event_at"] = time.time() - float(header["age_s"])
         with self.ready:
             key = header.get("replaces")
             if key:
@@ -239,7 +260,7 @@ class JetRadios:
                                      round(float(r.get("volume", 1)) / volume_step) * volume_step) for r in radios)
 
     def tuned(self, frequency):
-        """(play?, volume, why) for a call on `frequency` MHz."""
+        """(play?, volume, why) for a call on `frequency` MHz (or a list: any of them)."""
         with self.lock:
             report, age = self.report, time.time() - self.received_at
             fresh = age <= RADIOS_FRESH_S
@@ -249,13 +270,14 @@ class JetRadios:
         if frequency is None or not fresh or not report or not report.get("radios"):
             return True, 1.0, "" if report else "no word from the jet's radios yet, played at full volume"
         try:
-            frequency = float(frequency)
+            frequencies = [float(f) for f in (frequency if isinstance(frequency, list) else [frequency])]
         except (TypeError, ValueError):
             return True, 1.0, ""
         for r in report["radios"]:
-            if r.get("on") and abs(float(r.get("mhz", 0)) - frequency) <= TUNED_WITHIN_MHZ:
+            if r.get("on") and any(abs(float(r.get("mhz", 0)) - f) <= TUNED_WITHIN_MHZ for f in frequencies):
                 return True, float(r.get("volume", 1.0)), r.get("name", "")
-        return False, 0.0, "no radio tuned to %.3f" % frequency
+        return False, 0.0, "no radio tuned to %s" % (
+            "%.3f" % frequencies[0] if len(frequencies) == 1 else "any of %d frequencies" % len(frequencies))
 
 
 def play_calls(waiting, radios):
@@ -272,7 +294,7 @@ def play_calls(waiting, radios):
                 waiting.dropped(header)
                 log("%s: dropped, %.0f s old (expires after %s s)" % (describe(header), age, header["expires_s"]))
                 continue
-            play, volume, why = radios.tuned(header.get("frequency"))
+            play, volume, why = radios.tuned(header.get("frequencies") or header.get("frequency"))
             if not play:
                 log("%s: not heard, %s" % (describe(header), why))
                 continue
@@ -287,6 +309,51 @@ def play_calls(waiting, radios):
         except Exception as error:   # one bad call never stops the player
             waiting.dropped(header)
             log("%s: not played: %s" % (describe(header), error))
+
+
+# ── another player's PC: the calls from the host's radio helper ──────────
+
+def listen_to_host(host, waiting):
+    """Connects out to the host's radio helper and adds every call it sends; for ever."""
+    said_waiting = False
+    hello = json.dumps({"hello": "radio player", "computer": os.environ.get("COMPUTERNAME", "?"),
+                        "protocol": HOST_PROTOCOL}) + "\n"
+    while True:
+        try:
+            with socket.create_connection((host, HOST_PORT), timeout=10) as connection:
+                connection.settimeout(HOST_SILENT_S)
+                connection.sendall(hello.encode("utf-8"))
+                stream = connection.makefile("rb")
+                reply = json.loads(stream.readline().decode("utf-8") or "null")
+                if not isinstance(reply, dict) or reply.get("protocol") != HOST_PROTOCOL:
+                    log("the host's radio helper at %s is another version (protocol %s, this one %d): "
+                        "update this PC's radio_calls folder to the host's; trying again in a minute"
+                        % (host, reply.get("protocol") if isinstance(reply, dict) else "?", HOST_PROTOCOL))
+                    said_waiting = True
+                    time.sleep(60)
+                    continue
+                log("connected to the host's radio helper at %s:%d: its calls play here" % (host, HOST_PORT))
+                said_waiting = False
+                while True:
+                    line = stream.readline()
+                    if not line:
+                        raise ConnectionError("the host's radio helper closed the connection")
+                    header = json.loads(line.decode("utf-8"))
+                    if header.get("heartbeat"):
+                        continue
+                    size = int(header["audio_bytes"])
+                    if not 0 < size <= MAX_AUDIO_BYTES:
+                        raise ValueError("audio_bytes %d out of range" % size)
+                    audio = stream.read(size)
+                    if len(audio) < size:
+                        raise ConnectionError("the connection closed in the middle of a call")
+                    waiting.add(header, audio)
+        except (OSError, ValueError) as error:
+            if not said_waiting:
+                said_waiting = True
+                log("waiting for the host's radio helper at %s:%d (%s); trying every %d s"
+                    % (host, HOST_PORT, error, HOST_RETRY_S))
+        time.sleep(HOST_RETRY_S)
 
 
 # ── DCS's Export.lua: the one line that loads our export script ──────────
@@ -348,6 +415,7 @@ def main():
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--exit-with-dcs", action="store_true", help="close once DCS isn't running")
     parser.add_argument("--no-export-line", action="store_true", help="don't check DCS's Export.lua")
+    parser.add_argument("--host", help="another player's PC: the host's ZeroTier address, to play its calls")
     args = parser.parse_args()
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -368,8 +436,11 @@ def main():
     waiting, radios = CallsWaiting(), JetRadios()
     threading.Thread(target=radios.listen, daemon=True).start()
     threading.Thread(target=play_calls, args=(waiting, radios), daemon=True).start()
-    log("radio player listening on 127.0.0.1:%d, the jet's radios on UDP %d (Ctrl+C to stop)%s"
-        % (args.port, RADIOS_PORT, "; closes with DCS" if args.exit_with_dcs else ""))
+    if args.host:
+        threading.Thread(target=listen_to_host, args=(args.host, waiting), daemon=True).start()
+    log("radio player listening on 127.0.0.1:%d, the jet's radios on UDP %d (Ctrl+C to stop)%s%s"
+        % (args.port, RADIOS_PORT, "; closes with DCS" if args.exit_with_dcs else "",
+           "; the host's calls from %s" % args.host if args.host else ""))
     next_dcs_check = time.time() + DCS_CHECK_EVERY_S
     try:
         while True:

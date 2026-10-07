@@ -270,22 +270,26 @@ local function airborne(unit)
     return ok and yes
 end
 
--- One round: every player in an aircraft, one list per group (a group's first player).
+-- One round: every player in an aircraft. The list on screen once per group (a group's
+-- first player: the text goes to the whole group); spoken to each player's jet (roadmap.md
+-- item 19: each player has their own Darkstar frequency).
 local function callAll()
     local P = AIR_PICTURE_CALLS
     for side, sideName in pairs(SIDE_NAME) do
-        local done = {}
+        local shown = {}
         for _, unit in ipairs(coalition.getPlayers(side) or {}) do
             local ok, err = pcall(function()
                 if not unit:isExist() then return end
                 local group = unit:getGroup()
                 local groupId = group and group:getID()
-                if not groupId or done[groupId] then return end
+                if not groupId then return end
                 if not P.on_the_ground and not airborne(unit) then return end
-                done[groupId] = true
                 local text, groups, inCoverage = pictureFor(sideName, unit)
-                trigger.action.outTextForGroup(groupId, text, P.show_s, false)
-                SendRadioCalls.picture(sideName, unit, groups, inCoverage)   -- spoken too
+                if not shown[groupId] then
+                    shown[groupId] = true
+                    trigger.action.outTextForGroup(groupId, text, P.show_s, false)
+                end
+                SendRadioCalls.picture(sideName, unit, groups, inCoverage)   -- spoken to this jet
                 if P.log_calls then
                     local first = groups[1]
                     WriteEventLog.add(sideName, "PICTURE_CALL", group:getName(), string.format("to %s: %s%s",

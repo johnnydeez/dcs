@@ -441,7 +441,7 @@ The Afghanistan plan's requirement: "nothing in the shared library knows which s
 
 **For:** framework, and each mission's data (its slots' Darkstar frequencies).
 
-**Status:** designed with John 2026-10-07, not built.
+**Status:** designed with John 2026-10-07 (two passes the same day: the design below is the second, settled one); being built in the order under *Steps* (John: so he and a friend can fly it within days). Steps 1–4 built 2026-10-07, not flown (`plan.md`, *Where we are*); step 5, the two-player test, next.
 
 **Goal:** more than one human player, each with their own Darkstar: their picture and threat calls addressed by their own callsign, the bearings from their own jet, heard on their own PC through their own jet's radios. Kept apart the real-world way, by frequency, not by hiding calls: everyone on a frequency hears every call on it (John: "I like the idea of just having different frequencies for each of us for DARKSTAR").
 
@@ -451,20 +451,31 @@ The Afghanistan plan's requirement: "nothing in the shared library knows which s
 - The mission writes its calls to a file on the host's PC; the helper (`speak_mission_calls.py`) words and voices them there and hands each to the radio player (TCP, 127.0.0.1 only), which plays what the host's jet is tuned to. A player on another PC hears nothing.
 - What already works on any PC: the export script (`export_cockpit_radios.lua`, one line in `Export.lua`) reads that PC's own jet's radios, and the radio player plays only what they're tuned to.
 
-**The design (John, 2026-10-07):**
-- **A Darkstar frequency per player slot** (John: per slot, so a new jet or a dynamic slot just gets a new frequency): in each mission's own data (beside `RADIO_CHANNELS`), clear of its map's tower frequencies like the AWACS channel now; one per F-16 slot, and a rule that gives a slot not listed (a new or dynamic one) the next free one. Each slot's frequency in its brief ("Darkstar UHF 273.000").
-- **Darkstar's picture and threat calls to a player** go on their slot's frequency, addressed by the jet's callsign, the bearings from that jet.
-- **Per jet, not per group:** two players in one group each get their own calls (a separated wingman too, as a real controller talks to each element: "Python 1-2, threat, 090/15, hot").
-- **Unchanged on the shared frequencies:** Darkstar's orders to AI flights and the AI pilots' answers (AWACS channel), the AI's mission calls (mission channel) and airfield traffic (tower frequencies): anyone can tune and monitor them.
-- **Each other player runs only the radio player** (`radio_player.py`) and the export script's line in their `Export.lua`, no helper, no voices. The host's helper sends every voiced call to every radio player it knows (the host's own and each friend's, over ZeroTier, which John and his friends use when they play); each player plays only what its own jet is tuned to. John: his friends can run the Python program on their side.
-- **The radio player** listens on its ZeroTier address too (today 127.0.0.1 only). **The helper** reads a short list of where to send (each friend's ZeroTier address), in a local file git-ignores (it's John's network).
-- **The audio travels** as the voiced WAV (a long picture ~1 MB; fine over ZeroTier). If it ever lags: send the call's text and let each PC voice it (then each runs the helper too).
-- **A setup page** for a friend: Python, the repository's `radio_calls\` folder, the `Export.lua` line, a Windows firewall rule for the port on ZeroTier, starting the radio player.
+**The design (John, 2026-10-07, settled):** the radio works for each of two (or more) players exactly as it does for one today, the same channel split (John: "the feeds and callouts are working exactly how I want right now, we just need that to carry over to a 2 human setup"; don't lose information, don't make a mess).
+- **Each player slot has its own Darkstar frequency**, carrying:
+  - that player's own picture and threat calls, addressed by their jet's callsign, bearings from their jet;
+  - **every shared Darkstar call too:** the orders to AI flights, the AI check-ins and check-outs, the pilots' answers and reports, Darkstar's "copy". Each is voiced once and goes out tagged with every player's Darkstar frequency (`frequencies`, a list); a radio player plays it when its jet is tuned to any of them. So each player hears on their own frequency everything one player hears on 272.000 today, and no player hears the other's picture (which would double Darkstar's airtime and overrun the 20 s backlog limit).
+  - **Threat calls stay separate**, one player's never on the other's frequency (John: they talk on Discord).
+- **The mission channel and the airfield channels are unchanged.**
+- **The frequencies:** an explicit list per slot in each mission's own data (`radio_channels.lua`, beside `RADIO_CHANNELS`), UHF clear of the map's towers (Caucasus: UHF 250–270), so a slot keeps its frequency when slots are added. A slot not listed (none in Kola) uses `RADIO_CHANNELS.awacs`: **Kola is unchanged**, everyone on 262.000 (John).
+- **Per jet, not per group:** the picture and threat rounds go per player unit, not per group's first player (with dynamic slots each player has their own group anyway; a cheap change).
+- **One place for frequencies: a "Radio frequencies" comms menu item** (John: one place, each player finds the airfield they want, the mission channel and their own Darkstar): their own Darkstar, the mission channel, every Blue airfield's tower. *Airfield info* keeps its frequency line. The start text drops its frequencies (John: no time to note them while spawning); the frag points to the menu.
+- **Presets in the `.miz`, written by a tool** (John: saves a lot of time): from our frequency data, so the editor and the mission can't disagree; it saves a backup first and is rerun when slots change. Both jets the same way: radio 1 (F-16 UHF, F/A-18 COMM1) channel 1 = the slot's Darkstar; radio 2 (F-16 VHF, F/A-18 COMM2) channel 1 = the home field's tower, channel 2 = the mission channel, then the other fields that can be Blue. Each jet starts on its Darkstar and its tower (to check in DCS: which channel each radio starts on).
+- **The F/A-18C's radios in the export script** (from SRS's `FA18C.lua`): COMM1 AN/ARC-210 device 38, volume knob 108; COMM2 AN/ARC-210 device 39, volume knob 123 (both radios VHF and UHF).
+- **The friend's PC runs only the radio player** (`radio_player.py`) and the export script's line in their `Export.lua`; no helper, no voices; started by hand each time, no auto-start (John). **It connects out to the host's helper**, which listens on the host's ZeroTier address only (so only John's ZeroTier network reaches it) and sends every voiced call down each connected player's connection; each player plays only what its own jet is tuned to. Connecting out needs no firewall rule on the friend's PC (Windows allows outgoing connections; the one "allow" prompt is on the host's, once); the friend's player keeps trying until it reaches the host, so either can start first; the helper's log says who is connected (John: "so we don't have to debug a bunch of network stuff over discord").
+- **The audio travels** as the voiced WAV (a long picture ~1 MB; fine over ZeroTier). If it ever lags: send the call's text and let each PC voice it.
+- **A call carries its age, not a clock time:** today the player counts a call's age from the host's wall clock (`event_at`), and two PCs' clocks differ by seconds (8 s Fox calls would all be dropped, or never expire). The age at sending, counted from when it arrives.
+- **One sender per connection in the background:** a slow or lost connection never holds up the helper or the host's own radio; logged once.
+- **The host's server settings:** "Allow player export" on (Advanced), or the friend's export script can't read his jet and his player plays every call.
+- **A very short README** for the friend (John): Python (he has it), clone the repository or download the folder, the host's ZeroTier address in the start file, double-click it before flying (the first start adds its `Export.lua` line: restart DCS once).
+- **Both players are always in different slots** (John): two players in one slot template would share its frequency and callsign.
 
-**Open:**
-- How a dynamic slot's frequency is told to its player when it isn't in the brief beforehand (its brief in the comms menu, as now?).
-- Whether Darkstar's on-screen picture text stays per group or goes per jet with the radio.
-- Order: not placed yet (John, 2026-10-07).
+**Steps** (each tested before the next):
+1. The F/A-18C's radios in the export script (John tests alone in a Hornet).
+2. The connection and the clock fix (tested on John's PC with a stand-in second radio player).
+3. Darkstar per slot, the "Radio frequencies" menu, the preset tool (harness, baselines).
+4. The friend's README.
+5. The two-player test over ZeroTier.
 
 ---
 

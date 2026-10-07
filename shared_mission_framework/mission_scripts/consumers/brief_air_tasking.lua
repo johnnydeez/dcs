@@ -288,8 +288,8 @@ local function fragText(m)
             or string.format("%s  %s  (1-%d players: %s)", m.id, missionName(m.mission_type), slotCount,
                 table.concat(typesAt(m), ", ")),
         string.format("FROM  %s, %s %s", m.launch_base, slotCount == 1 and "slot" or "slots", table.concat(slotNames, ", ")),
-        string.format("RADIO  Darkstar %s, mission %s, %s traffic %s", SendRadioCalls.channelText("awacs"),
-            SendRadioCalls.channelText("mission"), m.launch_base, SendRadioCalls.channelText("airfield", m.launch_base)),
+        -- every frequency in one place, the player's own Darkstar's too (roadmap.md item 19)
+        "RADIO  Comms menu > Other > Radio frequencies",
         string.format("TAKEOFF %s   %s %s   HOME ~%s   (mission start %s)", at(m.takeoff_s),
             m.station and "ON STATION" or "TOT", at(m.tot_s), at(m.end_s - AIR_TASKING_TIMING.landing_s),
             at(0)),
@@ -584,8 +584,7 @@ function BriefAirTasking.startText(plan)
         string.format("  %s°C, QNH %s inHg; %s", tostring(w.temp_c), tostring(w.qnh.inhg),
             (t.sun.sunrise or t.sun.sunset) and string.format("sunrise %s, sunset %s", t.sun.sunrise or "--", t.sun.sunset or "--")
             or (t.sun.polar or "no sunrise or sunset today")),
-        string.format("RADIO  Darkstar %s, mission %s, each field's traffic on its tower VHF (Airfield info)",
-            SendRadioCalls.channelText("awacs"), SendRadioCalls.channelText("mission")),
+        "RADIO  Comms menu > Other > Radio frequencies",
         "",
     }
     local ato = plan.air_tasking_orders

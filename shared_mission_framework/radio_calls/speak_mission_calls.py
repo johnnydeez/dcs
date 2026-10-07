@@ -1,6 +1,6 @@
 """The radio helper: speaks the mission's radio calls through the radio player.
 
-    python radio_calls/speak_mission_calls.py [--exit-with-dcs]
+    python radio_calls/speak_mission_calls.py [--exit-with-dcs] [--share-address 10.147.17.1]
 
 The mission (shared_mission_framework/mission_scripts/consumers/send_radio_calls.lua) writes each call's facts as one JSON
 line to mission_calls.jsonl in this folder, emptying it at mission start. This reads new
@@ -22,13 +22,17 @@ Who says it:
       pilot_phrases.json's list, picked by its flight's callsign, so a flight always sounds
       the same; never Zira.
 To the player, from the mission's facts: the call's frequency and channel, its priority and
-how long it may wait (expires_s); its age counts from when this helper read it (event_at),
+how long it may wait (expires_s); its age counts from when this helper read it (age_s, the
+seconds since then as it is sent: the other players' PCs' clocks differ from this one's),
 so a backlog here counts too. A picture replaces an older one for the same player not
 played yet. Each call's id (call_id) and the call it answers (answers) go along, so the
 player drops an answer whose order it dropped; an answer to a call this helper couldn't
 speak or send isn't said at all.
 Each call is logged here and in speak_mission_calls.log (emptied at each start): the words,
 and how long the wording and the voice took.
+The other players (multiplayer, roadmap.md item 19): every voiced call also goes to each
+other player's radio player connected over ZeroTier (share_calls_with_other_players.py), on
+this PC's ZeroTier address, found by itself; --share-address gives one instead (a test).
 """
 
 import argparse
@@ -43,6 +47,7 @@ import flight_phrase_wording
 import phrase_bank_wording
 import radio_player
 import send_radio_call
+import share_calls_with_other_players
 import windows_voice
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -137,8 +142,8 @@ class Speakers:
             fields = {"speaker": controller["callsign"],
                       "priority": call.get("priority", 1 if kind == "threat" else 3),
                       "expires_s": call.get("expires_s", DEFAULT_EXPIRES_S.get(kind, DEFAULT_PICTURE_EXPIRES_S))}
-            if kind != "threat":
-                fields["replaces"] = "picture:" + call.get("to", "")
+            if kind != "threat":   # one player's picture: their callsign on their frequency
+                fields["replaces"] = "picture:%s:%s" % (call.get("to", ""), call.get("frequency_mhz"))
             return text, wav, fields
         if kind in self.orders.kinds():
             controller = self.awacs.data["controller"]
@@ -158,7 +163,7 @@ class Speakers:
         return text, wav, fields
 
 
-def speak_call(speakers, call, read_at, unsent):
+def speak_call(speakers, call, read_at, unsent, others):
     # an answer (or Darkstar's copy) to a call that never reached the player isn't said
     if call.get("answers") is not None and call["answers"] in unsent:
         unsent.add(call.get("id"))
@@ -173,14 +178,20 @@ def speak_call(speakers, call, read_at, unsent):
         raise
     spoken = time.time()
     # the call's id, and the call it answers: the player drops an answer whose call it dropped
-    fields.update(event_at=read_at, channel=call.get("channel"), call_id=call.get("id"), answers=call.get("answers"))
+    fields.update(channel=call.get("channel"), call_id=call.get("id"), answers=call.get("answers"))
+    if call.get("frequencies_mhz"):   # Darkstar to all: on every player's Darkstar frequency
+        fields["frequencies"] = call["frequencies_mhz"]
     frequency = call.get("frequency_mhz")
+    speaker = fields.pop("speaker")
     try:
-        send_radio_call.send_call(wav, fields.pop("speaker"), frequency, **fields)
+        send_radio_call.send_call(wav, speaker, frequency, age_s=round(time.time() - read_at, 2), **fields)
         sent = "sent"
     except OSError:
         sent = "NOT SENT: no radio player running"
         unsent.add(call.get("id"))
+    shared = others.send(wav, speaker, frequency, read_at, fields)
+    if shared:
+        sent += ", and to %d other player%s" % (shared, "" if shared == 1 else "s")
     log("%s (mission %s s, %s %s): %s  [words + voice %.2f s, %s]" % (
         call["call"], call.get("mission_time_s", "?"), call.get("channel", "?"),
         "%.3f" % frequency if isinstance(frequency, (int, float)) else "-", text, spoken - started, sent))
@@ -190,6 +201,8 @@ def main():
     global _log_file
     parser = argparse.ArgumentParser(description="Speaks the mission's radio calls.")
     parser.add_argument("--exit-with-dcs", action="store_true", help="close once DCS isn't running")
+    parser.add_argument("--share-address", help="the address the other players' radio players connect to "
+                        "(default: this PC's ZeroTier address)")
     args = parser.parse_args()
 
     lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -202,6 +215,7 @@ def main():
     speakers = Speakers()
     calls = CallsFile(CALLS_FILE)
     unsent = set()   # ids of calls not spoken or not sent: their answers aren't said either
+    others = share_calls_with_other_players.OtherPlayers(log, args.share_address)
     log("radio helper reading %s%s" % (CALLS_FILE, "; closes with DCS" if args.exit_with_dcs else ""))
     next_dcs_check = time.time() + DCS_CHECK_EVERY_S
     try:
@@ -221,7 +235,7 @@ def main():
             parsed.sort(key=lambda c: c.get("priority", 3 if c.get("call") != "threat" else 1))
             for call in parsed:
                 try:
-                    speak_call(speakers, call, read_at, unsent)
+                    speak_call(speakers, call, read_at, unsent, others)
                 except Exception as error:   # one bad call never stops the helper
                     log("call not spoken: %s: %s" % (error, json.dumps(call)[:200]))
             if args.exit_with_dcs and time.time() >= next_dcs_check:
@@ -233,6 +247,7 @@ def main():
     except KeyboardInterrupt:
         log("radio helper stopped")
     finally:
+        others.close()
         lock.close()
 
 

@@ -7,6 +7,7 @@
 --   menu.sub(name, parent)         a submenu (parent nil: the top of the comms menu)
 --   menu.command(name, parent, fn) a command; fn() runs when the player picks it
 --   menu.show(text, seconds)       text to this group only, replacing what it shows
+--   menu.group_name                the group's name (a player slot's: data/player_slots.lua)
 -- A group's menus are built the first time a player is seen in it (every CHECK_S, and at
 -- once on a player's birth or entering a unit), and removed once no player is in it any
 -- more, so a group id DCS gives out again starts clean.
@@ -20,20 +21,20 @@ local _groups = {}     -- group id → { side, roots = { the top-level items add
 local _started = false
 
 local function playerGroups()
-    local out = {}   -- group id → side
+    local out = {}   -- group id → { side, name }
     for _, side in ipairs({ coalition.side.RED, coalition.side.BLUE }) do
         for _, u in ipairs(coalition.getPlayers(side) or {}) do
-            local ok, id = pcall(function() return u:getGroup():getID() end)
-            if ok and id then out[id] = side end
+            local ok, id, name = pcall(function() local g = u:getGroup(); return g:getID(), g:getName() end)
+            if ok and id then out[id] = { side = side, name = name } end
         end
     end
     return out
 end
 
-local function build(groupId, side)
+local function build(groupId, side, groupName)
     local entry = { side = side, roots = {} }
     _groups[groupId] = entry
-    local menu = {}
+    local menu = { group_name = groupName }
     function menu.sub(name, parent)
         local item = missionCommands.addSubMenuForGroup(groupId, name, parent)
         if not parent then entry.roots[#entry.roots + 1] = item end
@@ -60,8 +61,8 @@ end
 
 local function check()
     local now = playerGroups()
-    for id, side in pairs(now) do
-        if not _groups[id] then build(id, side) end
+    for id, g in pairs(now) do
+        if not _groups[id] then build(id, g.side, g.name) end
     end
     for id, entry in pairs(_groups) do
         if not now[id] then

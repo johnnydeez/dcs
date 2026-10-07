@@ -24,12 +24,17 @@ SAMPLE_PICTURE = ("Viper one one, Darkstar, picture, two groups. "
                   "low, flanking.")
 
 
-def send_call(wav_bytes, speaker, frequency, port=radio_player.DEFAULT_PORT, host="127.0.0.1", **extra):
-    """One call to a radio player; extra header fields (urgent, replaces, expires_s) as given."""
+def call_bytes(wav_bytes, speaker, frequency, **extra):
+    """One call as a radio player reads it: its header line, then the WAV."""
     header = dict(extra, speaker=speaker, frequency=frequency,
                   audio_bytes=len(wav_bytes), sent_at=time.time())
+    return json.dumps(header).encode("utf-8") + b"\n" + wav_bytes
+
+
+def send_call(wav_bytes, speaker, frequency, port=radio_player.DEFAULT_PORT, host="127.0.0.1", **extra):
+    """One call to a radio player; extra header fields (urgent, replaces, expires_s) as given."""
     with socket.create_connection((host, port), timeout=5) as connection:
-        connection.sendall(json.dumps(header).encode("utf-8") + b"\n" + wav_bytes)
+        connection.sendall(call_bytes(wav_bytes, speaker, frequency, **extra))
 
 
 def main():
