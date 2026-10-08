@@ -63,7 +63,11 @@ shared_mission_framework\             (repository root, beside missions\)
     consumers\                        every consumer, control_air_flights\ included
     survey\                           the in-DCS surveys (zone terrain, airbase footprints, parked-aircraft probe)
   radio_calls\                        the radio player, helper, phrase banks, voices, radio sound, export script
-  map_data_tools\                     the Python that builds data from DCS and a map (today kola_data_tools\)
+  map_data_tools\                     the Python that builds data from DCS and a map (was kola_data_tools\)
+  map_surveys\                        the Lua run by survey missions of a map's own (since 2026-10-07: the
+                                      terrain probe, the spawn site survey, its viewer); copied to
+                                      Saved Games\DCS\Scripts\map_surveys\, beside this PC's local_paths.lua
+  map_data\<map>\                     a map's data for any mission on it (planned: Afghanistan's spawn sites first)
   offline_test_harness\               stubbed DCS + replay tests, kept this time (*How the transfer is tested*)
 
 missions\kola_f16_random_tasking\
@@ -353,7 +357,8 @@ Rough size: heavy 5 groups / ~10 units, standard 2–4 / ~7, light 2 / ~5 (befor
 - **`Placement.isClear` for every group centre and unit:**
   - outside runway boxes (100 m beside the edge, 400 m past each end);
   - ≥ 60 m from parking spots;
-  - no runway, taxiway or water in 9 surface samples.
+  - no runway, taxiway or water in 9 surface samples;
+  - flat ground (2026-10-08, John, from the Afghanistan spawn site viewer: an SA-10 needs flat ground): the spot and 8 points 8 m around it within 0.8 m (`Placement.unevenGround`, `CONFIG.CLEAR_FLAT_*`; reject reason `slope`). `isClearRoad`, the fallback, checks it too. **Never dropped for slope** (John: "it should jitter and try and place it somewhere flat inside the zone"): a SAM unit or target object with no flat spot in its part of the layout looks anywhere flat in the zone (only when slope turned it down, so a merely crowded site plans as before), and with none anywhere it takes the flattest spot that passes every other check (`findClear`'s third return; reject tally `placed_on_slope`); base-defense group centres and units and supply trucks the same. Convoy road points skip the check (`isClearRoad(…, true)`: they drive off). Harness: all baselines unchanged (its terrain is flat); with a hilly stub terrain, no unit dropped in Kola or Caucasus, at a worst-case cost of ~3–5 s of extra height samples at planning. Not seen in DCS yet.
 - **Spacing:** group centres ≥ 150 m apart. Unit spacing by component: towed guns 25, mobile guns 30, missile launchers 40, missile teams 10, infantry 6 m.
 - **Placement order:** most important layer first, so a cramped field loses towed guns, never its radar or infrared missile launchers.
 - **Road fallback, instead of hand-drawn zones** (John: no manual placement work):
@@ -1000,30 +1005,19 @@ The runtime can read the mission's weather, time and date, but can't change them
 | `python shared_mission_framework\map_data_tools\unit_pool.py` | after a DCS update, once pydcs has caught up |
 | `python shared_mission_framework\map_data_tools\cloud_presets.py` | after a DCS update |
 | the footprint survey (`CONFIG.SURVEY_FOOTPRINTS`) | after a map update |
+| fly `afghanistan_spawn_site_survey.miz` (it runs `find_spawn_sites.cmd` and the viewer itself); by hand: `python shared_mission_framework\map_data_tools\find_spawn_sites.py` | spawn sites on a map with no drawn zones (Afghanistan; `missions\afghanistan_campaign\mission_design.md`, *Map data: the site survey*) |
+| `python shared_mission_framework\map_data_tools\find_spawn_sites.py make-missions` | writes the survey and viewer missions from John's `Afghanistan_survey_1.miz` (the survey mission isn't overwritten without `--force`) |
 | `python desanitize_dcs.py` (repo root, admin shell) + full DCS restart | after every DCS update |
 | `python shared_mission_framework\radio_calls\phrase_bank_wording.py`, then `play_sample_awacs_calls.py` (player running) | after changing `awacs_phrases.json` |
 
-- **A new map:** its projection parameters in `map_projection.py`'s `MAPS` (from pydcs, `dcs/terrain/<map>/projection.py`); a map not there stops the tools that need it, naming the known ones.
+- **A new map:** its projection parameters in `map_projection.py`'s `MAPS` (from pydcs, `dcs/terrain/<map>/projection.py`); a map not there stops the tools that need it, naming the known ones. **A map pydcs doesn't have** (Afghanistan, 2026-10-07; its `terrain.cfg.lua` is encrypted too): its facts come from DCS itself, by a survey in `map_surveys\` (the terrain probe's `airbases.lua`), in DCS's own x / z, so the site survey and its tools need no projection.
 - **Python versions:** `python` on PATH is a pyenv 3.7 shim; Python 3.10 is at `AppData\Local\Programs\Python\Python310` (the `.cmd` files use it when it's there).
 - **Offline test harness** (`shared_mission_framework\offline_test_harness\`, kept since framework step 0): stubbed DCS (`stub_dcs.lua`, `stub_dcs_world.lua`, a simple flight model, sensors and a stand-in player) runs a mission's real `init.lua` on a frozen saved world. `python replay_and_compare.py kola` (tests A–C: the plan, a 2-hour mission standing still and flying, the files loaded) and `python rerun_data_tools.py kola` (test D: the map tools) compare with recorded baselines; how to use them: the root `plan.md`, *Picking this up in a new session*, and *How the transfer is tested* below. Run them before handing a change to John; a change meant to alter behaviour means re-recording the baselines after checking every difference.
 - **Random seeds in luae:** luae's `math.random` is the C `rand()`, and the first values after `math.randomseed(1..N)` are nearly linear in the seed. Seed with `seed * 7919` and discard ~50 values.
 
 ### DCS facts learned the hard way
 
-- **Script-spawned units on the F-16's HSD** (Kola bug 25, `closed.md`; confirmed 2026-10-02): what works, all together (several things changed in one run, so keep every part): AI aircraft with an explicit group id, EPLRS as the first task of the first waypoint (`WrappedAction` `EPLRS` naming that group id), a Link 16 STN and the editor's `datalinks.Link16` block per unit; SAM groups with `hiddenOnMFD = false`, Red's as country Russia; player slots as CJTF Blue with their own STNs. STN + `setCommand` EPLRS after a ramp spawn, with CJTF SAMs, showed nothing.
-- **Static objects must spawn before any AI units.** After ~800 units, `coalition.addStaticObject` took ~3 s per parked aircraft (a 3-minute start-up stall); spawned first, 250 objects take 0.5 s. `run_mission.lua`'s spawn block keeps this order ("KEEP THIS ORDER").
-- **A player aircraft in the world slows every spawn:** 227 static objects took 71 s instead of 0.5 s with a Client F-16 on the ramp. So players come in by dynamic spawn after init.
-- **First spawn of each aircraft type freezes the sim** (fixed by the preload).
-- **Trees are invisible** to every API (`world.searchObjects` finds nothing in forest; `land.isVisible` is terrain-only). Taxiways and aprons read as `RUNWAY` in `land.getSurfaceType`; airfield buildings are visible as scenery.
-- **`weapons_free` means engage anything detected;** with AWACS datalink that's a lot. Use `open_fire` + zone tasks.
-- **An AI descends toward the next waypoint's altitude from the previous one.**
-- **It climbs the same way, and counts a waypoint reached a few km early.** A pop-up with its altitude only on the launch point was a third of the way up there (Kola bug 40); a waypoint at full altitude right after the climb's start makes it climb hard.
-- **SAMs reload, slowly, and only from a supply truck** (checked 2026-10-04): a launcher rearms from a supply truck within ~600 ft (~183 m; John measured the circle in the mission editor, 2026-10-04): a unit with `GT.warehouse = true`, drawn with a supply circle in the mission editor; only some truck variants are (John). The ones that reload: **"Truck Ural-4320"** for Red (type string `Ural-375`, as our SA-10, SA-11 and SA-6 recipes carry) and **"Truck M939 Heavy"** for Blue (type `M 818`, as our Patriot and Hawk recipes). Not to be confused with the `Ural-4320-31` ("Arm'd") or `Ural-4320T` ED's own templates also use. Reload times from DCS's own unit files: S-300PS launchers (HeavyMetal) 7,200 s, so 2 h; Currenthill Pantsir 900/12 s and Tor M2 900/16 s, IRIS-T SLM 1,800/8 s, TechWeaponPack NASAMS 300 s per missile (`reload_time` is per package, so the per-missile reading of the Currenthill numbers isn't certain). The Patriot's, SA-11's and other base-DCS times are in the encrypted database. On the 2026-10-03 roll 10 launchers on 8 sites lay 184-230 m from their nearest truck, out of reach (the trucks went on the site's `edge`, launchers out to 95 % of the footprint), and NASAMS, IRIS-T, SA-8, SA-15 and the base-defense SAMs had no truck. **Since 2026-10-04 every SAM gets supply trucks** (`SAM_SITE_SUPPLY`, `Placement.supplyTruckPoints`): each SAM site (not early warning) gets its coalition's `supply_truck` placed last, where every launcher and its escort are within 165 m (183 - an 18 m margin), a second truck only if one can't reach all; each base-defense SAM group (radar and infrared missile launchers, MANPADS teams: `supply_truck = true` in `BASE_DEFENSE_PLACEMENT`) gets one in a group of its own, `<id>_supply` (so a live truck never keeps a dead SAM group alive; not slept, not a sensor, no map mark of its own). The edge trucks that used to be the supply trucks are gone from the recipes. Replayed on the 2026-10-03 world over 4 seeds (terrain stubbed open): 0 launchers out of reach, farthest 164 m; ~55 SAM-site trucks and ~70 base-defense trucks per roll. Not flown yet: John's test mission. The NASAMS, IRIS-T, SA-8 and SA-15 recipes and the base-defense Tors / Pantsirs have no truck and never reload. In the 2026-10-03 14:15 run both SA-10s emptied all 20 interceptors on the first salvo and fired none at the second, 15-21 min later: the second salvo got through (Vuojarvi's 64H6E; the Patriot's two tracking radars to the second Kh-31P salvo, though it still had a few missiles).
-- **The AI fires an anti-radiation missile only at a radar it detects** (`getDetectedTargets(RWR)`): no ping, no shot, whatever its orders (Kola bug 36). A site's radar may not be on the flight yet at the launch point; an `EngageGroup` fires the moment it is.
-- **DCS's magnetic is grid-based** (Kola bug 61, 2026-10-05): the F-16's HUD heading (and the F10 ruler's M) = the map's grid heading minus the magvar module's variation; grid north is treated as true north. A direction worked out from true north (lat / lon) is off by the grid's convergence (Kola: ~1° at 22° E, ~6° near Ivalo). Anything a player compares with the jet's instruments: grid direction − variation.
-- **`os.execute` from DCS Lua silently runs nothing past ~260 characters:** use a `.cmd`. It waits for the command; `start "" /min "<cmd>"` returns at once (the radio calls start their programs that way).
-- **Airbase queries return empty at T+0:** gather runs a few seconds in.
-- **Harmless log noise:** "livery not found" (CJTF with no `livery_id`), missing wreck models (`Ural-375_p_1`, `MOBILE_GENERATOR_CRASH`).
+Moved 2026-10-07 to the repository's one list, **`dcs_scripting_gotchas.md`** at the root (John: one place every session can read). Add new ones there, not here.
 
 ### Performance
 

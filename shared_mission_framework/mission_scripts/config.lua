@@ -42,6 +42,13 @@ CONFIG = {
     CLEAR_RUNWAY_END_M  = 400,
     CLEAR_PARKING_M     = 60,
     CLEAR_SAMPLE_M      = 40,
+    -- Flat ground under every unit (John, 2026-10-08, after the Afghanistan spawn site
+    -- viewer: "require a more stringent flat area for the vehicles"; an SA-10 needs it): the
+    -- ground at the spot and at FLAT_DIRECTIONS points FLAT_SAMPLE_M around it within
+    -- FLAT_MAX_RISE_M, a 16 m footprint (a 5P85 launcher is ~13 m long) at ~3° at most.
+    CLEAR_FLAT_SAMPLE_M   = 8,
+    CLEAR_FLAT_DIRECTIONS = 8,
+    CLEAR_FLAT_MAX_RISE_M = 0.8,
     -- Forested fields only (data/forested_airfields.lua): past each runway end, only the
     -- approach lane — runway width plus this either side — is kept clear; units spread
     -- at most FORESTED_SPREAD_M from their group centre (the cleared overrun is narrow).

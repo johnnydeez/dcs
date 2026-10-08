@@ -361,20 +361,38 @@ local ZONE_STEPS     = { { 1, Placement.isClear }, { 0.5, Placement.isClear },
 local AIRFIELD_STEPS = { { 1, Placement.isClear }, { 0.5, Placement.isClear } }
 
 -- One object `spacing` m from everything in `occupied` (and at least `keep` m from any
--- occupied point that has one). Returns the point or nil.
+-- occupied point that has one). Every spot must be flat (Placement.isClear): with no flat
+-- spot in its part of the layout, the object looks anywhere flat within `radius` of the
+-- centre, and with none there either it takes the flattest spot found; never dropped for
+-- slope (John, 2026-10-08). Returns the point or nil.
+local WHOLE_FRACS = { 0, 1 }
 local function placeOne(view, centre, radius, fracs, spacing, occupied, steps, rejects)
-    for _, step in ipairs(steps) do
-        local sp2 = (spacing * step[1]) ^ 2
-        local p, rj = Placement.findClear(view, function() return annulusPoint(centre, radius, fracs) end,
-            TRIES_OBJECT, function(q)
-                for _, o in ipairs(occupied) do
-                    local dx, dz = q.x - o.x, q.z - o.z
-                    if dx * dx + dz * dz < math.max(sp2, (o.keep or 0) ^ 2) then return false, "spacing" end
-                end
-                return true
-            end, step[2])
-        for k, v in pairs(rj) do rejects[k] = (rejects[k] or 0) + v end
-        if p then return p end
+    -- { spacing factor, clear check, fracs, whole layout? }; the whole layout only for an
+    -- object turned down for slope, so one that is merely crowded stays as it was
+    local allSteps = {}
+    for _, step in ipairs(steps) do allSteps[#allSteps + 1] = { step[1], step[2], fracs } end
+    allSteps[#allSteps + 1] = { 1, Placement.isClear, WHOLE_FRACS, true }
+    allSteps[#allSteps + 1] = { 0.5, Placement.isClear, WHOLE_FRACS, true }
+    local flattest
+    for _, step in ipairs(allSteps) do
+        if not step[4] or flattest then
+            local sp2 = (spacing * step[1]) ^ 2
+            local p, rj, flat = Placement.findClear(view, function() return annulusPoint(centre, radius, step[3]) end,
+                TRIES_OBJECT, function(q)
+                    for _, o in ipairs(occupied) do
+                        local dx, dz = q.x - o.x, q.z - o.z
+                        if dx * dx + dz * dz < math.max(sp2, (o.keep or 0) ^ 2) then return false, "spacing" end
+                    end
+                    return true
+                end, step[2])
+            for k, v in pairs(rj) do rejects[k] = (rejects[k] or 0) + v end
+            flattest = Placement.flatter(flattest, flat)
+            if p then return p end
+        end
+    end
+    if flattest then
+        rejects.placed_on_slope = (rejects.placed_on_slope or 0) + 1
+        return flattest.p
     end
     return nil
 end
@@ -527,7 +545,7 @@ local function buildAirfieldGroundSite(ctx, b, kind)
     local recipe = FIXED_GROUND_TARGET_RECIPE[kind]
     baseView(ctx, b)
     local keep2 = (recipe.footprint_m + AIRFIELD_CLEARANCE_M) ^ 2
-    local centre = Placement.findClear(b.view, function()
+    local centre, _, flattest = Placement.findClear(b.view, function()
         local p = Placement.pickAnchorPoint(b.anchors, recipe.anchors)
         return p
     end, TRIES_SITE, function(q)
@@ -536,6 +554,7 @@ local function buildAirfieldGroundSite(ctx, b, kind)
         end
         return true
     end)
+    centre = centre or (flattest and flattest.p)   -- never dropped for slope (its objects find flat spots)
     if not centre then
         Log.info(string.format("  %s: no open ground for %s", b.name, recipe.label))
         return nil

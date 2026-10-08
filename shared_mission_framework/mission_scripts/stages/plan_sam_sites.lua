@@ -254,24 +254,41 @@ end
 -- ground-ring check (the zone was surveyed as open; only the point itself must be
 -- land). Units face `heading` (radians) give or take ~35°, or anywhere if nil; with
 -- `aim` (degrees off `heading`, one per unit) unit i faces exactly heading + aim[i] —
--- for sector radars. Returns how many could not be placed.
-local function placeUnits(units, occupied, view, centre, radius, fracs, n, unitType, spacing, heading, rejects, aim)
+-- for sector radars. Every spot must be flat (Placement.isClear): with no flat spot in its
+-- part of the site, a unit looks anywhere flat in the zone (`zoneRadius` around centre),
+-- and with none there either it takes the flattest spot found; a unit is never dropped
+-- for slope (John, 2026-10-08). Returns how many could not be placed.
+local ZONE_FRACS = { 0, 1 }
+local function placeUnits(units, occupied, view, centre, radius, fracs, n, unitType, spacing, heading, rejects, aim, zoneRadius)
     local missing = 0
+    zoneRadius = math.max(zoneRadius or radius, radius)
+    -- { spacing factor, clear check, radius, fracs, whole zone? }; the whole zone only for a
+    -- unit turned down for slope, so a site that is merely crowded stays as it was
+    local steps = { { 1, Placement.isClear, radius, fracs }, { 0.5, Placement.isClear, radius, fracs },
+                    { 1, Placement.isClearRoad, radius, fracs }, { 0.5, Placement.isClearRoad, radius, fracs },
+                    { 1, Placement.isClear, zoneRadius, ZONE_FRACS, true },
+                    { 0.5, Placement.isClear, zoneRadius, ZONE_FRACS, true } }
     for i = 1, n do
-        local placed
-        for _, step in ipairs({ { 1, Placement.isClear }, { 0.5, Placement.isClear },
-                                { 1, Placement.isClearRoad }, { 0.5, Placement.isClearRoad } }) do
-            local sp2 = (spacing * step[1]) ^ 2
-            local p, rj = Placement.findClear(view, function() return annulusPoint(centre, radius, fracs) end,
-                TRIES_UNIT, function(q)
-                    for _, o in ipairs(occupied) do
-                        local dx, dz = q.x - o.x, q.z - o.z
-                        if dx * dx + dz * dz < sp2 then return false, "unit_spacing" end
-                    end
-                    return true
-                end, step[2])
-            for k, v in pairs(rj) do rejects[k] = (rejects[k] or 0) + v end
-            if p then placed = p; break end
+        local placed, flattest
+        for _, step in ipairs(steps) do
+            if not step[5] or flattest then
+                local sp2 = (spacing * step[1]) ^ 2
+                local p, rj, flat = Placement.findClear(view, function() return annulusPoint(centre, step[3], step[4]) end,
+                    TRIES_UNIT, function(q)
+                        for _, o in ipairs(occupied) do
+                            local dx, dz = q.x - o.x, q.z - o.z
+                            if dx * dx + dz * dz < sp2 then return false, "unit_spacing" end
+                        end
+                        return true
+                    end, step[2])
+                for k, v in pairs(rj) do rejects[k] = (rejects[k] or 0) + v end
+                flattest = Placement.flatter(flattest, flat)
+                if p then placed = p; break end
+            end
+        end
+        if not placed and flattest then
+            placed = flattest.p
+            rejects.placed_on_slope = (rejects.placed_on_slope or 0) + 1
         end
         if placed then
             local h
@@ -320,7 +337,7 @@ local function buildSite(ctx, c, role, system, layer)
                 local heading = placeName ~= "edge" and c.threat or nil
                 local before = #units
                 local missing = placeUnits(units, occupied, view, zone.pos, r,
-                    SAM_SITE_PLACE[placeName], n, part[1], recipe.unit_spacing, heading, sum.rejects, part.aim)
+                    SAM_SITE_PLACE[placeName], n, part[1], recipe.unit_spacing, heading, sum.rejects, part.aim, radius)
                 if placeName == "launchers" then
                     for i = before + 1, #units do launchers[#launchers + 1] = units[i] end
                 end
@@ -341,7 +358,7 @@ local function buildSite(ctx, c, role, system, layer)
     if recipe.escort_role then
         local eType = Util.weightedPick(COALITION_ROSTER[side][recipe.escort_role])
         placeUnits(eUnits, occupied, view, zone.pos, r, SAM_SITE_PLACE.edge,
-            1, eType, recipe.unit_spacing, c.threat, sum.rejects)
+            1, eType, recipe.unit_spacing, c.threat, sum.rejects, nil, radius)
         for _, u in ipairs(eUnits) do launchers[#launchers + 1] = u end
     end
 

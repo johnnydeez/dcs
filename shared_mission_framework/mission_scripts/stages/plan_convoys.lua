@@ -157,7 +157,7 @@ local function roadPointOutside(ctx, base, toward)
             local q = Placement.snapToRoad({ x = ab.pos.x + km * 1000 * math.cos(a), z = ab.pos.z + km * 1000 * math.sin(a) })
             if q and Util.dist(q, ab.pos) <= ROAD_POINT_MAX_M
                 and not Placement.onAirfieldGround(view, q, AIRFIELD_KEEP_OUT_M)
-                and Placement.isClearRoad(view, q)
+                and Placement.isClearRoad(view, q, true)   -- any slope: a convoy drives off at once
                 and not nearOccupied(ctx.occupied, q) then
                 return q
             end

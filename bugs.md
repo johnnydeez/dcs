@@ -22,6 +22,8 @@ Bugs 3–72 were found in Kola and lived in Kola's `development_docs\bugs.md` un
 
 **Worse on the 2026-10-04 22:39 roll** (`event_logs\2026-10-04_223922.log`): about 14 of ~30 Red scrambles stood down on the ramp, 7 of them at Blue's Alakurtti patrols (MSN2016_CAP, MSN2017_CAP: Alakurtti is the Blue pocket inside Red, so each race-track leg reads as inbound); Blue 5 of 11. See bug 50 too.
 
+**Much less in the 2026-10-07 20:07 run, the first flown with the 8-round count** (`event_logs\2026-10-07_200750.log`, 1 h 39 min; grep `scramble:`, `leash stand down`): 2 scrambles all run. One was churn: Blue's MSN2901 (Kiruna) after the MiG-31 patrol MSN7017_CAP, "enemy airspace, 10 min from Bardufoss; intercept 99 km out", decided 05:05:34, spawned 05:06:46, stood down on the ramp 18 s later ("back over its own airspace, heading away"), back on alert. The other (Red's MSN7901 at a Blue DEAD flight) was a real raid. Not seen: a raid from deep in its own airspace answered too late.
+
 **Seen:** same log; grep `SCRAMBLE`, `STOOD_DOWN`, `stood down on the ramp`.
 - Seven scrambles were decided against patrols and then stood down: Red MSN5901 and MSN5904 (both at Blue's F-15C patrol MSN2009_CAP), and Blue MSN2902, MSN2903, MSN2904 and MSN2906 (at Red patrols and a Red scramble going home).
 - **The cycle:**
@@ -67,6 +69,8 @@ Bugs 3–72 were found in Kola and lived in Kola's `development_docs\bugs.md` un
 **Status:** worked around 2026-10-01 (John: open parking only for now). The Su-34's profile allows only terminal 104 (open-air) spots; the DCS test of spot size is still open.
 
 **The same spot twice** (`event_logs\2026-10-04_223922.log`, grep `RAMP_LOSS`): Su-27 scrambles MSN7917 (04:44:54) and MSN7937 (06:00:58), both at **Afrikanda spot 22**, both 13 s after spawning, no killer. Points at the spot, not the type: taking spot 22 (and 37, 2026-10-01) out of use at Afrikanda would be the cheap fix (not built; decide with John).
+
+**Again, a second spot twice in one run** (`event_logs\2026-10-07_200750.log`, grep `RAMP_LOSS`): Su-34s of Red's SEAD rotation on the Kallax Patriot, both at **Rovaniemi spot 2**, both destroyed 19 s after spawning, no killer, 622 ft (field height), pilot ejected: MSN7023_SEAD_1 (spawned 04:02:00) and MSN7023_SEAD_AGAIN_1 (04:24:59; the retry was given the same spot). Each flight went on as a single ship (both lost later, to an F-15C and an F-16 SEAD flight's AIM-120s). Rovaniemi isn't a forested field. The mission-end summary counts both as "no killer recorded". With Afrikanda 22, two spots now fail twice; a list of spots not to use (Afrikanda 22 and 37, Rovaniemi 2) is the cheap fix (not built; John, 2026-10-07: log only for now).
 
 **Logging built 2026-10-02, not flown:** a jet destroyed before it ever took off, within 2 min of spawning, is a `RAMP_LOSS` line in the event log (and a `dcs.log` warning) with its base and spot: "Su-27 destroyed on the ramp 8 s after spawning, before taking off, at Afrikanda spot 37: a spawn failure, not combat". Grep `RAMP_LOSS` after each run to collect the spots for the spot-size test.
 
@@ -122,6 +126,8 @@ Bugs 3–72 were found in Kola and lived in Kola's `development_docs\bugs.md` un
 **Seen:** `event_logs\2026-10-02_145532.log`; grep `retry`. Both rotations retried at once, as the rotation's next flight, with the same base, route and profile: MSN7023_SEAD_AGAIN spawned at 04:11:59, 1 s after MSN7023's last jet died, and MSN2025_SEAD_AGAIN at 04:13:09, 1 s after MSN2025's. Both retries were lost like the first (bug 33). 4 jets per side against one site in ~15 min. John, after the 00:57 run: losing some SEAD is fine, losing most isn't.
 
 **Seen again** in the 16:50 run (`event_logs\2026-10-02_165055.log`): MSN2025_SEAD_AGAIN spawned at 04:15:56, 1 s after the SA-10 killed both F-16s of MSN2025 (bug 40), same base and route.
+
+**Seen again, 2026-10-07 20:07 run** (`event_logs\2026-10-07_200750.log`, grep `MSN2028_SEAD`, `SAM_ROVA_SA10_1`): the Rovaniemi SA-10 cost Blue 4 F-16s and was never shot at. MSN2028_SEAD (Weasel 4, from Kallax) fought two bandits on its low run-in and went home without a shot (bug 77), losing its wingman to the SA-10 on the way out (04:51:11, 1,073 ft, 81 km inside the ring). Its retry MSN2028_SEAD_AGAIN (Wild 4) spawned at 05:16:28 with the same base, route and profile; a Su-33 (MSN7003_CAP) fired at it at its pop-up (05:33:08), the fight was broken off after 30 s for the SA-10's kill zone, it reached the top of the pop-up at 3,355 ft (05:34:21), and the SA-10 fired at it from 47–52 km and killed both jets (05:35:02, 05:35:21) before any HARM left. The retry came 26 min after the first try's go cold, not at once (bug 78), but from the same place into the same site.
 
 **Cause:** the rule (roadmap item 12, point 8): a site still in the fight after its SEAD flight gets one more try, and the rotation flies it next. It doesn't ask whether the first flight fired its salvo and came back, or was shot down. A flight shot down before or at its salvo is exactly the case where a second identical try is most likely to die too.
 
@@ -221,6 +227,8 @@ Bugs 3–72 were found in Kola and lived in Kola's `development_docs\bugs.md` un
 **Proposed (decide with John):** a SEAD flight with its anti-radiation missiles still aboard doesn't commit to a bandit at long range: only when fired upon, or inside a short range (e.g. 25 km, inside which it can't outrun the fight anyway); otherwise it stays low on its route (the DCS AI still evades missiles by itself). After its salvo it is an ordinary flight going home. And a fight's break-off for a kill zone could hold off re-engaging that bandit while the flight is still inside that ring, instead of 30 s (`reengage_after_s`).
 
 **Seen again, Red, on the low run-in** (`event_logs\2026-10-02_165055.log`, grep `MSN7023_SEAD`): 2× Su-34 from Vuojarvi on the Kittila Patriot, low from takeoff (Vuojarvi sits on the edge of the Patriot's ring). At 04:12:54, 2 min after takeoff and still low (1,579 ft), `defend` on the Blue Hornet patrol MSN2009_CAP at 82 km. The fight climbed both Su-34s to 11,000–14,600 ft **inside the Patriot's ring (13–43 km inside)**. The Patriot fired 6 MIM-104 at them from 59–80 km. The Hornet's AIM-120C killed MSN7023_SEAD_1 at 04:15:54. The fight was never broken off for the Patriot's ring: the break-off skips the rings the route passes through on purpose, and the flight's own target is one of them. So a SEAD flight's self-defence pulls it up out of its low run-in into its target's full envelope, and nothing stops it.
+**Seen again 2026-10-07 (20:07 run):** both Rovaniemi SA-10 tries fought at or near their pop-up; the first went home with all 8 HARMs because its shot waypoints were all counted as reached the moment the fight ended (bug 77, its own entry), the second was killed by the SA-10 after the fight's break-off (bug 35's note). The second part of this bug (back to the shot after a fight) is what both needed.
+
 - Proposed with the rest of bug 39: while a SEAD flight is on its low run-in, a bandit call either keeps the fight low (no way to tell DCS that, as far as known) or breaks off as soon as the flight climbs above the low altitude inside any ring, its own target's included.
 
 ---
@@ -502,7 +510,7 @@ So the controller never asks, when it ends the fight, whether the mission can st
 
 **Seen:** John heard no "jet down". Both were sent (`speak_mission_calls.log` 00:34:56 "Weasel one, Weasel one one's hit", 01:10:57 "Weasel four one, lost Weasel four two"), each 8 s after a 4–5 group Darkstar picture (~25 s of audio) started. Calls never overlap, so each waited behind the picture, and `jet_down` expired after 20 s.
 
-**Fix:** `jet_down` lives 45 s and `splash` 40 s (`RADIO_CALLS.kinds`), longer than a picture. Fox / Magnum / defending stay at 8 s (no news that late). Bug 69's player log shows each `dropped` from now on. If it still happens: a combat call could cut in on a routine call playing on the other radio, or the pictures get shorter (roadmap item 7 step 12, "a short summary when nothing changed"), which would help more than longer lives.
+**Fix:** `jet_down` lives 45 s and `splash` 40 s (`RADIO_CALLS.kinds`), longer than a picture. Fox / Magnum / defending stay at 8 s (no news that late). Bug 69's player log shows each `dropped` from now on. **2026-10-07 20:07 run** (`radio_calls\radio_player.log`, grep `dropped`): no jet-down call dropped (three said, at 04:19:30, 04:51:11, 05:35:02 mission time). 4 of ~100 calls on tuned frequencies were dropped, all short-lived ones in busy moments: Weasel 3-2 (mission, 11 s old, expires after 8 s), Weasel 4-1 and a Darkstar call to Weasel 4 (both 26 s old, during its fight around 04:50), and Wild 4-1 (8 s old). If it still happens: a combat call could cut in on a routine call playing on the other radio, or the pictures get shorter (roadmap item 7 step 12, "a short summary when nothing changed"), which would help more than longer lives.
 
 ## 71. Hits and bomb impacts said nothing about where a weapon landed or how much damage it did
 
@@ -542,6 +550,8 @@ So the controller never asks, when it ends the fight, whether the mission can st
 - To prove the rest in one test: turn COMM 1 down to zero and back up, with both radios on, and listen for COMM 2 calls during it and UHF calls after it (a long enough run after turning it up).
 - The wording `not heard, no radio tuned to 262.000` is misleading when a radio is tuned to it but off or at zero volume: it should say so ("UHF on 262.000 is off").
 
+**2026-10-07 20:07 run, a data point for the first question** (`radio_calls\radio_player.log`, the jet's radios lines): John turned COMM 1 (UHF 262.000) down several times, at 20:54:28–20:54:31 from 0.50 to **0.05**, and the export script kept reporting it `on` (then 0.10, back up to 0.20–0.50 later); VHF went down to 0.30 and back the same way. Both radios read `off` only when DCS quit (21:49:26). So this time a near-zero knob did not read as off. 96 calls were heard through the run, following the tuning (UHF 305.000 until 20:34, then 262.000; VHF 127.000 → 128.200 → 140.000 → 128.200). Whether the 2026-10-06 `off` came from the knob's very bottom (0.00) is still open.
+
 ---
 
 ## 73. The Sukhumi SA-10 shot down all 16 HARMs of both SEAD tries, and blocks Blue's western attacks
@@ -560,6 +570,8 @@ So the controller never asks, when it ends the fight, whether the mission can st
 - Kola since 2026-10-02: HARMs at SA-10s fired from 35–54 km in 11 runs; an SA-10 part was hit in 4 of them (10-02 17:48, 10-03 14:15, 10-04 14:20, 10-04 22:39).
 - The Kola kill from 35–41 km (2026-10-01 14:14 run) was before `launch_km` went to 45 (bug 33: the sites fired back at the pop-up from 39–50 km).
 - **The pop-up isn't reached by Blue in either mission:** `popup_altitude_m` 2,400 (~7,900 ft), but Blue's "top of the pop-up" lines show 2,000–2,400 ft here and 2,300–4,600 ft in Kola. Red's Su-34s reached 7,800–7,900 ft here. A HARM fired from 1,000–2,000 ft has a long, low-energy flight, so the S-300 gets plenty of time to shoot it down.
+
+**The low pop-up again in Kola** (`event_logs\2026-10-07_200750.log`, grep `top of the pop-up`): Blue's F-16 SEAD flights at the top of the pop-up at 3,730 ft (MSN2025), 4,303 ft (MSN2024), 4,406 ft (MSN2026) and 3,355 ft (MSN2028_SEAD_AGAIN), planned 7,874 ft; they kept climbing and fired from 4,900–9,800 ft at 39–47 km. Against SA-11s that was enough (three search radars destroyed); MSN2024_SEAD_2 was killed by its target SA-11 (fired at it from 38 km at ~6,700 ft). Red's Su-34s fired from 11,000–14,800 ft (MSN7024, MSN7025). So Blue's jets don't reach the pop-up altitude in either mission; Red's do.
 
 **Cause:** not known yet. Likely factors: low launch altitude, a 45 km shot, and the SA-10's own defence against the missiles. A 2-ship salvo of 8 doesn't saturate 8+ launchers.
 
@@ -613,3 +625,130 @@ So the controller never asks, when it ends the fight, whether the mission can st
 3. **Despawn and respawn the wingman as its own flight.** When its lead touches down and the wingman is still up: remove it and spawn the same jet (type, loadout, fuel, skill, callsign) as a 1-ship group at its position, altitude, heading and speed (an air start, as scrambles and the AWACS use), with one waypoint: land at its base. A lone jet leads its own group, and leads land. Watch: the flight's bookkeeping (the new group counted as the old wingman for the scheduler, the event log, the radio and the gate), and that the swap isn't visible (no weapons or fuel change).
 
 **Check after each:** grep `>>orphan<<`: `not orphaned` should replace `removed`; and `LAND` for both jets of each 2-ship.
+
+**2026-10-07 20:07 run, before any of the fixes** (`event_logs\2026-10-07_200750.log`, grep `>>orphan<<`): 5 wingmen still in the air when their lead landed; the first 4 landed 3 min 18 s to 4 min 55 s after their lead (`not orphaned`), and the 5th (MSN7025_SEAD_2) was still up when the mission ended 2 min later. None removed. MSN2025_SEAD_2 (Kallax), MSN2026_SEAD_2 (Kallax), MSN7036_STRIKE_2 (Tu-22M3, Severomorsk-1), MSN7024_SEAD_2 (Rovaniemi). Each was given the per-jet landing order; MSN2026_SEAD_2 still got `no answer to land_at … not seen following it in 60 s` and landed 4 min 21 s after the order. Each was at 3,774–4,320 ft, 6–17 km from its field when its lead touched down (their tracks in between not looked at). A run where the wingmen land anyway; it doesn't change the fix order, but the fixes should be judged on several runs.
+
+---
+
+## 76. Absolute Windows paths with the username are written into the repository
+
+**For:** framework and every mission (repository-wide).
+
+**Status:** open (John, 2026-10-07: use relative paths so my Windows paths aren't in the repo). Found while checking the repository before making it public again. Not a secret, but it puts the Windows username and folder layout in every copy, and the code only runs on a machine laid out the same way.
+
+**Seen:** `git grep -nIiE 'C:[\/]+Users[\/]+johnk'`, 22 lines in 13 files (2026-10-07):
+- **Settings the code reads** (these break on any other machine): `missions\kola_f16_random_tasking\kola_f16\mission_settings.lua` and Caucasus's (`event_log_folder`, `repository_folder`); `shared_mission_framework\mission_scripts\data\radio_calls.lua` (`calls_file`, `start_command`); `map_data_tools\aircraft_loadouts.py` (`DEFAULT_LIBERATION`), `map_data_tools\unit_pool.py` (`DEFAULT_PYDCS`).
+- **Comments, usage lines and docs:** `map_data_tools\mission_folder.py`, `update_zone_data.cmd`, the generated headers of `mission_scripts\data\aircraft_pylons.lua` and `unit_pool.lua` (written by the tools, so fix the tools, not just the files), `missions\syria_a2g\offline_test_harness.lua` and `notes.md`, `plan.md`, `framework_design.md`.
+
+**Proposed fix:**
+- **Python tools:** paths from the script's own folder (`Path(__file__).resolve().parent`) or the repository root; sibling checkouts (pydcs, dcs_liberation) as `<repo>\..\pydcs`, overridable by the existing `--pydcs` / `--liberation` options or an environment variable. Generated file headers say `pydcs checkout` without the path.
+- **Mission scripts (inside DCS):** a relative path in DCS's Lua resolves against the DCS install folder, not the repository, so they can't simply go relative. Options: build them from `lfs.writedir()` (the Saved Games folder) where they live there; or keep the machine's paths in one untracked file (e.g. `mission_settings.local.lua`, in `.gitignore`) read over the defaults, with a committed `mission_settings.local.example.lua` showing `C:\Users\<you>\...`.
+- **Docs and comments:** `C:\Users\<you>\...` or `%USERPROFILE%\...` (several docs already use `<you>` / `<username>`).
+- **Check:** the grep above returns nothing, and a run still writes its event log and plays radio calls.
+- The paths stay in the old commits; only a history rewrite (`git filter-repo --replace-text`) would remove them there. Not planned: low risk.
+
+---
+
+*Bugs 77–83: from the 2026-10-07 20:07 run (`event_logs\2026-10-07_200750.log`, 1 h 39 min; John flying MSN2023_DEAD from Kallax on the Kittila SA-11 #2, then a second sortie with HARMs toward Hosio). Losses Blue 5 (SAM sites 4, aircraft 1) / Red 6 (aircraft 4, the two ramp losses of bug 13). `dcs.log` clean: no script error; the 17 Lua tracebacks are DCS's AWACS voice ("Callname -1"). Reviewed by Claude 2026-10-07; John: log everything, no code fixes yet.*
+
+## 77. After a fight, a SEAD flight's pop-up, top, launch and press-on waypoints were all counted reached at once, and it went home with every HARM
+
+**For:** framework (found in Kola).
+
+**Status:** open, logged 2026-10-07. No fix built. Goes with bug 39's unbuilt second part (back to the shot after a fight).
+
+**Seen:** grep `MSN2028_SEAD` (Weasel 4, 2× F-16C from Kallax on the Rovaniemi SA-10, the rotation's first site).
+- Low run-in as planned (900–1,200 ft, ~540 kt) to waypoint 12 at 04:49:03, 52 km inside the SA-10's ring.
+- `press on` on the Su-30 MSN7002_CAP at 97 km (04:47:34). At 04:50:09 the Su-30 fired an R-77 at it from 22 km; `defend` 04:50:10 (it had already fired an AIM-120C at 25 km at 04:50:03); the Su-30 was killed at 04:50:34; `back on mission: MSN7002_CAP destroyed (29 s)` at 04:50:39. The SA-10 was tracking it from 04:50:13 and fired 2 SA5B55 at the wingman from 49 km at 04:50:26.
+- **04:50:43, all in the same second:** waypoints 13 (pop-up), 14 (top of the pop-up), 15 (target, i.e. the launch point) and 16 (press-on point) reached, the lead at 10,480 ft (the fight had climbed it), 54 km from the site. The press-on point lies up to 20 km past the 45 km launch point, so the flight was nowhere near it.
+- `RADAR_WARNING` at the launch point and at the press-on point, both 04:50:43: **"its radar SEEN"** (the SA-10 and the Rovaniemi SA-11s and SA-6 on the warning receivers).
+- **04:50:44** `go cold: no shot: pressed on to 54 km from SAM_ROVA_SA10_1 with no radar to shoot at, all 8 anti-radiation missiles aboard`; Weasel 4's "no shot" report and Darkstar's copy. The `EngageGroup` put on at the top of the pop-up had 1 s.
+- On the way home low the SA-10 killed MSN2028_SEAD_2 (04:51:11, 1,073 ft, 81 km inside the ring; pilot killed). The lead landed at Kallax 05:16:27 with 8 HARMs.
+
+**Cause (suspected, not proven):**
+1. **DCS ran the skipped waypoints' commands in one burst.** The resume (`GiveOrders.resume`) only sets the fight's stop flag; the DCS AI then goes back to its route. The fight had taken it about to the pop-up point, and DCS apparently counted waypoints 13–16 as passed and ran their script commands together (the `WAYPOINT` lines and the controller's waypoint calls, `control_air_flights.lua:356`, which sets `memo.suppression.pressed_on` at the press-on waypoint).
+2. **The no-shot rule trusts that waypoint call** (`directives_per_flight.lua:152`): `pressed_on` and every missile aboard → home, whatever the flight's real distance to the press-on point and whether the site's radar is seen.
+
+**Options (decide with John):**
+- The no-shot go cold only when the flight is really at its press-on point (its closest jet within a few km of it, or as close to the site), and not while the site's radar is on its warning receivers; else let the `EngageGroup` fire.
+- Or, after a fight ends inside the shot area with every missile aboard, give the flight a new attack from where it is (bug 39's second part), and ignore waypoint calls that arrive in a burst (several in the same second).
+- First check in the harness or a test mission whether a pushed `AttackGroup` ended near later waypoints really makes DCS run their commands at once.
+
+## 78. The SEAD rotation waits for a flight that has gone cold to land, and says it is "still on its attack"
+
+**For:** framework (found in Kola).
+
+**Status:** open, logged 2026-10-07. No fix built.
+
+**Seen:** grep `MSN2028_SEAD`, `MSN2040_DEAD`, `MSN2029_SEAD`.
+- MSN2028_SEAD went cold at 04:50:44 (bug 77). Its retry, MSN2028_SEAD_AGAIN, spawned at **05:16:28, 1 s after its lead landed**, 26 min after the go cold (bug 57's fix meant 5 min after it came off its task).
+- Meanwhile Blue's DEAD MSN2040 (waiting on the Rovaniemi SA-10) logged `wait: waiting for MSN2028_SEAD, still on its attack; looking again at 05:23` at 05:13:24, 23 min after the go cold, and again for MSN2028_SEAD_AGAIN (05:23:24, 05:33:24).
+- The rotation's next flight, MSN2029_SEAD, spawned `launch late: 23 min after its planned start`, at 05:35:22, 1 s after MSN2028_SEAD_AGAIN's last jet died. Red's rotation shows the same rule from the other side: MSN7024_SEAD and MSN7025_SEAD each `launch early … (the rotation's flight before it is down)`, at the moment the one before it was down.
+
+**Cause (from the code):** `decide_launches.lua`, in the gate's look at each open threat: a rotation flight whose site is still in the fight waits while the rotation's flight in the air isn't down (`isDown`: every jet landed, lost or removed), line ~504, and the wait line words every spawned flight waited for as `still on its attack` (line ~526). So a flight that has gone cold holds the rotation, and its own retry, until its last jet lands, and the log says it is still attacking. `stillOnAttack` itself (in the air and on its task) was right: MSN2028_SEAD was `going_home`.
+
+**Options (decide with John):**
+- A rotation flight that has gone cold (or been sent home) gives up its place at once, so the retry and the rotation's next flight come `retry_after_s` after the go cold, as bug 57 meant ("once it is done there's no point waiting for it to land", John, 2026-10-02).
+- Or keep one rotation flight in the air at a time on purpose (no two SEAD flights near the same corridor), but then say so: `waiting for MSN2028_SEAD to land (gone cold at 04:50)`.
+
+## 79. A relieved patrol checked out before it answered Darkstar's RTB
+
+**For:** framework (found in Kola).
+
+**Status:** open, logged 2026-10-07. Radio wording only.
+
+**Seen:** grep `MSN2002_CAP` (Hornet 1, F/A-18C patrol from Tromsø); `radio_calls\speak_mission_calls.log` 21:13:05–21:13:06.
+- 05:03:04 `handover: relieved by MSN2003_CAP` → Darkstar "Hornet one, Darkstar, Viper one on station, you're relieved, return to base" (UHF).
+- 05:03:04 (same second) "Hornet one one, off station, RTB Tromso" (VHF) and **"Darkstar, Hornet one one, checking out"** (UHF).
+- 05:03:06 Hornet 1's answer to the RTB (2 s after the order).
+- Step 15 says the answer to an RTB is the check-out: no `check_out` after it. Eagle 5's handover the same run came out right (05:01:04 RTB, answer 38 s later, then "off station", no check-out).
+
+**Cause (suspected):** Hornet 1 was already pointing home when the order came, so the watcher saw it "heading home" in the same check and said off station and the check-out before the answer (which waits to see the order followed) could stand in for it. The suppression of the check-out only works when the answer comes first.
+
+**Proposed:** once a controller order that the pilot answers is said to a flight, hold its check-out until that answer is said (or its wait is over), then drop it.
+
+## 80. Kallax's "inbound" calls named runway 31, the AI jets landed on 13
+
+**For:** framework (found in Kola).
+
+**Status:** open, logged 2026-10-07. Radio wording; the landing itself is DCS's.
+
+**Seen:** grep `RADIO_CALL.*Kallax traffic`. Departures all called and seen lined up on runway 31 (`LINE_UP … runway 31`). Weasel 2-2 (04:23:43) and Weasel 4-1 (04:59:28) called "inbound … runway 31"; Weasel 2-1 (04:26:37) and Weasel 3-1 (04:45:07) called final and clear on **runway 13**. Wind from 257° at 8 kt: about 5 kt down runway 31's direction (headwind), 5 kt tailwind on 13; DCS landed them on 13 anyway.
+
+**Cause (suspected):** the inbound call names the runway in use by the wind (the airfield brief's logic), while final and clear name the runway the jet is actually on. DCS picks its own landing runway.
+
+**Options:** say no runway in the inbound call (it isn't known yet), or name the one DCS's AI is landing on if it can be read; or leave it, since final names the real one.
+
+## 81. A MiG-31 scramble took 8½ minutes from its hot ramp spawn to takeoff
+
+**For:** framework (found in Kola).
+
+**Status:** open, logged 2026-10-07. Log only.
+
+**Seen:** grep `MSN7901_SCRAM`. `scramble: MiG-31 from Vuojarvi after MSN2036_DEAD … 7 min from SAM_SODA_SA8_1; intercept 88 km out; launching in 67 s` at 05:16:04; spawned hot on the ramp 05:17:11; **takeoff 05:25:38**, 8 min 27 s later. By then the DEAD flight had fired its JSOWs (05:19:37) and was on its way home; the MiG-31 reached its intercept point (05:32:31) and was leashed home (05:33:04, "back over its own airspace, heading away"). The scramble's own check reckons the reaction time (`scramble_reaction_s`, 60–120 s) plus the flight time, not a long taxi.
+
+**Cause (unknown):** a long taxi from Vuojarvi's alert spot to the runway, a taxi queue, or the DCS AI's start-up. Not checked: which spot it had, and whether other Vuojarvi spawns this run were as slow.
+
+**Proposed (decide with John):** look at the alert spots held at Vuojarvi (distance to the runway end), and how long hot spawns there take to get airborne in other logs; then either pick alert spots near the runway, or count a base's taxi time in the "can it get there in time" check.
+
+## 82. The Kallax slot's player logs under the unit name f16_human_1_1 (bug 24 again, one slot)
+
+**For:** Kola (its `.miz` slot template).
+
+**Status:** open, logged 2026-10-07. Bug 24 (`closed.md`) was fixed by renaming each slot template's unit to match its group; the Kallax slot still logs as `f16_human_1_1` (noted in the 2026-10-05 10:31 run too).
+
+**Seen:** `PLAYER_IN`, `TAKEOFF`, `POSITION`, `SHOT`, `IMPACT`, `LAND` say `f16_human_1_1`; the radar picture's `CONTROL … no scramble` lines say `f16_kallax`. "New callsign" in those lines is John's DCS logbook pilot name, not the mission's.
+
+**Proposed fix:** rename the Kallax template's unit in the Mission Editor to `f16_kallax_1` (or whatever matches its group), as bug 24 did for the others; or log the group name on player lines too.
+
+## 83. Event log wording: a dispenser opening reads as a weapon shot down, and a player's shots name no target
+
+**For:** framework (found in Kola).
+
+**Status:** open, logged 2026-10-07. Log wording only.
+
+**Seen:**
+- John's 4 AGM-154A (04:34:59, 25,701 ft) and MSN2036_DEAD's 4 (05:19:37–46): each `IMPACT … gone in the air … 517–537 m above the ground (shot down, or burst)`. A JSOW-A opens at about that height by design; its BLU-97s then hit (3 SA-11 launchers destroyed by John's, the SA-8's radar by MSN2036's). The line reads as if the weapons were shot down.
+- John's `SHOT` lines have no target or range (`F-16C_50 fired 4x AGM_154A, from 25,701 ft`; `fired 2x AGM_88, from 5,939 ft`): DCS gives no target for them. His 4 HARMs at 05:21:57–05:22:13 then show `hit the ground … nothing within 150 m` (3) and one gone in the air 4 km up, so it can't be read what they were fired at.
+
+**Proposed:** for cluster weapons (JSOW-A, CBUs, RBKs), "opened at 520 m above the ground, n m from <nearest object>", told apart from a shot-down weapon by the weapon type and height; for a player's anti-radiation missile with no target, name the nearest enemy radar ahead of the shot (as `RADAR_WARNING` lists them) as its likely target.

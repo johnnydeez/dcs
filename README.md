@@ -7,6 +7,7 @@ plan.md                  the one plan: where every mission and the framework sta
 bugs.md                  the one bug list for every mission and the framework (each bug says which)
 closed.md                fixed bugs and finished roadmap items, every mission's and the framework's, keeping their numbers
 roadmap.md               the one roadmap: where every mission and the framework are headed (each item says which)
+dcs_scripting_gotchas.md what DCS does that surprised us: read before writing a DCS script
 desanitize_dcs.py        shared setup: lets mission scripts load files (below)
 research/                DCS research that isn't tied to one mission (API findings, map research)
 shared_mission_framework/    the code every mission on it shares (Syria excepted)
@@ -15,6 +16,8 @@ shared_mission_framework/    the code every mission on it shares (Syria excepted
   radio_calls/               spoken radio calls: radio player and helper, run outside DCS (below)
   map_data_tools/            offline Python tools that build data from DCS and a map (stdlib only, 3.7+);
                              each mission's tools take its folder: python map_data_tools\miz_zones.py missions\<mission>
+  map_surveys/               the Lua run by a map's survey missions (Afghanistan's spawn site survey and its viewer)
+                             → Saved Games\DCS\Scripts\map_surveys\ (beside this PC's local_paths.lua)
   offline_test_harness/      runs a mission's scripts on stubbed DCS and compares with a baseline
 missions/
   syria_a2g/                  dynamic air-to-ground sandbox on Syria (2 players, Blue)
@@ -32,7 +35,7 @@ missions/
   caucasus_multiplayer_random_tasking/   the same style on the Caucasus, multiplayer (F-16C and F/A-18C)
     mission_design.md         its own design: map, scenario, its settings, players
     caucasus_f16/             its scripts → Saved Games\DCS\Scripts\caucasus_f16\
-  afghanistan_campaign/       a persistent campaign, design only
+  afghanistan_campaign/       a persistent campaign: design, and its map's spawn site survey (mission_design.md)
     mission_design.md         its design
 ```
 

@@ -2,9 +2,9 @@
 
 > **What this is:** the design of a persistent DCS campaign on the Afghanistan map. Two coalitions fight a conventional war, in the air and on the ground, over a few hours of play at a time. When the mission is shut down the campaign's state is saved, and the next session picks up from that state. Each side is led by an AI Joint Force Commander (strategy) that hands directives down to an air tasking planner and a Mission Operations Controller (execution). Logistics feed the whole war. Much of the code comes from the Kola mission (`missions/kola_f16_random_tasking/`), and the parts both missions use move into a shared library.
 >
-> **State:** planning only (started 2026-10-03, session 1). Nothing built. Decisions so far are under *Decided*; **next session starts with *Next discussion: the ground war***; everything else still open is under *Open*.
+> **State:** design (started 2026-10-03); **map creation under way since 2026-10-07:** the spawn site survey is built and tested on one area (Bagram / Kabul, John: "looks pretty good"); its tools, how they work and what's next are under *Map data: the site survey*. **Next session: two more small test areas.** Nothing of the campaign itself is built. Still open from earlier: *Next discussion: the ground war* and *Open*.
 >
-> **Paths** are relative to this mission folder (`missions/afghanistan_campaign/`, one up from `development_docs/`) unless they say otherwise.
+> **Paths** are relative to this mission folder (`missions/afghanistan_campaign/`) unless they say otherwise.
 >
 > **Working rules** (carried over from Kola):
 > - Commits are always done by John, on his own schedule; never ask about or perform a commit.
@@ -147,7 +147,7 @@ How (proposed 2026-10-03, to review):
 
 - **A real ground war, fought in DCS** (John): ground forces move and fight, and the front moves because of it. Making it run well is a design problem to solve, not a reason to put it on paper.
 - **The unit is a company** (John agreed, 2026-10-04): one DCS group of 4–12 vehicles, the piece the campaign saves and the MOC orders. The JFC plans in battalion task forces of 3–4 companies.
-- **Movement: mostly by road, plus drawn off-road routes** (John, 2026-10-04): roads don't cover every tactical route, so John draws zones that say where companies can move off road, with terrain facts measured by a survey like Kola's zones. The mountains matter: valleys and passes are what both sides fight over.
+- **Movement: mostly by road, plus off-road routes** (John, 2026-10-04): roads don't cover every tactical route, and the mountains matter: valleys and passes are what both sides fight over. **The off-road routes come from the site survey's slope data, nothing hand-drawn** (John, 2026-10-07: hand-drawn routes dropped; everything is built by code into data files consumed later; *Map data: the site survey*).
 - **DCS's AI fights; the MOC gives broad orders** (John, 2026-10-04), in the same shape as the air controller (situation → directive → intent → orders).
 - **New units are bought with logistics units,** spawned in an own base's grid zones and driven to the front (John, 2026-10-04).
 - **Unit volume starts from Syria's** (John, 2026-10-04: Syria runs fine with lots of moving ground units): see the numbers under *Next discussion*.
@@ -157,8 +157,72 @@ How (proposed 2026-10-03, to review):
 ### Map and opening (2026-10-03)
 
 - **Bases start with fixed owners, set by John;** no random territory roll at the start (unlike Kola).
-- **Spawn zones are drawn by John** in advance, as in Kola's zone survey.
+- ~~Spawn zones are drawn by John in advance, as in Kola's zone survey.~~ Replaced 2026-10-07: the site survey finds them (*Map data: the site survey*).
 - **A grid like Kola's airspace grid** (`divide_airspace.lua`, 10 km cells: own / contested / enemy, regions and pockets).
+- **The theatre is the whole map** (John, 2026-10-07).
+- **Base owners come from the scenario story,** decided together (John, 2026-10-07). Airbase data (codes, classes, tower frequencies) and the player slots (dynamic slots, now for both coalitions) work as in Kola and Caucasus.
+
+### Map data: the site survey, not drawn zones (2026-10-07)
+
+John: drawing zones by hand is time-consuming and limiting, so on this map nobody draws them. A survey finds the places instead.
+
+#### Decided
+
+- **Nothing on this map is drawn by hand** (John): sites, routes and every other map fact are built by code into data files that the missions consume. Hand-drawn off-road routes are dropped too (*Ground war*).
+- **One kind of site:** a clear, flat, dry area where anything fits: a group of ground units, a large SAM site, a target. Nothing more granular (John: the map is big and mostly open). What goes in a site is decided as things spawn.
+- **A survey mission of its own, started by hand,** never part of a flyable mission or its start. Its result serves **any mission on the Afghanistan map**. Run again only after a DCS map update or a change to what it measures.
+- **The map's data lives in the framework, per map** (John: it is mission-agnostic): `shared_mission_framework\map_data\afghanistan\` (not created yet), read by any Afghanistan mission. This is roadmap item 18 arriving early.
+- **Where the pieces live** (John: tools and generators, not mission scripts): the Lua that runs in the survey missions in `shared_mission_framework\map_surveys\` (copied to `Saved Games\DCS\Scripts\map_surveys\`); the Python that decides in `shared_mission_framework\map_data_tools\`; raw survey output in `Saved Games\DCS\map_surveys\<map>\`.
+- **In passes, coarse to fine** (John agreed; resolutions to adjust if they don't work): pass 1 the whole map on a 1 km lattice (cheap: most of the mountains drop out), pass 2 the flat and dry cells at 100 m, then map objects; resumable batches on a timer, so DCS never freezes for long.
+- **Raw measurements in DCS, the judgement in Python,** so the site rules are tuned without flying the survey again.
+- **Test in small areas first, then survey the whole map once** (John: the whole survey takes over an hour, so not more than once). Several test areas, each looked at in a viewer mission with units spawned in the sites to check by eye.
+- **Hands-off** (John: "I just want you to populate the map … I don't want to select zones and run surveys"): one flight of the survey mission surveys, finds the sites and shows them.
+- **Units never stand in water: each unit's own spot is checked at spawn** (John, 2026-10-07, after trucks stood in rivers; option 2 of three): a spot on water moves to the nearest dry ground in the site. The survey's water check stays at 100 m (a 50 m check would add ~50 min to the whole-map survey; John: too long), so a narrow river can still cross a site; the spawner keeps units out of it. The real missions' ground spawner must do the same.
+- **Each vehicle's own spot must also be flat** (John, 2026-10-08: every site suits trucks off road, but parts of a site wouldn't take an SA-10; "require a more stringent flat area for the vehicles within the zone"): the ground at the spot and 8 points 8 m around it within 0.8 m (a 16 m footprint, ~3°); else the nearest dry, flat spot in the site, or the vehicle is left out. Built in the viewer (`show_spawn_sites.lua`, `goodSpot`), and in the framework's placement for every mission (`Placement.unevenGround` in `isClear` / `isClearRoad`, 2026-10-08; John: "working exceptionally well"). The site rules themselves are unchanged.
+- **SA-10s to judge the sites by** (John, 2026-10-08): the viewer lays out 50 SA-10s (the framework's own recipe, `sam_site_recipes.lua`, read from the repository) in sites picked evenly across the shown areas, red circles on the F10 map; the rest of the sites keep their trucks.
+- **Unit routing from pass 1** (John: "a very good idea"; not built): the lattice's slope data is also a map of where vehicles can drive, so the ground planner can find off-road routes and give companies waypoints (DCS ground units don't find their own way off road).
+- **Grid assignment comes later, on top** (not built): each campaign grid cell gets the sites inside it; when a base changes hands its cells' sites go with them, nothing surveyed again.
+- **Trees are invisible to every DCS API:** a site in a green zone may hold orchards.
+
+#### How it works (built 2026-10-07)
+
+**The missions** (in `Saved Games\DCS\Missions\`, written by `find_spawn_sites.py make-missions` from John's empty `Afghanistan_survey_1.miz`; each is one trigger, ONCE → TIME MORE 1 → DO SCRIPT, running one `map_surveys` script; both need the de-sanitized `MissionScripting.lua`):
+- **`afghanistan_spawn_site_survey.miz`:** the survey. Fly it, wait for "SURVEY DONE" (~1–2 min per area), look at the F10 map.
+- **`afghanistan_spawn_sites_shown.miz`:** shows what has been found so far, without surveying.
+
+**One flight of the survey mission:**
+1. **`map_surveys\survey_spawn_sites.lua`** surveys a 30 × 30 km square around each airbase in its `TEST_AREAS_AROUND` list (now Kandahar, Camp Bastion, Herat, Jalalabad, Maymana Zahiraddin Faryabi; DCS's names), snapped to the 1 km lattice. An area whose file already exists is skipped (delete its `area_<name>.lua` to survey it again). A trigger zone in the survey mission, if there is one, is surveyed instead of the list (its name names the area). Per area:
+   - pass 1: every 1 km cell, 3 × 3 heights and surface types (L land, R road, W water, S shallow water, U runway);
+   - pass 2: the cells with ≤ 60 m between their highest and lowest pass-1 point and no water (loose on purpose): 11 × 11 heights and surface types every 100 m, edges included, and the distance from the cell's centre to the nearest road;
+   - map objects (buildings, walls, rubbish, containers …): one `world.searchObjects` per 5 km tile; per cell the count, and on pass-2 cells the count in each 100 m square and a tally by type;
+   - written to `Saved Games\DCS\map_surveys\Afghanistan\area_<name>.lua` (`SURVEYED_AREA`).
+2. Then it runs **`map_data_tools\find_spawn_sites.cmd`** (Python 3.10 if installed, else `python`), which runs **`find_spawn_sites.py`** on every `area_*.lua` and logs to `find_spawn_sites.log` beside them. The repository's place on this PC comes from **`Saved Games\DCS\Scripts\map_surveys\local_paths.lua`** (`MAP_SURVEY_PATHS.repository_folder`), which lives only there, never in the repository (bug 76); copying the scripts leaves it alone. Without it the run ends with the command to type.
+3. Then it runs **`map_surveys\show_spawn_sites.lua`**, the viewer.
+
+**The site rules** (`find_spawn_sites.py`, at the top of the file): every 100 m survey point is tried as a centre:
+- a disc of **275 m radius** (550 m across; Kola's zones were 274 m circles, which every SAM site and target fit);
+- every survey point in it surveyed in pass 2 (else "steep or wet nearby"), on land or road (no water, shallow water or runway);
+- **no map object** in any 100 m square that reaches within the disc + 50 m;
+- **≤ 15 m** between its highest and lowest point, and **≤ 10 m** between any two neighbouring points (a 10 % slope);
+- then the flattest first, **≥ 1 km between centres**.
+
+It writes `spawn_sites_<name>.lua` (`SPAWN_SITES`: the area, the rules, the counts and why points were rejected, each site's number, x / z, radius, height, rise, and road distance from its cell; and the "near misses", flat and dry cells with no site) and prints a summary per area.
+
+**The viewer** (`show_spawn_sites.lua`) reads every `spawn_sites_*.lua` and draws, on the F10 map for everyone: each area's outline and name (yellow), each site as a green circle with its number, each near miss as an orange square. On the ground: one **Red ground group per site** (CJTF Red, AI off, so F7 cycles through them; John asked for units, not statics), 19 Ural-375 trucks: one at the centre, 6 at 45 % of the radius, 12 at 90 %. **Each truck's spot is checked:** on water it moves to the nearest dry spot (land or road) in the site, looked for on rings 10 m apart, 16 directions each; with none it is left out. The screen and `dcs.log` (`[SPAWN SITES SHOWN]`) say how many moved or were left out.
+
+**The probe** (`map_surveys\probe_terrain_survey_costs.lua`, the first step, flown once): times every DCS call the survey uses, writes every airbase (`airbases.lua`: name, id, callsign, category, coalition, position, runways, parking) and surveyed 60 × 60 km around Bagram and Kabul. Its findings shaped the survey; they are in `dcs_scripting_gotchas.md` (call costs, Afghanistan's map) and below.
+
+#### What has been run
+
+- **The probe, 2026-10-07** (~8 min): height ~65 µs, surface ~24 µs, nearest road ~0.16 ms, **nearest railway ~0.2 s** (no railways on the map: never asked), ~6 µs per map object found. 26 real airbases; heliports report as airdromes; FOB Camp Dubs, Clark and Thunder are placeholders far off the map with no runways. Around Bagram / Kabul 38 % of the 1 km cells were flat and dry, but there are 1.5 million map objects (Afghan compound pieces, `PARTHOUSEAFGHANISTAN_*`), so in the built-up valleys the objects decide more than the slope. A whole-map survey: estimated ~1½–2 h of running.
+- **Bagram / Kabul, from the probe's data** (converted into the survey's format, `area_Bagram_Kabul_probe.lua`, because the probe kept every object): **214 sites** in 60 × 60 km, median 331 m from a road. Points rejected as centres: map objects 91,515, steep or wet nearby 17,247, rise 12,208, water or runway 11,149, slope 44. **John's review in the viewer, 2026-10-07: "That looks pretty good honestly"**; the one problem, trucks in rivers, led to the spawn-time water check (above; built after that review, not seen in DCS yet).
+- **The five preset areas: not surveyed yet.**
+
+#### Next
+
+1. **Two more small test areas** (John, next session): **Kandahar** (open desert and dunes) and **Jalalabad** (a narrow green river valley between mountains), set in `TEST_AREAS_AROUND` 2026-10-08 and copied to DCS; the other three presets stay in the script's comment. Fly the survey mission, review in DCS. Check that no truck stands in water any more. Then John approves before the whole map.
+2. **The whole-map survey**, once the rules hold: the whole map in 100 × 100 km tiles, one file per tile (that is what makes it resumable); find the map's real edges first; heights and surface letters packed into short strings (~0.5 KB per flat cell); a bigger time budget per tick (nobody flies during it). Then `find_spawn_sites.py` across tile edges, and the result in `shared_mission_framework\map_data\afghanistan\`.
+3. Then the grid assignment and the off-road routing from pass 1.
 
 ---
 

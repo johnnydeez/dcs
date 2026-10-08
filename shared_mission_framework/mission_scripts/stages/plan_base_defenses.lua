@@ -223,21 +223,40 @@ local function planGroup(ab, ctx, comp, pl, index, rejects)
         end
         return true
     end
-    local centre, rj = Placement.findClear(ab, candidate, TRIES_GROUP, spaced)
+    -- the kind of each open-ground point tried, for the flattest one if it is taken
+    local kindOf = {}
+    local function candidateWithKind()
+        local p = candidate()
+        if p then kindOf[p] = kindUsed end
+        return p
+    end
+    local centre, rj, flatOpen = Placement.findClear(ab, candidateWithKind, TRIES_GROUP, spaced)
     addRejects(rejects, rj)
     local onRoad = false
     if not centre then
         -- open ground ran out: an airfield road beats being dropped
-        centre, rj = Placement.findClear(ab, function() return Placement.airfieldRoadPoint(ab) end,
+        local flatRoad, flat
+        centre, rj, flatRoad = Placement.findClear(ab, function() return Placement.airfieldRoadPoint(ab) end,
             TRIES_ROAD, spaced, Placement.isClearRoad)
         addRejects(rejects, rj, "road_")
         if not centre then
-            centre, rj = Placement.findClear(ab, function() return Placement.airfieldRoadPoint(ab, ROAD_WIDE_RUNWAY_M) end,
+            centre, rj, flat = Placement.findClear(ab, function() return Placement.airfieldRoadPoint(ab, ROAD_WIDE_RUNWAY_M) end,
                 TRIES_ROAD, spaced, Placement.isClearRoad)
             addRejects(rejects, rj, "road_wide_")
+            flatRoad = Placement.flatter(flatRoad, flat)
         end
-        if not centre then return nil, 0 end
-        onRoad, kindUsed = true, "road"
+        if centre then
+            onRoad, kindUsed = true, "road"
+        elseif flatOpen or flatRoad then
+            -- no flat ground anywhere: the flattest spot found, never dropped for slope
+            -- (John, 2026-10-08)
+            local best = Placement.flatter(flatOpen, flatRoad)
+            centre = best.p
+            if best == flatOpen then kindUsed = kindOf[best.p] else onRoad, kindUsed = true, "road" end
+            addRejects(rejects, { placed_on_slope = 1 })
+        else
+            return nil, 0
+        end
     end
     ctx.centres[#ctx.centres + 1] = centre
 
@@ -291,11 +310,20 @@ local function planGroup(ab, ctx, comp, pl, index, rejects)
         if u == 1 then
             p, unitOnRoad = centre, onRoad
         else
+            -- no flat spot at any step: the flattest one found (and whether it was on a road),
+            -- never dropped for slope (John, 2026-10-08)
+            local flattest
             for _, st in ipairs(steps) do
-                local rju
-                p, rju = Placement.findClear(ab, st[1], TRIES_UNIT, unitSpacedBy(st[2]), st[3])
+                local rju, flat
+                p, rju, flat = Placement.findClear(ab, st[1], TRIES_UNIT, unitSpacedBy(st[2]), st[3])
                 addRejects(rejects, rju, st[5])
+                if flat then flat.on_road = st[4] end
+                flattest = Placement.flatter(flattest, flat)
                 if p then unitOnRoad = st[4]; break end
+            end
+            if not p and flattest then
+                p, unitOnRoad = flattest.p, flattest.on_road
+                addRejects(rejects, { placed_on_slope = 1 })
             end
         end
         if p then

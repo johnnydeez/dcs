@@ -435,6 +435,8 @@ The Afghanistan plan's requirement: "nothing in the shared library knows which s
 
 **For:** framework (from the framework `plan.md`'s *Later*, 2026-10-06; its decision 2).
 
+**Needed first for Afghanistan** (John, 2026-10-07): the Afghanistan map's data (the site survey's sites, routes, airbases) is mission-agnostic, so it lives in the framework per map (e.g. `shared_mission_framework\map_data\afghanistan\`) from the start, read by any mission on that map. Kola and Caucasus keep theirs in their mission folders for now. Design: `missions\afghanistan_campaign\mission_design.md`, *Map data: the site survey*.
+
 ---
 
 ## 19. Darkstar for every human player: a frequency per slot, heard on each player's own PC

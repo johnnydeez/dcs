@@ -75,6 +75,35 @@ function Placement.badSurface(p)
     return false
 end
 
+-- How much the ground under p rises: the highest minus the lowest of the spot and
+-- CLEAR_FLAT_DIRECTIONS points CLEAR_FLAT_SAMPLE_M around it (config.lua). With `stopAbove`,
+-- it stops as soon as the rise passes it.
+function Placement.groundRise(p, stopAbove)
+    local r, n = CONFIG.CLEAR_FLAT_SAMPLE_M, CONFIG.CLEAR_FLAT_DIRECTIONS
+    local low = land.getHeight({ x = p.x, y = p.z })
+    local high = low
+    for i = 0, n - 1 do
+        local a = i * 2 * math.pi / n
+        local h = land.getHeight({ x = p.x + r * math.cos(a), y = p.z + r * math.sin(a) })
+        if h < low then low = h end
+        if h > high then high = h end
+        if stopAbove and high - low > stopAbove then break end
+    end
+    return high - low
+end
+
+-- True if the ground under p isn't flat enough for a vehicle (CLEAR_FLAT_MAX_RISE_M).
+function Placement.unevenGround(p)
+    return Placement.groundRise(p, CONFIG.CLEAR_FLAT_MAX_RISE_M) > CONFIG.CLEAR_FLAT_MAX_RISE_M
+end
+
+-- Of two { p, rise } candidates (either may be nil), the flatter.
+function Placement.flatter(a, b)
+    if not a then return b end
+    if not b then return a end
+    return b.rise < a.rise and b or a
+end
+
 -- ── Zones ───────────────────────────────────────────────────────
 -- Surveyed zones (data/zones.lua via plan.world.zones): { pos = { x, z }, type, radius |
 -- verts = { { x, z }, ... } }. Circles have a radius; a quad's usable radius is the
@@ -127,34 +156,44 @@ function Placement.isClear(base, p)
         if Placement.nearZone(base.zones, p, ZONE_KEEP_OUT_M) then return false, "zone" end
     end
     if Placement.badSurface(p) then return false, "surface" end
+    if Placement.unevenGround(p) then return false, "slope" end
     return true
 end
 
 -- The check for a point on an airfield road: off runway boxes and parking, and not on
 -- runway/taxiway or water. No surface ring — a road may run beside a taxiway or a lake.
-function Placement.isClearRoad(base, p)
+-- `anySlope`: no flat-ground check (a convoy's road point: it drives off at once).
+function Placement.isClearRoad(base, p, anySlope)
     if Placement.onRunwayBox(base, p) then return false, "runway" end
     if Placement.nearParking(base, p) then return false, "parking" end
     if Placement.nearZone(base.zones, p, ZONE_KEEP_OUT_M) then return false, "zone" end
     if blockedSurface()[land.getSurfaceType({ x = p.x, y = p.z })] then return false, "surface" end
+    if not anySlope and Placement.unevenGround(p) then return false, "slope" end
     return true
 end
 
 -- Tries `pointFn()` up to `tries` times until a point passes `clearFn` (default isClear)
 -- and, if given, `extraCheck(p)` (returns ok, reason). pointFn may return nil (counted
--- as "no_point"). Returns point or nil, plus a { reason = count } tally of rejections.
+-- as "no_point"). Returns point or nil, a { reason = count } tally of rejections, and the
+-- flattest point that failed only on slope ({ p, rise }, or nil): never drop a unit for
+-- slope (John, 2026-10-08: "it should jitter and try and place it somewhere flat inside
+-- the zone"), so a caller whose every step found no flat spot takes the flattest instead.
+-- The slope check comes last in isClear / isClearRoad, so "slope" means all else passed.
 function Placement.findClear(base, pointFn, tries, extraCheck, clearFn)
     clearFn = clearFn or Placement.isClear
-    local rejects = {}
+    local rejects, flattest = {}, nil
     for _ = 1, tries do
         local p = pointFn()
         local ok, why = false, "no_point"
         if p then ok, why = clearFn(base, p) end
         if ok and extraCheck then ok, why = extraCheck(p) end
-        if ok then return p, rejects end
+        if ok then return p, rejects, flattest end
+        if why == "slope" and (not extraCheck or extraCheck(p)) then
+            flattest = Placement.flatter(flattest, { p = p, rise = Placement.groundRise(p) })
+        end
         rejects[why] = (rejects[why] or 0) + 1
     end
-    return nil, rejects
+    return nil, rejects, flattest
 end
 
 -- Where supply trucks go so that every unit in `targets` ({ x, z } each) is within
@@ -176,18 +215,21 @@ function Placement.supplyTruckPoints(view, targets, occupied, opts, clearFn)
         local cx, cz = 0, 0
         for _, t in ipairs(uncovered) do cx, cz = cx + t.x, cz + t.z end
         local centre = { x = cx / #uncovered, z = cz / #uncovered }
-        local best
+        -- best: on flat ground; sloped: the best spot that failed only on slope, taken when
+        -- no flat spot reaches anything (most covered, then the flattest)
+        local best, sloped
         for _, factor in ipairs({ 1, 0.5 }) do
             local sp2 = (opts.spacing_m * factor) ^ 2
             for _ = 1, opts.tries do
                 local p = Placement.discPoint(centre, opts.reach_m)
-                local ok = clearFn(view, p)
-                if ok then
+                local ok, why = clearFn(view, p)
+                local flatOnly = not ok and why == "slope"
+                if ok or flatOnly then
                     for _, o in ipairs(occupied) do
-                        if (p.x - o.x) ^ 2 + (p.z - o.z) ^ 2 < sp2 then ok = false; break end
+                        if (p.x - o.x) ^ 2 + (p.z - o.z) ^ 2 < sp2 then ok, flatOnly = false, false; break end
                     end
                 end
-                if ok then
+                if ok or flatOnly then
                     local covered, farthest = 0, 0
                     for _, t in ipairs(uncovered) do
                         local d2 = (p.x - t.x) ^ 2 + (p.z - t.z) ^ 2
@@ -196,14 +238,21 @@ function Placement.supplyTruckPoints(view, targets, occupied, opts, clearFn)
                             if d2 > farthest then farthest = d2 end
                         end
                     end
-                    if covered > 0 and (not best or covered > best.covered
+                    if ok and covered > 0 and (not best or covered > best.covered
                        or (covered == best.covered and farthest < best.farthest)) then
                         best = { p = p, covered = covered, farthest = farthest }
+                    elseif flatOnly and covered > 0 then
+                        local rise = Placement.groundRise(p)
+                        if not sloped or covered > sloped.covered
+                           or (covered == sloped.covered and rise < sloped.rise) then
+                            sloped = { p = p, covered = covered, rise = rise }
+                        end
                     end
                 end
             end
             if best then break end
         end
+        best = best or sloped
         if not best then break end
         points[#points + 1] = best.p
         occupied[#occupied + 1] = best.p
