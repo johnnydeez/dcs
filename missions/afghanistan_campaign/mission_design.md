@@ -2,7 +2,7 @@
 
 > **What this is:** the design of a persistent DCS campaign on the Afghanistan map. Two coalitions fight a conventional war, in the air and on the ground, over a few hours of play at a time. When the mission is shut down the campaign's state is saved, and the next session picks up from that state. Each side is led by an AI Joint Force Commander (strategy) that hands directives down to an air tasking planner and a Mission Operations Controller (execution). Logistics feed the whole war. Much of the code comes from the Kola mission (`missions/kola_f16_random_tasking/`), and the parts both missions use move into a shared library.
 >
-> **State:** design (started 2026-10-03); **map creation under way since 2026-10-07:** the spawn site survey is built and tested on three areas (Bagram / Kabul, Kandahar, Jalalabad); **John approved its site finding 2026-10-08** after reviewing them in the viewer with trucks and SA-10s. Its tools, how they work and what's next are under *Map data: the site survey*. **The whole map was surveyed 2026-10-08: 249,458 spawn sites, split by tile in `shared_mission_framework\map_data\afghanistan\`.** Next: a look at the sites, then the grid assignment and off-road routing. Nothing of the campaign itself is built. Still open from earlier: *Next discussion: the ground war* and *Open*.
+> **State:** design (started 2026-10-03); **map creation under way since 2026-10-07:** the spawn site survey is built and tested on three areas (Bagram / Kabul, Kandahar, Jalalabad); **John approved its site finding 2026-10-08** after reviewing them in the viewer with trucks and SA-10s. Its tools, how they work and what's next are under *Map data: the site survey*. **The whole map was surveyed 2026-10-08: 249,458 spawn sites, split by tile in `shared_mission_framework\map_data\afghanistan\`.** **The opening decided 2026-10-08** (*Map and opening*, *The opening*): Red holds Kabul and the east, Blue the south and west, no neutral bases, three receiving bases each. **Base domains and rings built 2026-10-08** (*Base domains and rings*): every site has a home base; seen in the viewer and approved by John as a first pass. Next: the off-road routing. Nothing of the campaign itself is built. Still open from earlier: *Next discussion: the ground war* and *Open*.
 >
 > **Paths** are relative to this mission folder (`missions/afghanistan_campaign/`) unless they say otherwise.
 >
@@ -162,6 +162,27 @@ How (proposed 2026-10-03, to review):
 - **The theatre is the whole map** (John, 2026-10-07).
 - **Base owners come from the scenario story,** decided together (John, 2026-10-07). Airbase data (codes, classes, tower frequencies) and the player slots (dynamic slots, now for both coalitions) work as in Kola and Caucasus.
 
+#### The opening: who holds what (2026-10-08)
+
+**Red holds Kabul and the east, Blue the south and west** (John: "a great split"). Red reached the capital first, Pakistan backs it across the eastern edge (the Khyber road to Jalalabad), Russia and China fly in from the north. Blue holds NATO's old bases in the south and Herat in the west. Blue's objective is the capital; Red's is Blue's supply in the south. The deposits that explain the war (lithium near Ghazni, copper at Mes Aynak south of Kabul, iron at Hajigak in Bamyan) lie along the front.
+
+**No neutral bases** (John: no mad dash of base grabbing every start). Every base has an owner from the first minute. John fixed the split and the rule; Claude divided the bases left over (Ghazni, Sharana, Chaghcharan, Maymana) at John's ask.
+
+| | Red (10 fields) | Blue (13 fields) |
+|---|---|---|
+| Hubs (≥ 2,300 m: AWACS, heavies) | Bagram (3,388 m), Kabul (3,168 m) | Kandahar (2,981 m), Camp Bastion (3,245 m), Herat (2,719 m) |
+| Other fields | Jalalabad, Khost, FOB Salerno, Gardez, Sharana, Bamyan | Dwyer, Bost, Tarinkot, Shindand, Farah, Qala i Naw, Nimroz, Zaranj, Maymana, Chaghcharan |
+| Helipads (go with their field) | Ghazni Heliport, Urgoon Heliport | Camp Bastion Heliport, Kandahar Heliport, Shindand Heliport |
+| **Primary receiving bases** | **Bagram** (airlift from the north), **Jalalabad** (the road from Pakistan), **Khost** (the Pakistan border, south-east) | **Camp Bastion**, **Kandahar**, **Herat** |
+
+- **Three receiving bases each** (John: two or three, the same for both sides): one per flank, all in the rear, so losing one hurts without ending the war.
+- **Why the leftovers went where they did:** Ghazni and Sharana sit with Red's Gardez–Urgoon cluster (140–165 km from Kabul, ~330 km from Kandahar), so in Blue's hands they'd be isolated far forward. Maymana is Herat's northern arm (~180 km from Qala i Naw, ~420 km from Bagram), and Red has no story in the north-west.
+- **Chaghcharan is Blue** (John, 2026-10-08, changed from Claude's Red: more space at the start, no deep Red incursion into Blue's territory). As Red it was a salient 204 km from Qala i Naw and 290 km from Herat, a short western front onto a receiving base; now Red's nearest field to Herat is Bamyan, ~520 km. Chaghcharan is Blue's exposed highland outpost instead (1,740 m runway, 5 spots, 2,271 m up; ~234 km from Bamyan).
+- **One front, roughly north to south:** Bamyan, Ghazni and Sharana (Red) against Chaghcharan, Tarinkot and Kandahar (Blue), ~230–330 km apart; the south end along Highway 1. Red's territory is one compact eastern block.
+- **Not airbases:** FOB Camp Dubs, Clark and Thunder are placeholders off the map (the probe, *What has been run*). There are no airbases in Pakistan, Iran or Turkmenistan, so the supply from outside arrives at the receiving bases.
+- **In the mission file** (2026-10-08): `Saved Games\DCS\Missions\afghanistan_campaign.miz`, a copy of John's empty `Afghanistan_survey_1.miz` with every airbase's coalition set as above (the `["coalition"]` line of each airport in the `.miz`'s `warehouses`; nothing else changed). Built by a one-off script, not a repository tool yet.
+- Field data: the probe's `airbases.lua` (`Saved Games\DCS\map_surveys\Afghanistan\`): runways, parking, positions.
+
 ### Map data: the site survey, not drawn zones (2026-10-07)
 
 John: drawing zones by hand is time-consuming and limiting, so on this map nobody draws them. A survey finds the places instead.
@@ -244,7 +265,34 @@ It writes `spawn_sites_<name>.lua` (`SPAWN_SITES`: the area, the rules, the coun
 
 1. ~~**Two more small test areas**~~ (Kandahar and Jalalabad, done and approved 2026-10-08, above).
 2. **The whole-map survey**, once the rules hold. **The theatre to survey is a rectangle John drew on the F10 map** (2026-10-08, `C:\Users\johnk\Desktop\afghanistan_survey_area.jpg`; easier than exclusion zones). It covers Afghanistan from Herat / Zaranj to Jalalabad / Khost, with edges of Turkmenistan, Iran and Pakistan inside it. John's corners read off the F10 map with the mouse (degrees, decimal minutes): NW N37 02.256 E60 37.425, NE N36 39.763 E72 30.615, SW N30 28.647 E60 47.370, SE N30 10.378 E71 51.097. Roughly, in DCS coordinates (a transverse Mercator fitted to 19 airfields' real coordinates against `airbases.lua`: central meridian ~63° E, ~1.3 km accuracy): **x −389,000 to +342,000 (731 km south to north), z −513,000 to +555,000 (1,068 km west to east)**, about 780,000 km², 88 tiles; the survey itself converts the corners exactly with DCS's `coord.LLtoLO`. The F10 map is north-up in DCS's own frame, so the rectangle is a plain x / z box. It lies inside the map, so finding the map's edges is no longer needed. **Built and run 2026-10-08** (*How it works*, *The whole-map survey*; *What has been run*): 96 tiles, 249,458 sites, split by tile.
-3. **Next session:** a look at the sites (drawing them or test spawns in a chosen tile, from the split files), then the grid assignment and the off-road routing from pass 1. A shared loader for the sites comes with the first mission that uses them.
+3. ~~**Next session:** a look at the sites, then the grid assignment~~ (the grid assignment became the base domains, below, 2026-10-08), then the off-road routing from pass 1.
+
+### Base domains and rings (2026-10-08)
+
+How the bases and the spawn sites work together (designed with John 2026-10-08: "that all sounds perfect actually").
+
+#### Decided
+
+- **Each base owns a domain:** the ground nearer to it than to any other base, worked out once from the map, whoever holds the bases. Every spawn site and every grid cell gets a **home base**; a site belongs to whoever holds its home base, so **when a base changes hands its whole domain goes with it** (sites, cells, spawn rights). Matches *Ground war*: the grid follows the bases.
+- **By straight line to start** (John); by travel cost once off-road routing exists (ridgelines then become borders), rewriting only the domain files.
+- **The front** is where a Red domain meets a Blue one; **the contested band is Kola's** (John: "khola's is working well"): a 10 km cell whose nearest Red base and nearest Blue base are within 2 × `AIRSPACE.front_band_km` (30) of each other's distance, i.e. within 30 km of the front. Left to Claude to tune. No spawning inside it; units move into it.
+- **Three rings around each base, opened by time since capture** (John: so taking a base doesn't put an SA-10 there at once, covering a huge piece of enemy ground): ring 1 at once, rings 2 and 3 after timers. A campaign setting, not map data: `afghanistan_campaign\data\base_rings.lua` (`BASE_RINGS`; first numbers: ring 1 to 25 km at once, ring 2 to 75 km after 60 min, ring 3 to the domain's edge after 180 min; to tune). At the campaign's start every base counts as long held. When each base changed hands goes in the saved state.
+- **The site files are never edited** (John: they took a long time to make): what is added about a site goes in companion files keyed by site number. The site files are also in Git, and rebuildable from the survey's raw measurements (*Find the sites again*).
+- **Depth** (to come with the planners): how far a site is behind the front on its own side decides what it's good for (rear: long-range SAMs, depots; middle: medium SAMs, reserves; front band: contact). Recomputed only when a base changes hands. Occupied sites are saved by site number; units that move by position.
+
+#### Built 2026-10-08, seen in DCS and approved as a first pass (John: "I'm not sure it really needs much refinement")
+
+- **`shared_mission_framework\map_data\afghanistan\airbases.lua`:** the probe's airbases (runways, parking), in the repository now, without the three off-map placeholder FOBs.
+- **`map_data_tools\find_base_domains.py`** (4 s): writes **`map_data\afghanistan\base_domains.lua`** (`BASE_DOMAINS`: the 23 bases with a domain, each with its centre (the mean of its runway midpoints), helipads, domain outline (exact, clipped to the survey box), neighbours and the border with each, area, sites, farthest site, sites per 25 km band) and **`map_data\afghanistan\site_domains\tile_*.lua`** (`SITE_DOMAINS_TILE`: per site `{ number, base_id, distance_m }`, the same order as its `spawn_sites` tile; 7.9 MB). It stores the distance, not the ring, so rings are tuned without rerunning it.
+  - **Bases with a domain:** the 21 airfields, and the two helipads with no airfield within 10 km: **Ghazni** and **Urgoon**. Kandahar, Camp Bastion and Shindand Heliports are part of their fields.
+  - Checked: the 23 outlines add up to the survey box (781,044 km²), every site has one home base, neighbours are symmetric.
+  - `find_base_domains.py make-mission` writes the viewer mission from `afghanistan_campaign.miz` (so it shows the campaign's owners).
+- **`mission_scripts\lib\spawn_sites.lua`, the shared loader** (`SpawnSites`): `open(folder)` reads the two indexes; `tilesOverlapping(box)`, `everyTile()`, `tile(t)` (a tile's sites joined with their home base and distance, loaded once), `forget(t)`, `base(id)`, `SpawnSites.ringOf(rings, distance)`. Not loaded by Kola or Caucasus (the harness lists it as never loaded: baselines re-recorded 2026-10-08, the only difference).
+- **The viewer, `map_surveys\show_base_domains.lua`** in **`afghanistan_base_domains_shown.miz`**: each domain filled faintly in its holder's colour (read from DCS), the front line in yellow, the contested band shaded, rings 1 and 2 dashed and cut to their domain, a label per base with its sites per ring. No units. Offline in `luae.exe` with stubbed DCS: 142 polygons, 7 front lines, 23 labels, 1 s to count every site.
+
+**What the numbers say** (the opening as in `afghanistan_campaign.miz`): front line ~800 km; contested band ~58,000 km². Sites per domain vary a lot:
+- **Red's heart is thin on sites:** Kabul 427 (140 in ring 1, 287 in ring 2), Bagram 2,961 but only 117 within 75 km (the rest north over the Hindu Kush), Gardez 718. The dense scenery around Kabul leaves few clear discs. Enough for what a base needs (hundreds, not thousands), but worth watching.
+- **Some domains run off into the neighbouring countries:** Khost (34,269 sites, farthest 396 km) and Urgoon (28,126, 382 km) reach deep into Pakistan; Qala i Naw (28,009, 320 km) and Maymana (21,626) into Turkmenistan; Farah, Zaranj and Nimroz into Iran. Most of those sites are in ring 3. Open: whether a domain stops at Afghanistan's border (no border data from DCS; it could be traced once by hand or approximated), or whether ring 3 gets a cap.
 
 ---
 
