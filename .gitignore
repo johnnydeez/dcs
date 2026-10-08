@@ -21,3 +21,7 @@ shared_mission_framework/offline_test_harness/output/
 # its recorded baselines are re-made from the frozen saved world in seconds; the world itself is kept
 shared_mission_framework/offline_test_harness/baselines/*/*_seed_*/
 shared_mission_framework/offline_test_harness/baselines/*/data_tools/
+
+# Whole-map spawn site surveys' raw measurements (hundreds of MB per run; John backs them up
+# himself). The sites found in them, map_data/<map>/spawn_sites.lua, are kept.
+shared_mission_framework/map_data/*/survey_measurements/

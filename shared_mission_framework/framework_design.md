@@ -67,7 +67,12 @@ shared_mission_framework\             (repository root, beside missions\)
   map_surveys\                        the Lua run by survey missions of a map's own (since 2026-10-07: the
                                       terrain probe, the spawn site survey, its viewer); copied to
                                       Saved Games\DCS\Scripts\map_surveys\, beside this PC's local_paths.lua
-  map_data\<map>\                     a map's data for any mission on it (planned: Afghanistan's spawn sites first)
+  map_data\<map>\                     a map's data for any mission on it (since 2026-10-08, Afghanistan's): survey_area.lua
+                                      (the whole-map survey's rectangle, four GPS corners), spawn_sites_index.lua (the
+                                      sites' index: rules, counts, tiles) and spawn_sites\tile_*.lua (the sites,
+                                      one file per 100 km tile; a mission loads only the tiles it needs), written
+                                      by find_spawn_sites.py; survey_measurements\<run>\ (the raw tiles,
+                                      git-ignored; John backs them up)
   offline_test_harness\               stubbed DCS + replay tests, kept this time (*How the transfer is tested*)
 
 missions\kola_f16_random_tasking\
@@ -1005,7 +1010,7 @@ The runtime can read the mission's weather, time and date, but can't change them
 | `python shared_mission_framework\map_data_tools\unit_pool.py` | after a DCS update, once pydcs has caught up |
 | `python shared_mission_framework\map_data_tools\cloud_presets.py` | after a DCS update |
 | the footprint survey (`CONFIG.SURVEY_FOOTPRINTS`) | after a map update |
-| fly `afghanistan_spawn_site_survey.miz` (it runs `find_spawn_sites.cmd` and the viewer itself); by hand: `python shared_mission_framework\map_data_tools\find_spawn_sites.py` | spawn sites on a map with no drawn zones (Afghanistan; `missions\afghanistan_campaign\mission_design.md`, *Map data: the site survey*) |
+| fly `afghanistan_spawn_site_survey.miz`: with no trigger zone, the whole-map survey of `map_data\<map>\survey_area.lua` (resumes after a crash; at the end it runs `find_spawn_sites.cmd map-survey` itself); with trigger zones, test areas around them (then the viewer). By hand: `python shared_mission_framework\map_data_tools\find_spawn_sites.py map-survey` (whole map, newest finished run) or `… find_spawn_sites.py` (test areas) | spawn sites on a map with no drawn zones (Afghanistan; `missions\afghanistan_campaign\mission_design.md`, *Map data: the site survey*); the whole map again after a DCS map update (comms menu, *Survey the map again*) |
 | `python shared_mission_framework\map_data_tools\find_spawn_sites.py make-missions` | writes the survey and viewer missions from John's `Afghanistan_survey_1.miz` (the survey mission isn't overwritten without `--force`) |
 | `python desanitize_dcs.py` (repo root, admin shell) + full DCS restart | after every DCS update |
 | `python shared_mission_framework\radio_calls\phrase_bank_wording.py`, then `play_sample_awacs_calls.py` (player running) | after changing `awacs_phrases.json` |
