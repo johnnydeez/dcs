@@ -435,6 +435,8 @@ The Afghanistan plan's requirement: "nothing in the shared library knows which s
 
 **For:** framework (from the framework `plan.md`'s *Later*, 2026-10-06; its decision 2).
 
+**Status:** built for Afghanistan 2026-10-08: `shared_mission_framework\map_data\afghanistan\` holds the survey area, the spawn sites by tile, the airbases and the base domains, read through the shared loader `mission_scripts\lib\spawn_sites.lua`. Kola and Caucasus still keep their map data in their own folders. Close it (`closed.md`) when John agrees.
+
 **Needed first for Afghanistan** (John, 2026-10-07): the Afghanistan map's data (the site survey's sites, routes, airbases) is mission-agnostic, so it lives in the framework per map (e.g. `shared_mission_framework\map_data\afghanistan\`) from the start, read by any mission on that map. Kola and Caucasus keep theirs in their mission folders for now. Design: `missions\afghanistan_campaign\mission_design.md`, *Map data: the site survey*.
 
 ---

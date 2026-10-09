@@ -163,6 +163,135 @@ Globals don't clash between missions: only one mission runs at a time.
 
 **Consumers own the DCS formats.** The `coalition.addGroup` tables, waypoint and task tables, `outText` strings, menus and map marks are built from plan entries when used and thrown away. Going from an entry to an `addGroup` table is a translation, not a decision. One spawner per kind of DCS object (John), made flexible with optional entry fields, never a spawner per feature: `SpawnStaticObjects`, `SpawnGroundGroups` (optional `route`), `SpawnAircraftGroups`.
 
+### Roles: Watch, Record, Decide, Execute, Inform, Logs, Data, Tools (John, 2026-10-09)
+
+**Decided 2026-10-09** (worked out with John over the day, checked against four features traced function by function). **The code moves to this layout in one set of work, next session** (*The move to the role folders* below). Until then the *Script layout* further down is what's on disk.
+
+Every piece of the framework has **one role**, and **the role is its folder**. The role's word is used for the folder, in the docs and in conversation, and means one thing only. Inside a folder, files are named by **subject** (`watch\radar_picture.lua`, `record\radar_picture.lua`), not by another verb; only `execute\` keeps a verb in its file names, because there the verb is the DCS operation itself (`execute\spawn_aircraft_groups.lua`).
+
+| Role (folder) | What it is for | It produces | It reads | It never |
+|---|---|---|---|---|
+| **Watch** (`watch\`) | the only place live DCS is read | **facts**: what is true now, and facts worked out from them ("contact inbound on Ivalo in 9 min", "inbound for 8 rounds", "company C stuck"), written to the Record | DCS, the Record | chooses, changes the sim, tells anyone |
+| **Record** (`record\`) | the mission's one record of what is known and what has been decided: everything one part needs from another lives here | **entries**, each with exactly one writer, readable by all; publishes each change to whoever subscribed | | decides anything (it holds) |
+| **Decide** (`decide\`) | every decision about the war: the mission plan at start, the JFC (strategy), the MOC (air flights, later ground companies) | **decisions** and its **ledgers** (callsigns given out, jets committed, spots held), written to the Record | the Record, Data, Tools | reads DCS, changes the sim, tells anyone |
+| **Execute** (`execute\`) | the only place the sim is changed | **DCS calls**: spawn, `setTask` / `pushTask`, remove, a base's coalition, AI on / off | decisions in the Record | chooses: it acts the moment it is told, and the same decision always gives the same calls |
+| **Inform** (`inform\`) | the players, during the game | **what they see and hear**: screen text, radio calls, F10 map marks, comms menus, briefs | the Record, Data, Tools | changes the war; its choices are only how to tell (order, wording, when a call is worth making) |
+| **Logs** (`logs\`) | us, after the game | **log files**: the event log (its event words unchanged: `CONTROL`, `CONTACT`, `RADIO_CALL` …), `dcs.log` | the Record | feeds anything back |
+| **Data** (`data\`) | everything fixed before the mission starts | **plain tables**, no code: settings, recipes, rosters, DCS facts, generated tables | | contains logic (the Record is its live counterpart) |
+| **Tools** (`tools\`) | accessories for building and describing: not a step of the mission's flow, asked by any role | **answers** to a question from its arguments ("how far does this SAM reach at 300 m?", "how does company C drive A → B?", "the next free callsign", "the magnetic bearing as the F-16 shows it") | its arguments, Data, the terrain | keeps state, changes the sim |
+
+**How it flows:**
+```
+DCS ──► WATCH ──► RECORD ◄──► DECIDE
+                    │   (decisions and ledgers go back into the Record)
+                    ├──► EXECUTE ──► DCS
+                    ├──► INFORM ──► the players (screen, radio, map, menus)
+                    └──► LOGS ──► the event log, dcs.log
+        DATA and TOOLS: read and asked by any role
+```
+
+**The rules:**
+1. **One way through.** DCS → Watch → Record → Decide → Record → Execute → DCS. Inform and Logs read the Record; nothing reads from Inform or Logs.
+2. **Everything one part needs from another is in the Record**, and **each entry has exactly one writer**: Watch writes facts, Decide writes decisions and ledgers. A part may keep private working state nobody else needs (the stuck detector's last few positions, which radio phrases were used lately).
+3. **If nothing is chosen, it's Watch.** Facts worked out from other facts, even counted over time ("inbound for 8 rounds", "hot for 2 checks"), are Watch's; the threshold that acts on them is Decide's.
+4. **Decide owns timing:** "launch in 85 s", and the look again before acting ("is the raid still there?"), are decisions. Execute acts at once.
+5. **The mission plan is the Record's first entry:** what Watch read at start (`plan.world`) and the decisions Decide made at start (territory, defences, SAM sites, targets, the air tasking orders), never changed afterwards.
+6. **What a player chooses is a fact.** Inform builds the comms menus; a player's choice (take a tasking, go on alert: roadmap item 14) is something Watch records, and Decide acts on it.
+7. **Inform's choices are about telling, not the war:** which contact first, which words, whether a threat is worth a call now. A choice that changes what happens in the war is Decide's.
+8. **Terrain questions are allowed everywhere** (`land.getHeight`, `getSurfaceType`, `getClosestPointOnRoads`, `findPathOnRoads`): the map is fixed, so asking it is like reading Data. Reading live units and objects is Watch's alone.
+9. **A Record entry may be worked out when it is read** (the flight situations are built only when a directive asks, as today), by the Watch code that owns it; it is still a Watch fact.
+10. **Start-up is not a role:** `load_framework.lua` and `run_mission.lua` stay at the top and only load and start things. Load order: data → tools → logs → record → watch → decide → execute → inform; the run order stays in `run_mission.lua`.
+
+**Which role, for one function** (the test the move uses on every function):
+1. Does it read live DCS? → **Watch**
+2. Does it change DCS? → **Execute**
+3. Does it choose what happens in the war? → **Decide**
+4. Does it give players something to see or hear? → **Inform**
+5. Does it write a log file? → **Logs**
+6. Does it hold what others need to read? → **Record**
+7. Does it only answer from its arguments? → **Tools**
+8. Is it a plain table? → **Data**
+
+A function that answers yes to two of these is two functions.
+
+**The Record's mechanism** (`record\record.lua`): `Record.publish(subject, event)` and `Record.subscribe(subject, fn)`, one way for every change, replacing today's separate listeners (`TrackRadarPicture.on`, `ControlAirFlights.onDecision`, the scheduler's record queries). Each `record\<subject>.lua` holds its entries, the functions to read them, and one write function, named in its header with its one writer. Inform's own bookkeeping of what it has said (`SendRadioCalls.onCall`: the pilots' answers hear Darkstar's orders as said) stays inside Inform.
+
+**Module names** follow the file's path, in CamelCase: `WatchRadarPicture`, `RecordRadarPicture`, `DecideAirFlightsScrambles`, `DecideMissionPlanSamSites`, `ExecuteSpawnAircraftGroups`, `InformRadioDarkstarPicture`, `InformMapSamSites`, so every call shows its role. Tools and Logs keep short names, because every role calls them: `Util`, `Placement`, `SamReach`, `ThreatRouting`, `Weather`, `SpawnSites`, `Bearings`, `RadarCoverage`, `FlightCallsigns`, `GroundRoutes`; `Log` (dcs.log), `EventLog`. Data globals are unchanged (`CONFIG`, `AIR_CONTROL`, …).
+
+**Outside DCS, by the same roles:** `radio_calls\` is Inform's other half (the radio helper words and voices calls, the radio player plays them; it also reads the jet's radios through the export script); `map_data_tools\` and `map_surveys\` are Tools (offline, building map data); `map_data\` and each mission's `data\` are Data; `offline_test_harness\` tests. The one-off measurement scripts in `mission_scripts\survey\` stay there: they run in their own missions, not as part of a mission's flow.
+
+#### Two features, function by function
+
+**Scrambles** (a raid is seen, a fighter launches, is leashed, lands back on alert):
+
+| # | Role | File | What happens (today's function) |
+|---|---|---|---|
+| 1 | Data | `data\air_tasking.lua` (`AIR_DEFENSE`), `data\aircraft_profiles.lua`, `data\flight_callsigns.lua` | warning time, inbound rounds, reaction delay, turnaround; speeds; callsign names |
+| 2 | Watch → Record | `watch\radar_picture.lua` → `record\radar_picture.lua` | the contacts and their derived facts (`poll`, `finishRound`, `threatOf`); how many rounds each has been inbound (today counted in `scramble_fighters.check`) |
+| 3 | Watch → Record | `watch\airbases.lua` → `record\airbases.lua` | who holds each base, which ramp spots DCS reports free (today in `TrackAlertJets.canLaunch`, `freeSpot`) |
+| 4 | Decide | `decide\air_flights\scrambles.lua` | `check`: inbound long enough, no patrol covering it, not under enemy SAMs; `pickBase`, the intercept point, the airborne cap → **scramble MSN7901 from Kuusamo, launch in 85 s** |
+| 5 | Tools | `tools\sam_reach.lua`, `tools\flight_callsigns.lua` | "in a kill zone?"; "the next free callsign is Rus 1" |
+| 6 | Decide → Record | `decide\air_flights\alert_jets.lua` → `record\alert_jets.lua`, `record\callsigns.lua`, `record\flights.lua` | the ledger (a jet committed, the cooldown, spot 7 held), the callsign in use, the new flight's entry |
+| 7 | Decide | `decide\air_flights\scrambles.lua` | 85 s later (`launch`): raid still there, a spot still free → **launch** |
+| 8 | Execute | `execute\spawn_aircraft_groups.lua` | `buildGroup`, `spawn` |
+| 9 | Watch → Record | `watch\flight_record.lua` → `record\flights.lua` | takeoff, landing, losses |
+| 10 | Decide | `decide\air_flights\directives.lua` | the leash each picture round: raid heading away → **home** |
+| 11 | Execute | `execute\air_flight_orders.lua` | `setTask` with a route home (today `GiveOrders.home`) |
+| 12 | Decide → Record | `decide\air_flights\alert_jets.lua` | the jet landed → back on alert in 30 min |
+| 13 | Inform | `inform\radio\darkstar_orders.lua`, `inform\radio\flight_calls.lua` | Darkstar's vector and "return to base"; "airborne", answers, check-out |
+| 14 | Logs | `logs\event_log.lua` | `CONTROL scramble`, `no scramble`, `leash home`, `alert: landed…`; `SPAWNED`, `TAKEOFF`, `LAND` |
+
+**The air picture for players** (the BRAA list every 2 min, and Darkstar speaking it):
+
+| # | Role | File | What happens |
+|---|---|---|---|
+| 1 | Data | `data\air_picture_calls.lua`, `data\radio_calls.lua`; the mission's `data\radio_channels.lua` | period, time on screen, aspect bands, threat order; call kinds; each slot's Darkstar frequency |
+| 2 | Watch → Record | `watch\radar_picture.lua` → `record\radar_picture.lua` | the contacts |
+| 3 | Watch → Record | `watch\players.lua` → `record\players.lua` | which players are in which jets, where, airborne (today inside `callAll`) |
+| 4 | Tools | `tools\bearings.lua`, `tools\radar_coverage.lua` | the magnetic bearing as the F-16 shows it (`gridBearing`, `magvarAt`, `variation`); "is this player inside our radar coverage?" (`horizonM`, `groundDetectionM`, `covered`) |
+| 5 | Inform | `inform\screen\air_picture.lua` | per player, contacts near them, highest threat first, as BRAA lines (`pictureFor`, `describe`, `lineText`) |
+| 6 | Inform | `inform\radio\darkstar_picture.lua`, `inform\radio\radio_calls.lua` | the same picture as a spoken call to that jet, a threat call for a hot contact inside 40 nm; each call with its channel and frequency to the radio programs |
+| 7 | Logs | `logs\event_log.lua`, `logs\dcs_log.lua` | `PICTURE_CALL`; `air picture: magvar +12.4° at Rovaniemi` |
+| — | Decide, Execute | | none: telling players changes nothing in the war |
+
+Also traced 2026-10-09: **the bandit call** (Watch: the picture, the flight situations, a missile fired at a flight → Decide: directives, one flight per threat, one intent → Record → Execute: the pushed attack task → Watch: the flight seen following the order → Inform: Darkstar's engage and the pilot's answer → Logs: `CONTROL defend`) and **sleeping base defences** (Watch: enemy aircraft near each base, a sleeping unit hit → Decide: wake or sleep → Record: who is awake → Execute: AI on / off → Logs: `UNIT_AWAKE`, the end table; nothing to Inform). Every function found one role; no role was empty or redundant.
+
+### The move to the role folders (to do in one set of work, next session)
+
+The whole move in one set of work (John, 2026-10-09), then the offline harness and a flight of Kola and of Caucasus. **Every file is sorted function by function with the test above**; the table is the starting point from the 2026-10-09 reading, not the last word. Plain moves use `git mv` so history follows.
+
+| Today | After the move |
+|---|---|
+| `gather.lua` | `watch\world_at_start.lua` (the read of DCS at start) → `record\plan.lua` (`plan.world`) |
+| `stages\roll_territory`, `plan_base_defenses`, `plan_sam_sites`, `divide_airspace`, `plan_fixed_ground_targets`, `plan_convoys`, `catalog_targets`, `plan_air_tasking` | `decide\mission_plan\territory.lua`, `base_defenses`, `sam_sites`, `airspace`, `fixed_ground_targets`, `convoys`, `target_catalog`, `air_tasking` → `record\plan.lua` |
+| `consumers\track_radar_picture.lua` | `watch\radar_picture.lua` (`poll`, the rounds, sensors, `threatOf`, `locate`) + `record\radar_picture.lua` (`contacts`, `contactsNear`, `contact`, `sensors`, the events) |
+| `consumers\track_weapon_impacts.lua` | `watch\weapon_impacts.lua` → `record\weapon_impacts.lua` (Logs writes the `IMPACT` lines) |
+| `consumers\announce_flight_activity.lua` | `watch\flight_activity.lua` (`look`, `weaponsAboard`, `following`, `headingHome`, `waypoint`, the takeoff / shot / kill / loss events as facts) → `record\flight_activity.lua`; `inform\radio\flight_calls.lua` (`say`, `sayOnce`, `weaponCall`, the answers' wording, `targetWords`) |
+| `consumers\track_airfield_traffic.lua` | `watch\airfield_traffic.lua` (`lookDeparting`, `lookFlying`, `runwayLinedUp`, the phases) → `record\airfield_traffic.lua` (roadmap item 15 reads it); `inform\radio\airfield_calls.lua` (`say`, `sayDeparting`, `heard`) |
+| `consumers\schedule_air_tasking_orders.lua` | `watch\flight_record.lua` (landed, destroyed, ramp loss, orphans) → `record\flights.lua` (`record`, `statusOf`, `isGone`, `targetProgress`, …); `decide\air_flights\schedule.lua` (`due`, `later`, `lookAgainAt`); `execute\launch_flights.lua` (`launchNow`, `flyAgain`) |
+| `consumers\control_air_flights\control_air_flights.lua` | `decide\air_flights\air_flights.lua` (the checks, `pick`, the watched flights); its missile-fired handler → `watch\shots.lua` → `record\shots.lua`; `say` / `onDecision` → `record\air_flight_decisions.lua` (Logs writes the `CONTROL` lines); `radarWarningLine` → Watch; its one DCS change → Execute |
+| `consumers\control_air_flights\assess_flight_situations.lua` | `watch\flight_situations.lua` → `record\flight_situations.lua` (worked out when read) |
+| `directives_per_flight`, `coordinate_flights`, `decide_launches`, `scramble_fighters` | `decide\air_flights\directives.lua`, `coordination`, `launches`, `scrambles` (their DCS reads → Watch and the Record; the intercept point's geometry → Tools if it holds no choice) |
+| `consumers\control_air_flights\track_alert_jets.lua` | `decide\air_flights\alert_jets.lua` (the ledger: commit, refund, hold, release, launched, back on alert) → `record\alert_jets.lua`; `freeSpot` / `canLaunch` reads → `watch\airbases.lua`; the landing → `watch\flight_record.lua`; `jetsText` and the `alert:` lines → Logs |
+| `consumers\control_air_flights\give_orders.lua` | `execute\air_flight_orders.lua` |
+| `consumers\sleep_ground_units.lua` | `watch\enemy_aircraft_near_bases.lua` (`enemyAircraft`, the hit event); `decide\ground_units_awake.lua` (`check`) → `record\ground_units_awake.lua` (`isAsleep`); `execute\ground_units_on_off.lua` (`setAwake`); Logs (`summaryLines`, `UNIT_AWAKE`) |
+| `consumers\spawn_aircraft_groups`, `spawn_ground_groups`, `spawn_static_objects`, `preload_aircraft_types` | `execute\` (same names) |
+| `consumers\territory.lua` | `execute\base_coalitions.lua` (`setBaseCoalition`); `inform\map\territory.lua` (the circles) |
+| `consumers\write_event_log.lua` | `logs\event_log.lua` |
+| `lib\logger.lua` | `logs\dcs_log.lua` (module `Log`) |
+| `consumers\send_radio_calls.lua` | `inform\radio\radio_calls.lua` (`say`, `write`, frequencies, `channelText`); `inform\radio\darkstar_picture.lua` (`picture`, `threatRound`) |
+| `consumers\announce_controller_orders.lua` | `inform\radio\darkstar_orders.lua` (it reads `record\air_flight_decisions` and `record\flight_activity`) |
+| `consumers\call_air_picture.lua` | `inform\screen\air_picture.lua`; `tools\bearings.lua` (the magnetic variation and bearings; the airfield info uses them too); `tools\radar_coverage.lua`; the players → `watch\players.lua` |
+| `consumers\brief_air_tasking`, `create_airfields_brief`; `lib\player_menus.lua` | `inform\screen\briefing.lua`, `airfield_info`, `player_menus` |
+| `consumers\draw_airspace`, `draw_base_defenses`, `draw_sam_sites`, `draw_fixed_ground_targets`, `draw_convoys`, `draw_air_tasking_orders` | `inform\map\airspace.lua`, `base_defenses`, `sam_sites`, `fixed_ground_targets`, `convoys`, `air_tasking_orders` |
+| `lib\flight_callsigns.lua` | `tools\flight_callsigns.lua` (the next free callsign from the numbers it is handed; `text`, `jet`, `label`); the numbers in use → `record\callsigns.lua`, written by Decide (the mission plan, scrambles and retries) |
+| `lib\util`, `placement`, `threat_routing`, `sam_reach`, `weather`, `spawn_sites` | `tools\` (same names) |
+| `config.lua` | `data\config.lua` |
+| `data\*`, `survey\`, `load_framework.lua`, `run_mission.lua` | unchanged |
+| new for Afghanistan, after the move | `tools\ground_routes.lua`, `data\ground_movement.lua`; with the ground war `watch\companies.lua`, `decide\ground_companies\`, `execute\ground_company_orders.lua` |
+
+**Harness:** the intended differences are the load list and module names in `dcs.log` lines; every plan, event log, radio calls file, order and spawn byte-identical. Then both missions' baselines re-recorded.
+
 **Script layout.** Two folders under `Saved Games\DCS\Scripts\`, each a plain copy of its folder in the repository; a de-sanitized `MissionScripting.lua`; one mission editor trigger per mission, `ONCE → TIME MORE 1 → DO SCRIPT dofile(lfs.writedir() .. "Scripts\\<scripts folder>\\init.lua")`.
 ```
 shared_mission_framework\mission_scripts\   → Scripts\shared_mission_framework\

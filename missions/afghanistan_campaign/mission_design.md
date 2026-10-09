@@ -1,8 +1,8 @@
-# Afghanistan Campaign — Plan
+# Afghanistan Campaign — Mission design
 
 > **What this is:** the design of a persistent DCS campaign on the Afghanistan map. Two coalitions fight a conventional war, in the air and on the ground, over a few hours of play at a time. When the mission is shut down the campaign's state is saved, and the next session picks up from that state. Each side is led by an AI Joint Force Commander (strategy) that hands directives down to an air tasking planner and a Mission Operations Controller (execution). Logistics feed the whole war. Much of the code comes from the Kola mission (`missions/kola_f16_random_tasking/`), and the parts both missions use move into a shared library.
 >
-> **State:** design (started 2026-10-03); **map creation under way since 2026-10-07:** the spawn site survey is built and tested on three areas (Bagram / Kabul, Kandahar, Jalalabad); **John approved its site finding 2026-10-08** after reviewing them in the viewer with trucks and SA-10s. Its tools, how they work and what's next are under *Map data: the site survey*. **The whole map was surveyed 2026-10-08: 249,458 spawn sites, split by tile in `shared_mission_framework\map_data\afghanistan\`.** **The opening decided 2026-10-08** (*Map and opening*, *The opening*): Red holds Kabul and the east, Blue the south and west, no neutral bases, three receiving bases each. **Base domains and rings built 2026-10-08** (*Base domains and rings*): every site has a home base; seen in the viewer and approved by John as a first pass. Next: the off-road routing. Nothing of the campaign itself is built. Still open from earlier: *Next discussion: the ground war* and *Open*.
+> **State:** design (started 2026-10-03); **map creation under way since 2026-10-07:** the spawn site survey is built and tested on three areas (Bagram / Kabul, Kandahar, Jalalabad); **John approved its site finding 2026-10-08** after reviewing them in the viewer with trucks and SA-10s. Its tools, how they work and what's next are under *Map data: the site survey*. **The whole map was surveyed 2026-10-08: 249,458 spawn sites, split by tile in `shared_mission_framework\map_data\afghanistan\`.** **The opening decided 2026-10-08** (*Map and opening*, *The opening*): Red holds Kabul and the east, Blue the south and west, no neutral bases, three receiving bases each. **Base domains and rings built 2026-10-08** (*Base domains and rings*): every site has a home base; seen in the viewer and approved by John as a first pass. **Ground driving test flown 2026-10-09: no route network; rules applied per move** (*Ground units: is off-road routing needed?*, *Ground movement: rules, not fixed routes*). Next: the framework's move to role folders, then the ground router. Nothing of the campaign itself is built. Still open from earlier: *Next discussion: the ground war* and *Open*.
 >
 > **Paths** are relative to this mission folder (`missions/afghanistan_campaign/`) unless they say otherwise.
 >
@@ -192,7 +192,7 @@ John: drawing zones by hand is time-consuming and limiting, so on this map nobod
 - **Nothing on this map is drawn by hand** (John): sites, routes and every other map fact are built by code into data files that the missions consume. Hand-drawn off-road routes are dropped too (*Ground war*).
 - **One kind of site:** a clear, flat, dry area where anything fits: a group of ground units, a large SAM site, a target. Nothing more granular (John: the map is big and mostly open). What goes in a site is decided as things spawn.
 - **A survey mission of its own, started by hand,** never part of a flyable mission or its start. Its result serves **any mission on the Afghanistan map**. Run again only after a DCS map update or a change to what it measures.
-- **The map's data lives in the framework, per map** (John: it is mission-agnostic): `shared_mission_framework\map_data\afghanistan\` (not created yet), read by any Afghanistan mission. This is roadmap item 18 arriving early.
+- **The map's data lives in the framework, per map** (John: it is mission-agnostic): `shared_mission_framework\map_data\afghanistan\` (since 2026-10-08), read by any Afghanistan mission. This is roadmap item 18 arriving early.
 - **Where the pieces live** (John: tools and generators, not mission scripts): the Lua that runs in the survey missions in `shared_mission_framework\map_surveys\` (copied to `Saved Games\DCS\Scripts\map_surveys\`); the Python that decides in `shared_mission_framework\map_data_tools\`; raw survey output in `Saved Games\DCS\map_surveys\<map>\`.
 - **In passes, coarse to fine** (John agreed; resolutions to adjust if they don't work): pass 1 the whole map on a 1 km lattice (cheap: most of the mountains drop out), pass 2 the flat and dry cells at 100 m, then map objects; resumable batches on a timer, so DCS never freezes for long.
 - **Raw measurements in DCS, the judgement in Python,** so the site rules are tuned without flying the survey again.
@@ -222,7 +222,7 @@ John: drawing zones by hand is time-consuming and limiting, so on this map nobod
 - **The result, split by tile** (John, 2026-10-08: keep every site, but split the data for size and so a mission loads only what it queries), replaced only by a finished run:
   - **`map_data\afghanistan\spawn_sites_index.lua`, the index** (John: named as one; `SPAWN_SITES`): the map, the run, when found, `tile_m`, `folder`, `site_fields`, the rules (every site is a disc of `rules.site_radius_m`, 275 m), the counts, and `tiles`: per tile its `name`, `file`, `x_min` / `x_max` / `z_min` / `z_max` (its 100 km lattice square), `sites` and `first_number`.
   - **`map_data\afghanistan\spawn_sites\tile_<x km>_<z km>.lua`, one per tile with sites** (`SPAWN_SITES_TILE`: `tile`, its bounds, `sites`): one short line per site, `{ number, x, z, latitude, longitude, height_m, rise_m }` (the order in `site_fields`). Numbers run across the whole map, south-west to north-east, so a site keeps one id.
-  - **How a mission reads it:** `dofile` the index, pick the tiles whose square overlaps the area it needs, `dofile` those (`SPAWN_SITES_TILE` each); never the whole map at once. No shared loader yet; it comes with the first mission that uses the sites.
+  - **How a mission reads it:** `dofile` the index, pick the tiles whose square overlaps the area it needs, `dofile` those (`SPAWN_SITES_TILE` each); never the whole map at once. The shared loader does this: `mission_scripts\lib\spawn_sites.lua` (`SpawnSites`, built 2026-10-08 with the base domains; *Base domains and rings*).
   - Written to `spawn_sites.tmp\` first and swapped in, the old tile files removed one by one.
 - **Flown again after a finished run,** it says so and offers, under *Spawn site survey* in the comms menu: **"Survey the map again"** (after a DCS map update: a new run folder, the old one kept) and **"Find the sites again"** (after a change to the site rules: no flying, minutes).
 - **The same sites a test area would give:** a site near a tile's edge is judged with the neighbouring tile's points, and the spacing is chosen across the whole map at once (checked offline: identical to the test-area finder on the same points).
@@ -264,8 +264,8 @@ It writes `spawn_sites_<name>.lua` (`SPAWN_SITES`: the area, the rules, the coun
 #### Next
 
 1. ~~**Two more small test areas**~~ (Kandahar and Jalalabad, done and approved 2026-10-08, above).
-2. **The whole-map survey**, once the rules hold. **The theatre to survey is a rectangle John drew on the F10 map** (2026-10-08, `C:\Users\johnk\Desktop\afghanistan_survey_area.jpg`; easier than exclusion zones). It covers Afghanistan from Herat / Zaranj to Jalalabad / Khost, with edges of Turkmenistan, Iran and Pakistan inside it. John's corners read off the F10 map with the mouse (degrees, decimal minutes): NW N37 02.256 E60 37.425, NE N36 39.763 E72 30.615, SW N30 28.647 E60 47.370, SE N30 10.378 E71 51.097. Roughly, in DCS coordinates (a transverse Mercator fitted to 19 airfields' real coordinates against `airbases.lua`: central meridian ~63° E, ~1.3 km accuracy): **x −389,000 to +342,000 (731 km south to north), z −513,000 to +555,000 (1,068 km west to east)**, about 780,000 km², 88 tiles; the survey itself converts the corners exactly with DCS's `coord.LLtoLO`. The F10 map is north-up in DCS's own frame, so the rectangle is a plain x / z box. It lies inside the map, so finding the map's edges is no longer needed. **Built and run 2026-10-08** (*How it works*, *The whole-map survey*; *What has been run*): 96 tiles, 249,458 sites, split by tile.
-3. ~~**Next session:** a look at the sites, then the grid assignment~~ (the grid assignment became the base domains, below, 2026-10-08), then the off-road routing from pass 1.
+2. **The whole-map survey**, once the rules hold. **The theatre to survey is a rectangle John drew on the F10 map** (2026-10-08, a screenshot on John's desktop, `afghanistan_survey_area.jpg`; easier than exclusion zones). It covers Afghanistan from Herat / Zaranj to Jalalabad / Khost, with edges of Turkmenistan, Iran and Pakistan inside it. John's corners read off the F10 map with the mouse (degrees, decimal minutes): NW N37 02.256 E60 37.425, NE N36 39.763 E72 30.615, SW N30 28.647 E60 47.370, SE N30 10.378 E71 51.097. Roughly, in DCS coordinates (a transverse Mercator fitted to 19 airfields' real coordinates against `airbases.lua`: central meridian ~63° E, ~1.3 km accuracy): **x −389,000 to +342,000 (731 km south to north), z −513,000 to +555,000 (1,068 km west to east)**, about 780,000 km², 88 tiles; the survey itself converts the corners exactly with DCS's `coord.LLtoLO`. The F10 map is north-up in DCS's own frame, so the rectangle is a plain x / z box. It lies inside the map, so finding the map's edges is no longer needed. **Built and run 2026-10-08** (*How it works*, *The whole-map survey*; *What has been run*): 96 tiles, 249,458 sites, split by tile.
+3. ~~**Next session:** a look at the sites, then the grid assignment~~ (the grid assignment became the base domains, below, 2026-10-08), then the off-road routing from pass 1 (now: first the ground driving test, *Ground units: is off-road routing needed?*).
 
 ### Base domains and rings (2026-10-08)
 
@@ -293,6 +293,51 @@ How the bases and the spawn sites work together (designed with John 2026-10-08: 
 **What the numbers say** (the opening as in `afghanistan_campaign.miz`): front line ~800 km; contested band ~58,000 km². Sites per domain vary a lot:
 - **Red's heart is thin on sites:** Kabul 427 (140 in ring 1, 287 in ring 2), Bagram 2,961 but only 117 within 75 km (the rest north over the Hindu Kush), Gardez 718. The dense scenery around Kabul leaves few clear discs. Enough for what a base needs (hundreds, not thousands), but worth watching.
 - **Some domains run off into the neighbouring countries:** Khost (34,269 sites, farthest 396 km) and Urgoon (28,126, 382 km) reach deep into Pakistan; Qala i Naw (28,009, 320 km) and Maymana (21,626) into Turkmenistan; Farah, Zaranj and Nimroz into Iran. Most of those sites are in ring 3. Open: whether a domain stops at Afghanistan's border (no border data from DCS; it could be traced once by hand or approximated), or whether ring 3 gets a cap.
+
+### Ground units: is off-road routing needed? (2026-10-09)
+
+John: "Primarily, I just want to keep them from driving up mountains"; from his experience DCS's AI drives through towns, on roads and most places by itself, so test before building any routing. Expected: an **On Road** order makes DCS find the road route itself; an **Off Road** order (any formation) has no pathfinding, a straight line over whatever is in the way. If that holds, no route network: long moves by road, and an off-road leg only after checking its straight line against the terrain (`land.getHeight` every 100 m: ~7 ms for 10 km), else by road.
+
+**The test, built and flown 2026-10-09:** `afghanistan_ground_driving_test.miz` (John's `Afghanistan_survey_1.miz` with its trigger running `map_surveys\test_ground_unit_driving.lua`). All three drives start on load (John: no starting them by hand), each two identical companies (2 Ural-375, a BMP-2, a T-72B) side by side at a spawn site, one ordered Off Road straight to the end site, one On Road (start → the road nearest the start → the road nearest the end → the end), both at full speed (ordered 40 m/s; DCS holds each vehicle to its own top speed, a company to its slowest). Comms menu *Ground driving test*: *Status*, *Write summaries now*. The drives, picked by script from the whole-map survey:
+- **Ridge** (Wardak, between Ghazni and Kabul): site 174124 → 174386, 10.5 km; a ridge 452 m above both ends on the straight line, 400 m steps up to 38 %; both ends within 2 km of a road; a gentler way round ~13 km.
+- **Desert** (west of Kandahar): site 64081 → 66748, 15 km, never over 2 %, no map objects on the line.
+- **Town** (Kandahar city, west to east): site 83814 → 83986, 9.8 km, ~16,000 map objects in the cells crossed.
+
+It writes `Saved Games\DCS\map_surveys\Afghanistan\ground_driving_test_<date>_<time>.log`: each order (how long `setTask` and DCS's road lookups took, whether `findPathOnRoads` found a road route and its length), every vehicle's position, height and speed every 5 s, `STUCK` / `MOVING` / `LOST`, arrivals, and a summary per company (distance driven, highest point, steepest climb). Time acceleration is fine. Checked offline in `luae.exe` with stubbed DCS.
+
+**What the result decides:** the Off Road company over (or stuck on) the ridge and the On Road one round it → no route network, the small rule above. On Road too slow to set up, or failing somewhere (no road into a valley, a huge detour) → precomputed routes only for those cases. DCS going round terrain off road by itself → nothing needed.
+
+**Flown 2026-10-09** (John; `Saved Games\DCS\map_surveys\Afghanistan\ground_driving_test_2026-10-09_1740.log`):
+
+| Drive | Off Road (straight line) | On Road (DCS's road route) |
+|---|---|---|
+| Ridge, 10.5 km | straight over the mountain: +545 m, 50–54 % slopes, down to ~5 m/s on the steep part, never stuck; **16 min** | 32.6 km of road (3.1×), +80 m; 46 min |
+| Desert, 15 km | 14.9 km; 15 min | the nearest road 7.3 km from the start: 24.6 km; 31 min |
+| Kandahar city, 9.8 km | **failed**: jammed on buildings again and again, 2.7 km in 47 min, never arrived | 13.4 km through the city; 19 min |
+
+- **DCS doesn't pathfind off road at all:** a straight line, and it climbs almost anything. Keeping companies off mountains is ours to do.
+- **On Road is cheap and reliable:** `setTask` ~1 ms, `getClosestPointOnRoads` 1–4 ms, `findPathOnRoads` 11–20 ms; every road route found.
+- **Off road through a built-up area doesn't work;** on open ground the road can be a pointless detour.
+
+### Ground movement: rules, not fixed routes (John, 2026-10-09)
+
+**Decided:** no route network; a rule applied to each move when it is ordered. Built in the framework (roles: `framework_design.md`, *Roles*): the **router is a tool** (`tools\ground_routes.lua`), asked by the MOC's ground part (`decide\ground_companies\`), which decides and writes the move to the Record; Execute gives the order (`execute\ground_company_orders.lua`); Watch's company tracker (`watch\companies.lua`) records arrived / stuck; Logs writes the `move:` line, Inform may draw it.
+
+**The router**, for "company C from where it is to B":
+1. **The straight line**, checked every 100 m (~200 terrain lookups for 10 km, a few ms): no 100 m stretch steeper than the slope limit and no more total climb than the climb limit (`land.getHeight`); no water (`land.getSurfaceType`; river crossings go by road for the bridges; not covered by the test, to check); no built-up 1 km cell. All clear → **one off-road leg** straight to B.
+2. **Otherwise by road:** R1 = the road nearest the company, R2 = the road nearest B; the two connecting legs (company → R1, R2 → B) checked as in 1; route **company → R1 (Off Road) → R2 (On Road) → B**, DCS finding the roads between R1 and R2.
+3. **A connecting leg that fails** (B up a hillside or inside a town): stop on the road at R2 and say so in the log; the MOC picks a reachable objective point. Kept simple in the first version.
+4. **The final leg** in a combat formation (wedge or line), alarm state red near the front.
+
+**Returned:** the waypoints and the reason, one log line per move ("move: company C to B by road (straight line blocked: 38 % at 6.4 km, 452 m climb); 32 km, ~45 min"). **Re-planned** from where it is when the tracker reports it stuck for 2 min.
+
+**Built-up cells:** a new data file, `map_data\afghanistan\built_up_cells\` (per tile, only the built-up 1 km cells), made once by a new map tool from the survey's object counts per cell (`survey_measurements\`, nothing flown again). The threshold to set from the cells the town drive crossed.
+
+**Settings** in the framework's `data\ground_movement.lua` (a mission may set its own in its data): sample step 100 m, the slope and climb limits, the built-up threshold, the final formation, stuck time.
+
+**Open:** the **slope and climb limits** (proposed: no 100 m stretch over ~20 %, no more than ~150 m of total climb: a fold in the ground is fine, a mountain isn't; DCS itself climbs 50 %+, so this is realism, not ability); whether the occasional long road detour (the ridge: 46 min by road against a ~13 km valley) is acceptable (valley routes later, only where the road is far longer, if it bothers John in play).
+
+**To build, in order:** the built-up cells tool and data; `tools\ground_routes.lua` and `data\ground_movement.lua`; a test mission like the driving test (the ridge, the desert, Kandahar, and a river), whose companies should now take the sensible way. The company tracker and the MOC's ground part come with the ground war. **After the role-folder move** (`framework_design.md`, *The move to the role folders*), so they are built in the new layout.
 
 ---
 
