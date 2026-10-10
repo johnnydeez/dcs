@@ -7,7 +7,7 @@
 --                    the runway keep-clear boxes); point = x0 + i*step, z0 + j*step
 --   buildings        { x, z, type } the airfield's own buildings
 --   scenery_scanned  map objects searched (info only)
--- lib/placement.lua derives the placement anchors (apron, infield, …) from these.
+-- tools/placement.lua derives the placement anchors (apron, infield, …) from these.
 AIRBASE_FOOTPRINT = {
     ["Anapa-Vityazevo"] = {
         buildings = {

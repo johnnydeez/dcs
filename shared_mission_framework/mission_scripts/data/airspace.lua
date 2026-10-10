@@ -1,4 +1,4 @@
--- How the airspace is divided each roll (stages/divide_airspace.lua). Plain data, no logic.
+-- How the airspace is divided each roll (planner/divide_airspace.lua). Plain data, no logic.
 --
 -- Held ground: every point belongs to the coalition holding its nearest airbase, so every
 -- base stands in its own coalition's ground; the front line is where that flips.

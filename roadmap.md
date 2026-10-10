@@ -22,7 +22,7 @@ Players fly Blue (the F-16C slots), so "own" below means Blue and "enemy" means 
 
 **Where it stands:**
 - Human taskings (`HUMAN_TASKING.mission_types`) offer strike, airfield strike, DEAD, SEAD and CAP. Missing: **interception** (the scramble), and **interdiction** and **close air support** once those are built (`built = false` today).
-- Scrambles are decided at run time by the controller (`consumers/control_air_flights/scramble_fighters.lua`): trigger, refusals, base, intercept point, then an AI jet spawned hot on one of the base's alert spots after `scramble_reaction_s` (60–120 s), watched by the leash.
+- Scrambles are decided at run time by the controller (`controller\air_flights\scramble_fighters.lua`): trigger, refusals, base, intercept point, then an AI jet spawned hot on one of the base's alert spots after `scramble_reaction_s` (60–120 s), watched by the leash.
 - Players spawn by dynamic slots (`f16_<base>`); the controller has no way yet to tell a player in a slot apart from one on alert.
 
 **Approach (proposed, decide with John):**
@@ -145,7 +145,7 @@ MSN2025 lost both jets:
 **Seen** (`event_logs\2026-10-02_160358.log`, ~04:23–04:25): Blue's F-15C patrol MSN2009_CAP (Ivalo station, 34,000 ft) was ~54 nm (100 km) from Red's MSN7031_DEAD (a Su-34 with R-77s, in contested airspace, which had just helped kill MSN2025_SEAD) and was never sent after it.
 - Here Blue's picture never held MSN7031 at all (no `CONTACT` line all run; Blue's picture held 0–2 contacts, its E-3A only reached its station off Bodø at 04:23, ~200 km back), so control couldn't have called it. The F-15C is itself a picture sensor, and its radar didn't report the Su-34 at ~100 km (it was flying away, east). Worth checking whether that's DCS's detection range or something in how the picture polls patrols.
 
-**Proposed (decide with John before building):** a new directive for patrols, `commit`, in `consumers/control_air_flights/`:
+**Proposed (decide with John before building):** a new directive for patrols, `commit`, in `controller\air_flights\`:
 - **Trigger:** a contact in the coalition's picture that is an enemy airplane (fighter or attack), in own or contested airspace, and a threat: hot on the patrol or inbound on an own asset (the picture's `inbound`), within a commit range of the patrol (e.g. 100 km / 54 nm; John: 54 nm is close).
 - **Who goes:** the nearest patrol with radar missiles that isn't already fighting; one patrol per contact (`coordinate_flights.lua`, as the bandit call does).
 - **The order:** `AttackGroup` on the contact (pushed, like `defend`), so the patrol leaves its race-track and the DCS AI flies the intercept.
@@ -296,7 +296,7 @@ Steps 5–9 built 2026-10-05 late, harness-tested, first heard in the 21:02 test
 6. ~~**The queue rework** (design 5)~~.
 7. ~~**Channels, frequencies and the export script** (designs 2, 3)~~.
 8. ~~**The watcher's mission calls** (designs 1, 8, 9)~~.
-9. ~~**Airfield traffic calls** (design 7)~~; the phase tracker (`track_airfield_traffic.lua`) is there for roadmap item 15 to read.
+9. ~~**Airfield traffic calls** (design 7)~~; the phase tracker (`inform\radio\airfield_calls.lua`) is there for roadmap item 15 to read.
 10. **More voices: Azure's cloud voices next** (John, 2026-10-05: "probably the next step"; not built). Windows gives scripts only David, Zira and Mark (Mark added 2026-10-05 through the newer OneCore engine). The voices John installed (Ryan, Andrew, Sonia, Guy, Prabhat) are Windows' "natural" voices, Narrator's only; the same voices are Microsoft's Azure neural voices (en-GB Ryan and Sonia, en-US Andrew and Guy, en-IN Prabhat, and many more accents). The plan:
     - **A third voice adapter** beside `windows_voice.py` (`azure_voice.py`): text in (SSML), WAV out, over Azure Speech's REST text-to-speech API with Python's standard library only (`urllib`), so no new dependency.
     - **Needs:** internet, an Azure account and a Speech resource's key and region, kept outside the repo (an environment variable or a git-ignored file), never committed. Its free tier covers far more than this mission speaks.
@@ -324,7 +324,7 @@ Steps 5–9 built 2026-10-05 late, harness-tested, first heard in the 21:02 test
 
       Not spoken: the launch decisions (`wait`, `retry`, `cancel`, `launch late`, `come back`, `alert`): planning on the ground, not an order to a flight in the air.
     - **The answer comes from what the flight does,** as decided for the pilots' calls: the watcher hears the order and looks for the flight to follow it (turning toward home, a Fox call, heading for the intercept point) within a short time; then the pilot answers ("Weasel 1, wilco" / "Weasel 1, copy, engaging"), and their own calls follow as now. An order the DCS AI ignores is heard with no answer, which is honest, and the event log's `RADIO_CALL` line can say "no answer".
-    - **The controller doesn't know the radio:** it publishes each decision to listeners (as the radar picture publishes its events), and the radio subscribes; `ControlAirFlights.say` is the one place every decision already passes.
+    - **The controller doesn't know the radio:** it publishes each decision to listeners (as the radar picture publishes its events), and the radio subscribes; `ControllerDirectFlights.say` is the one place every decision already passes.
     - **Text and timing:** the facts each call needs are what the decision already works out (the bandit's bearing, range, aspect from the radar picture, measured from the flight; a scramble's vector to its intercept point; the base to land at). Priority as a threat call when a bandit is involved, routine for RTB and handover.
     - **Later, with multiplayer and player taskings:** the same directives to human players (John, 2026-10-05: "at some point"): a commit or an RTB call to a player's flight, which the player follows or not.
 15. ~~**Pilot answers to Darkstar's orders**~~ (John, 2026-10-05 night: step 14 was built without them; **designed with John and built 2026-10-06**, harness-tested, copied to DCS, not flown; as built: `plan.md`, *Radio calls*). Decided with John 2026-10-06:
@@ -332,7 +332,7 @@ Steps 5–9 built 2026-10-05 late, harness-tested, first heard in the 21:02 test
     - **The report or the RTB answer is the check-out** (no separate `check_out` after it); `off_target` stays on the mission channel.
     - **One bingo:** a flight the controller watches for fuel (patrols, scrambles) has only the report; attack flights (no controller fuel rule) keep the watcher's 15 % call. A Winchester already reported isn't said again.
     - **No "unable":** we can't tell "can't" from "the AI ignored it", so an order not followed gets silence and `RADIO_CALL … no answer`.
-    - **The answers hear the orders as said**, not the controller's decisions (John: "tag the controller orders that are published as radio calls sent"): every call written is published (`SendRadioCalls.onCall`), so no hand-off between consumers and no listener order to depend on.
+    - **The answers hear the orders as said**, not the controller's decisions (John: "tag the controller orders that are published as radio calls sent"): every call written is published (`InformRadioRadioCalls.onCall`), so no hand-off between consumers and no listener order to depend on.
     - **Wait limits:** engage and resume 30 s, RTB and a scramble's vector 45 s, land 60 s.
 
     The design as it stood before building: the answer comes from what the flight does, as in step 14's design above (the order heard, then the flight seen following it: turning home, a Fox call, heading for its intercept point; an ignored order gets no answer, `RADIO_CALL … no answer`). **Channels, decided with John 2026-10-05 night: divided by who a call is to, not what it's about**, because an answer goes back on the frequency its order came on:
@@ -340,7 +340,7 @@ Steps 5–9 built 2026-10-05 late, harness-tested, first heard in the 21:02 test
     - **Mission, VHF 140.000: flights talking for everyone in the fight, not to Darkstar:** pushing, Fox, Magnum, rifle, bombs away, splash, defending, jet down, off target.
     - **Tower VHF:** airfield traffic, unchanged.
     - Both radios on (the normal setup) hears everything; VHF off leaves the whole conversation with Darkstar, orders and answers, without the combat chatter. An engage then reads: UHF "Weasel one, Darkstar, bandit …, engage" → UHF "Weasel one, committing" → VHF "Weasel one one, Fox three" → VHF "Splash one Flanker" → UHF "Weasel one, Darkstar, good kill, resume".
-    - **Splash stays on mission for now:** really it is often said on the control frequency so the controller can update the picture, but Darkstar's "good kill" comes from the controller's own decision, not from hearing it. Moving it is one line in `announce_flight_activity.lua`.
+    - **Splash stays on mission for now:** really it is often said on the control frequency so the controller can update the picture, but Darkstar's "good kill" comes from the controller's own decision, not from hearing it. Moving it is one line in `inform\radio\flight_calls.lua`.
     - ~~To settle when building: the two bingo thresholds~~ (settled 2026-10-06 above: one bingo per flight).
 16. **Later:** an LLM wording adapter to compare against the phrase bank; player calls / an LLM-based ATC.
 
@@ -435,7 +435,7 @@ The Afghanistan plan's requirement: "nothing in the shared library knows which s
 
 **For:** framework (from the framework `plan.md`'s *Later*, 2026-10-06; its decision 2).
 
-**Status:** built for Afghanistan 2026-10-08: `shared_mission_framework\map_data\afghanistan\` holds the survey area, the spawn sites by tile, the airbases and the base domains, read through the shared loader `mission_scripts\lib\spawn_sites.lua`. Kola and Caucasus still keep their map data in their own folders. Close it (`closed.md`) when John agrees.
+**Status:** built for Afghanistan 2026-10-08: `shared_mission_framework\map_data\afghanistan\` holds the survey area, the spawn sites by tile, the airbases and the base domains, read through the shared loader `mission_scripts\tools\spawn_sites.lua`. Kola and Caucasus still keep their map data in their own folders. Close it (`closed.md`) when John agrees.
 
 **Needed first for Afghanistan** (John, 2026-10-07): the Afghanistan map's data (the site survey's sites, routes, airbases) is mission-agnostic, so it lives in the framework per map (e.g. `shared_mission_framework\map_data\afghanistan\`) from the start, read by any mission on that map. Kola and Caucasus keep theirs in their mission folders for now. Design: `missions\afghanistan_campaign\mission_design.md`, *Map data: the site survey*.
 
@@ -450,7 +450,7 @@ The Afghanistan plan's requirement: "nothing in the shared library knows which s
 **Goal:** more than one human player, each with their own Darkstar: their picture and threat calls addressed by their own callsign, the bearings from their own jet, heard on their own PC through their own jet's radios. Kept apart the real-world way, by frequency, not by hiding calls: everyone on a frequency hears every call on it (John: "I like the idea of just having different frequencies for each of us for DARKSTAR").
 
 **Where it stands (2026-10-07):**
-- Darkstar calls each player by their jet's callsign from the mission file (`SendRadioCalls.playerCallsign`, since 2026-10-07), but once per group (the group's first player): a second human in the same group gets no calls.
+- Darkstar calls each player by their jet's callsign from the mission file (`InformRadioRadioCalls.playerCallsign`, since 2026-10-07), but once per group (the group's first player): a second human in the same group gets no calls.
 - Every Darkstar call to a player is on the one AWACS channel (`RADIO_CHANNELS.awacs`), so on one PC every player's calls would be heard.
 - The mission writes its calls to a file on the host's PC; the helper (`speak_mission_calls.py`) words and voices them there and hands each to the radio player (TCP, 127.0.0.1 only), which plays what the host's jet is tuned to. A player on another PC hears nothing.
 - What already works on any PC: the export script (`export_cockpit_radios.lua`, one line in `Export.lua`) reads that PC's own jet's radios, and the radio player plays only what they're tuned to.
@@ -570,7 +570,7 @@ The Afghanistan plan's requirement: "nothing in the shared library knows which s
 **Where it stands:** nothing built, on purpose. John doesn't want contacts drawn while debugging: the full map already shows every aircraft, and more marks would clutter it. It only makes sense after fog of war.
 
 **Approach (proposed):**
-- **A consumer of its own** (`consumers/draw_radar_picture.lua`) that listens to `TrackRadarPicture`'s events and redraws each coalition's contacts only for that coalition's players.
+- **A map file of its own** (`inform\map\radar_picture.lua`) that listens to `RecordRadarPicture`'s events and redraws each coalition's contacts only for that coalition's players.
 - **What a mark shows:** a symbol at the last known position with a heading line, the type if identified (else "unknown"), altitude, and the time last seen. A stale contact fades, then its mark is removed when the contact drops. A bearing-only contact is a line (strobe) from the radar, not a point.
 - **Kept readable:** one mark per contact, updated in place every 30 s cycle; no trails.
 

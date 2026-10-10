@@ -104,8 +104,8 @@ John: the entire war runs on **logistics units**, and they are its only currency
 John: the JFC runs the strategy and passes directives to the controller; the controller is responsible for individual commands and decisions.
 
 1. **Joint Force Commander (JFC):** strategy, one per coalition. Reads its own coalition's intelligence picture, never the truth (Kola's rule: no side reads the other side's plan). Writes **directives**: objectives and their priority, how the air effort is split, what to defend, where the ground forces push, how much risk to accept, where supply goes.
-2. **Air tasking planner** (proposed, Kola's `PlanAirTasking`): turns the directives into an air tasking order: flights, targets, times, routes. Today Kola's planner sets its own priorities; here it takes them from the JFC. In a real air force this is the air operations center.
-3. **Mission Operations Controller (MOC):** real-time execution, the Kola controller (`control_air_flights/`) grown up: scrambles, the bandit call, go cold, retries, the leash, and later the ground forces' moment-to-moment orders.
+2. **Air tasking planner** (proposed, Kola's `PlannerPlanAirTasking`): turns the directives into an air tasking order: flights, targets, times, routes. Today Kola's planner sets its own priorities; here it takes them from the JFC. In a real air force this is the air operations center.
+3. **Mission Operations Controller (MOC):** real-time execution, the Kola controller (`controller\air_flights\`) grown up: scrambles, the bandit call, go cold, retries, the leash, and later the ground forces' moment-to-moment orders.
 
 ### Rules and text, side by side (2026-10-03)
 
@@ -222,7 +222,7 @@ John: drawing zones by hand is time-consuming and limiting, so on this map nobod
 - **The result, split by tile** (John, 2026-10-08: keep every site, but split the data for size and so a mission loads only what it queries), replaced only by a finished run:
   - **`map_data\afghanistan\spawn_sites_index.lua`, the index** (John: named as one; `SPAWN_SITES`): the map, the run, when found, `tile_m`, `folder`, `site_fields`, the rules (every site is a disc of `rules.site_radius_m`, 275 m), the counts, and `tiles`: per tile its `name`, `file`, `x_min` / `x_max` / `z_min` / `z_max` (its 100 km lattice square), `sites` and `first_number`.
   - **`map_data\afghanistan\spawn_sites\tile_<x km>_<z km>.lua`, one per tile with sites** (`SPAWN_SITES_TILE`: `tile`, its bounds, `sites`): one short line per site, `{ number, x, z, latitude, longitude, height_m, rise_m }` (the order in `site_fields`). Numbers run across the whole map, south-west to north-east, so a site keeps one id.
-  - **How a mission reads it:** `dofile` the index, pick the tiles whose square overlaps the area it needs, `dofile` those (`SPAWN_SITES_TILE` each); never the whole map at once. The shared loader does this: `mission_scripts\lib\spawn_sites.lua` (`SpawnSites`, built 2026-10-08 with the base domains; *Base domains and rings*).
+  - **How a mission reads it:** `dofile` the index, pick the tiles whose square overlaps the area it needs, `dofile` those (`SPAWN_SITES_TILE` each); never the whole map at once. The shared loader does this: `mission_scripts\tools\spawn_sites.lua` (`SpawnSites`, built 2026-10-08 with the base domains; *Base domains and rings*).
   - Written to `spawn_sites.tmp\` first and swapped in, the old tile files removed one by one.
 - **Flown again after a finished run,** it says so and offers, under *Spawn site survey* in the comms menu: **"Survey the map again"** (after a DCS map update: a new run folder, the old one kept) and **"Find the sites again"** (after a change to the site rules: no flying, minutes).
 - **The same sites a test area would give:** a site near a tile's edge is judged with the neighbouring tile's points, and the spacing is chosen across the whole map at once (checked offline: identical to the test-area finder on the same points).
@@ -287,7 +287,7 @@ How the bases and the spawn sites work together (designed with John 2026-10-08: 
   - **Bases with a domain:** the 21 airfields, and the two helipads with no airfield within 10 km: **Ghazni** and **Urgoon**. Kandahar, Camp Bastion and Shindand Heliports are part of their fields.
   - Checked: the 23 outlines add up to the survey box (781,044 km²), every site has one home base, neighbours are symmetric.
   - `find_base_domains.py make-mission` writes the viewer mission from `afghanistan_campaign.miz` (so it shows the campaign's owners).
-- **`mission_scripts\lib\spawn_sites.lua`, the shared loader** (`SpawnSites`): `open(folder)` reads the two indexes; `tilesOverlapping(box)`, `everyTile()`, `tile(t)` (a tile's sites joined with their home base and distance, loaded once), `forget(t)`, `base(id)`, `SpawnSites.ringOf(rings, distance)`. Not loaded by Kola or Caucasus (the harness lists it as never loaded: baselines re-recorded 2026-10-08, the only difference).
+- **`mission_scripts\tools\spawn_sites.lua`, the shared loader** (`SpawnSites`): `open(folder)` reads the two indexes; `tilesOverlapping(box)`, `everyTile()`, `tile(t)` (a tile's sites joined with their home base and distance, loaded once), `forget(t)`, `base(id)`, `SpawnSites.ringOf(rings, distance)`. Not loaded by Kola or Caucasus (the harness lists it as never loaded: baselines re-recorded 2026-10-08, the only difference).
 - **The viewer, `map_surveys\show_base_domains.lua`** in **`afghanistan_base_domains_shown.miz`**: each domain filled faintly in its holder's colour (read from DCS), the front line in yellow, the contested band shaded, rings 1 and 2 dashed and cut to their domain, a label per base with its sites per ring. No units. Offline in `luae.exe` with stubbed DCS: 142 polygons, 7 front lines, 23 labels, 1 s to count every site.
 
 **What the numbers say** (the opening as in `afghanistan_campaign.miz`): front line ~800 km; contested band ~58,000 km². Sites per domain vary a lot:
@@ -321,7 +321,7 @@ It writes `Saved Games\DCS\map_surveys\Afghanistan\ground_driving_test_<date>_<t
 
 ### Ground movement: rules, not fixed routes (John, 2026-10-09)
 
-**Decided:** no route network; a rule applied to each move when it is ordered. Built in the framework (roles: `framework_design.md`, *Roles*): the **router is a tool** (`tools\ground_routes.lua`), asked by the MOC's ground part (`decide\ground_companies\`), which decides and writes the move to the Record; Execute gives the order (`execute\ground_company_orders.lua`); Watch's company tracker (`watch\companies.lua`) records arrived / stuck; Logs writes the `move:` line, Inform may draw it.
+**Decided:** no route network; a rule applied to each move when it is ordered. Built in the framework (roles: `framework_design.md`, *Roles*): the **router is a tool** (`tools\ground_routes.lua`), asked by the controller's ground part (`controller\ground_companies\`), which decides, writes the move to the Record, then calls Execute to give the order (`execute\ground_company_orders.lua`); Watch's company tracker (`watch\companies.lua`) records arrived / stuck; Logs writes the `move:` line, Inform may draw it.
 
 **The router**, for "company C from where it is to B":
 1. **The straight line**, checked every 100 m (~200 terrain lookups for 10 km, a few ms): no 100 m stretch steeper than the slope limit and no more total climb than the climb limit (`land.getHeight`); no water (`land.getSurfaceType`; river crossings go by road for the bridges; not covered by the test, to check); no built-up 1 km cell. All clear → **one off-road leg** straight to B.

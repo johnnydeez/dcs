@@ -8,6 +8,8 @@ Bugs found in runs, with what was seen, the cause and the fix proposed, to come 
 
 Bugs 3–72 were found in Kola and lived in Kola's `development_docs\bugs.md` until 2026-10-07. Most of the code they name is shared now (`shared_mission_framework\mission_scripts\`, `radio_calls\`, `map_data_tools\`; `kola_data_tools\` is now `map_data_tools\`). A `plan.md` section named in them is in the root's `plan.md` (*Still to watch*, the backlog, the history), or, about how the code works (*The controller*, *Radio calls*, *Stages 5–6*, *DCS facts* …), in `shared_mission_framework\framework_design.md`, under the same name; a mission's map and scenario in its `mission_design.md`. A fix that changes behaviour means re-recording the offline harness's baselines right after it (`plan.md`, *Picking this up in a new session*).
 
+**Script paths before 2026-10-10:** the framework's scripts moved into role folders that day (`watch\`, `record\`, `execute\`, `inform\`, `logs\`, `tools\`, `planner\`, `controller\`). Entries written before it name the files and modules as they were (`consumers\…`, `stages\…`, `lib\…`, `gather.lua`, `ControlAirFlights`, …) and are left as written; `shared_mission_framework\framework_design.md`, *Where the old files went*, gives each one's new place.
+
 ---
 
 ## 6. Su-24M SEAD flights spawn with no weapons

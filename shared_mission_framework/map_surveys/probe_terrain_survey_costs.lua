@@ -14,7 +14,7 @@
 --      nearest road / railway, map objects in a sphere, line of sight, a route on roads)
 --      on random points in the test area;
 --   2. airbases: every airbase, helipad and ship DCS lists, with its runways (heading
---      checked against the runway surface, as gather.lua does) and parking spots;
+--      checked against the runway surface, as watch/world_at_start.lua does) and parking spots;
 --   3. the test area (TEST_AREA_*: a square around the midpoint of TEST_AREA_AIRBASES):
 --      pass 1 on a PASS_1_CELL_M lattice (PASS_1_POINTS × PASS_1_POINTS heights and
 --      surface types per cell), pass 2 on the cells that pass a deliberately loose
@@ -238,7 +238,7 @@ local function runwayHits(x, z, headingRad, length)
     return hits
 end
 
--- Runways as gather.lua reads them: the sign of `course` is inconsistently documented, so
+-- Runways as watch/world_at_start.lua reads them: the sign of `course` is inconsistently documented, so
 -- both are probed against the runway surface; `axis` says which won.
 local function readRunways(ab)
     local ok, rws = pcall(ab.getRunways, ab)

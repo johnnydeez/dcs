@@ -1,5 +1,5 @@
 -- How densely each coalition fills what it holds with fixed ground targets, and which
--- kinds go where. Plain data, no logic; stages/plan_fixed_ground_targets.lua applies it.
+-- kinds go where. Plain data, no logic; planner/plan_fixed_ground_targets.lua applies it.
 --
 -- Zones: every zone a coalition holds that no SAM site uses is a candidate (mobile units
 -- are planned separately and don't need zones kept free), except the classes in

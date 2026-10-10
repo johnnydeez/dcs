@@ -12,7 +12,7 @@ planner keeps AI aircraft (parked static aircraft and AI flights) off it.
 Per slot: the airbase (nearest to the unit, from the airbase reference file), the DCS terminal
 index (the .miz unit's `parking`, same as Airbase:getParking() Term_Index), the ME spot
 name (`parking_id`), the group name, the aircraft type and the position. In-sim,
-gather.lua checks each slot against the airbase's real parking spots and warns on a
+watch/world_at_start.lua checks each slot against the airbase's real parking spots and warns on a
 mismatch.
 """
 

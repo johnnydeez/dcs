@@ -1,8 +1,8 @@
--- The air picture shown to human players (consumers/call_air_picture.lua, roadmap.md
+-- The air picture shown to human players (inform/screen/air_picture.lua, roadmap.md
 -- item 5). Plain data, no logic.
 --
 -- Every call_every_s each player in an aircraft gets a list of every contact in their own
--- coalition's radar picture (consumers/track_radar_picture.lua: only what its radars
+-- coalition's radar picture (watch/radar_picture.lua: only what its radars
 -- see), highest threat first, each as BRAA from the player's own position: magnetic
 -- bearing, range in nautical miles, altitude in thousands of feet, aspect (John,
 -- 2026-10-02: no bullseye, no request needed; short lines read at a glance:

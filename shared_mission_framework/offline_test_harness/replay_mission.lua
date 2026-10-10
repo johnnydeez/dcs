@@ -7,7 +7,7 @@
 --                    init.lua is loaded from there, as the mission editor trigger does
 --   scripts folder   where those scripts really are (the repository), with a trailing backslash
 --   saved plan file  a plan the mission wrote (Saved Games\DCS\kola_last_plan.lua): only its
---                    plan.world is used, in place of what gather.lua reads from DCS
+--                    plan.world is used, in place of what watch/world_at_start.lua reads from DCS
 --   seed             the random generator's seed (a different seed rolls a different mission)
 --   mode             "plan": stop once the plan is written, before anything spawns (test A)
 --                    "mission:<seconds>": the whole mission, its clock run that long after the
@@ -89,8 +89,8 @@ if missionKind == "flying" then
 end
 
 -- After each file the mission loads, the harness's own changes, once their module exists:
---   Gather.run          returns the saved world instead of reading DCS
---   WriteEventLog.open  (mode "plan") the first call after the plan dump: stop there
+--   WatchWorldAtStart.run          returns the saved world instead of reading DCS
+--   EventLog.open  (mode "plan") the first call after the plan dump: stop there
 local STOP = "OFFLINE HARNESS: stopped after planning"
 local hooked = {}
 local stubDofile = dofile
@@ -101,16 +101,16 @@ dofile = function(path)
     loadedOnce[key] = true
     loadedFiles[#loadedFiles + 1] = path
     local results = { stubDofile(path) }
-    if Gather and not hooked.gather then
+    if WatchWorldAtStart and not hooked.gather then
         hooked.gather = true
-        Gather.run = function()
+        WatchWorldAtStart.run = function()
             Log.info("--- Gather inputs --- (offline harness: the saved world from " .. savedPlanFile .. ")")
             return savedWorld
         end
     end
-    if mode == "plan" and WriteEventLog and not hooked.event_log then
+    if mode == "plan" and EventLog and not hooked.event_log then
         hooked.event_log = true
-        WriteEventLog.open = function() error(STOP, 0) end
+        EventLog.open = function() error(STOP, 0) end
     end
     return unpack(results)
 end

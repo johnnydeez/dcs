@@ -1,4 +1,4 @@
--- The event log (consumers/write_event_log.lua): a plain-language file per mission run
+-- The event log (logs/event_log.lua): a plain-language file per mission run
 -- with every event of the air war, unit by unit, to watch live or comb through after
 -- (roadmap.md item 3). Plain data, no logic.
 --
@@ -22,7 +22,7 @@ EVENT_LOG = {
     -- a POSITION line for every airborne aircraft this often (0 = off)
     position_every_s = 60,
 
-    -- IMPACT lines (consumers/track_weapon_impacts.lua): bombs and air-to-ground missiles
+    -- IMPACT lines (watch/weapon_impacts.lua): bombs and air-to-ground missiles
     -- from aircraft, followed to where they come down
     impact_every_s       = 0.1,   -- each followed weapon's position read this often (~30 m at 300 m/s)
     impact_follow_max    = 40,    -- at most this many followed at once (a big salvo's rest unlogged)

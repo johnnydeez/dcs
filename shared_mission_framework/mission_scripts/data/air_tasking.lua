@@ -33,7 +33,7 @@
 --                rotation against the enemy air defenses, and when an attack's route needs
 --                a site the rotation doesn't take), "station" (defensive air: a racetrack held over the
 --                window, AIR_DEFENSE), "response" (never planned: scrambled at run time
---                by the controller, consumers/control_air_flights/scramble_fighters.lua)
+--                by the controller, controller/air_flights/scramble_fighters.lua)
 --   flight_size  { min, max }: overrides the aircraft profile's for this mission type
 --   rules_of_engagement  "open_fire" (default) | "weapons_free" (engage anything
 --                found: patrols) | "weapons_hold" (never fire: AWACS)
@@ -308,7 +308,7 @@ AIR_TASKING_SKILL = { "Average", "Good", "High" }
 -- planned salvo of each SEAD flight it waits on (for battle damage assessment; not its
 -- landing: real forces keep up the tempo), and at run time only if the site is out of
 -- the fight (else the SEAD flight flies once more, then the flight is cancelled:
--- consumers/control_air_flights/decide_launches.lua). A player's strike or DEAD isn't
+-- controller/air_flights/decide_launches.lua). A player's strike or DEAD isn't
 -- held: the AI SEAD flights it needs take off first thing and are over their sites at
 -- least suppression_lead_s before the player is over the target.
 --   suppression_lead_s  { min, max } seconds a SEAD flight is ahead of the player it opens
@@ -444,8 +444,8 @@ HUMAN_TASKING = {
 --   early_warning_legacy_standoff_km  the old orbit's distance from every enemy base, for a
 --                              coalition with no orbit clear of the standoffs above
 --
--- Scrambles (roadmap.md item 2; the plan holds the alert posture, consumers/control_air_flights/scramble_fighters.lua
--- reacts to the radar picture every round, the controller (consumers/control_air_flights/)
+-- Scrambles (roadmap.md item 2; the plan holds the alert posture, controller/air_flights/scramble_fighters.lua
+-- reacts to the radar picture every round, the controller (controller/air_flights/)
 -- brings them home):
 --   alert_posture_planned  false: no alert bases are planned, so nothing scrambles
 --   alert bases           every held base whose runway and parking fit an interception
@@ -502,7 +502,7 @@ HUMAN_TASKING = {
 AIR_DEFENSE = {
     planned               = true,
     killzone_fraction     = 0.85,
-    -- a kill zone grows with the aircraft's height above the ground (lib/sam_reach.lua):
+    -- a kill zone grows with the aircraft's height above the ground (tools/sam_reach.lua):
     -- the low-altitude reach up to the first, the full ring from the second (John,
     -- 2026-10-01: jets took off unharmed 60 km from a Blue SA-10 the high ring called
     -- deadly; bug 27, 2026-10-02: at the SEAD pop-up, ~900-3,200 m, the sites reached

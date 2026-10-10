@@ -6,6 +6,8 @@
 
 Until 2026-10-07 this was Kola's `development_docs\closed.md`. What was actually built, and how it behaves, is in `shared_mission_framework\framework_design.md` (a `plan.md` section named below that isn't in the root's `plan.md` is there, under the same name, or in a mission's `mission_design.md`; `kola_data_tools\` is the framework's `map_data_tools\`). An `event_logs\…` path is in the mission folder of the mission it was found in (`missions\<mission>\event_logs\`); before 2026-10-07, always Kola's.
 
+**Script paths before 2026-10-10:** the framework's scripts moved into role folders that day (`watch\`, `record\`, `execute\`, `inform\`, `logs\`, `tools\`, `planner\`, `controller\`). Entries written before it name the files and modules as they were (`consumers\…`, `stages\…`, `lib\…`, `gather.lua`, `ControlAirFlights`, …) and are left as written; `shared_mission_framework\framework_design.md`, *Where the old files went*, gives each one's new place.
+
 ---
 
 ## Roadmap items

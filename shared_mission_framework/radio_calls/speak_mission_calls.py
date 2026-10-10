@@ -2,7 +2,7 @@
 
     python radio_calls/speak_mission_calls.py [--exit-with-dcs] [--share-address 10.147.17.1]
 
-The mission (shared_mission_framework/mission_scripts/consumers/send_radio_calls.lua) writes each call's facts as one JSON
+The mission (shared_mission_framework/mission_scripts/inform/radio/radio_calls.lua) writes each call's facts as one JSON
 line to mission_calls.jsonl in this folder, emptying it at mission start. This reads new
 lines as they come (every 0.2 s), words each call, speaks it in a Windows voice
 (windows_voice.py) and sends it to the radio player (radio_player.py), which plays it. The

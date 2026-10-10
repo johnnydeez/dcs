@@ -1,5 +1,5 @@
 -- Kola F-16 random tasking: what makes this mission this mission. Plain data, no logic.
--- Loaded first (init.lua), before config.lua, so every later file can read MISSION.
+-- Loaded first (init.lua), before data\config.lua, so every later file can read MISSION.
 --
 -- The logic is the shared mission framework's (shared_mission_framework\mission_scripts\,
 -- shared with the Caucasus random tasking and the Afghanistan campaign); anything that names

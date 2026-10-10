@@ -9,7 +9,7 @@
 --                  already did, so the front stays contiguous. Clusters are evaluated
 --                  in file order, so list the dependency first.
 --
--- Airbase name strings must match DCS exactly — verify with Log.dumpAirbases().
+-- Airbase name strings must match DCS exactly — verify with WatchWorldAtStart.dumpAirbases().
 --
 -- The scenario (first draft, 2026-10-06): Georgia with NATO behind it against Russia from the
 -- north. The Greater Caucasus is the wall between them in the east; the fight is in the west,

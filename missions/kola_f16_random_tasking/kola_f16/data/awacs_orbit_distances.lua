@@ -1,4 +1,4 @@
--- How far Kola's AWACS orbits keep from the enemy (the framework's stages/plan_air_tasking.lua,
+-- How far Kola's AWACS orbits keep from the enemy (the framework's planner/plan_air_tasking.lua,
 -- orbitCandidates; every other AWACS setting is shared, AIR_DEFENSE.early_warning_* in
 -- data/air_tasking.lua). Each race-track, centre and both ends, stays at least this far
 -- from every enemy fighter base and from the contested airspace. They depend on the map's

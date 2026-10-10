@@ -3,7 +3,7 @@
 -- file to the mission's data\airbase_footprints.lua and turn the flag off — normal runs only read the
 -- data file. Re-run after a map update.
 --
--- Stores raw facts only; lib/placement.lua derives anchors (apron, infield, …) from them
+-- Stores raw facts only; tools/placement.lua derives anchors (apron, infield, …) from them
 -- at startup, so placement can be tuned without re-surveying.
 --   * taxiway: land.getSurfaceType reports taxiways and aprons as RUNWAY. A 50 m grid
 --     over the field; cells of RUNWAY surface outside every runway keep-clear box are
@@ -140,7 +140,7 @@ function SurveyAirbaseFootprints.run(world_)
         "--                    the runway keep-clear boxes); point = x0 + i*step, z0 + j*step",
         "--   buildings        { x, z, type } the airfield's own buildings",
         "--   scenery_scanned  map objects searched (info only)",
-        "-- lib/placement.lua derives the placement anchors (apron, infield, …) from these.",
+        "-- tools/placement.lua derives the placement anchors (apron, infield, …) from these.",
         "",
     }, "\n")
     local path = Util.writeFile(OUT_FILE, header .. "AIRBASE_FOOTPRINT = " .. Util.serialize(out) .. "\n")

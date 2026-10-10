@@ -5,7 +5,7 @@
 --   MeasureCoverage.start(folders)         before the mission loads: count every line run in
 --                                          a file under one of `folders` ({ { name, folder } }:
 --                                          the scripts folders; a debug line hook: slower)
---   MeasureCoverage.report(folders) → lines after the run: "  63 %   412 of   655  consumers\x.lua",
+--   MeasureCoverage.report(folders) → lines after the run: "  63 %   412 of   655  controller\x.lua",
 --                                          every .lua file under `folders`, the total first
 --                                          (several folders: each path starts with its name)
 --

@@ -1,5 +1,5 @@
 @echo off
-rem Started by the mission (mission_scripts/consumers/send_radio_calls.lua) at mission start:
+rem Started by the mission (mission_scripts/inform/radio/radio_calls.lua) at mission start:
 rem the radio player and the radio helper, each in its own minimised window, both closing
 rem themselves once DCS stops. Either already running: the second copy exits at once.
 rem Can be run by hand too (both then still close with DCS).

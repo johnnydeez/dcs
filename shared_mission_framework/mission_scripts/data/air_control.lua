@@ -1,5 +1,5 @@
 -- How the controller directs AI flights after they launch
--- (consumers/control_air_flights/). Plain data, no logic.
+-- (controller/air_flights/). Plain data, no logic.
 --
 -- The controller watches every AI flight whose mission type has directives here. Each
 -- check it builds the flight's situation (what the coalition knows: its radar picture,

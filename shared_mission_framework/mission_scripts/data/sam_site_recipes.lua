@@ -19,7 +19,7 @@
 --
 --   low_altitude_engage_km  medium / long range: how far it reaches a low flyer (DCS,
 --                researched 2026-09-23, framework_design.md; IRIS-T and SA-6 estimated). Kill zones
---                scale from this near the ground to the full ring high up (lib/sam_reach.lua)
+--                scale from this near the ground to the full ring high up (tools/sam_reach.lua)
 --   ceiling_km   short range: the highest it reaches, above its own ground; a DEAD flight
 --                attacking from higher is out of its reach (AIR_DEAD_WEAPONS, bug 4)
 --

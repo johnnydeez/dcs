@@ -1,5 +1,5 @@
 -- Which ground units sleep while no enemy aircraft is near, and when they wake
--- (consumers/sleep_ground_units.lua; roadmap.md, performance in VR). Plain data, no logic.
+-- (controller/wake_ground_units.lua; roadmap.md, performance in VR). Plain data, no logic.
 --
 -- A sleeping group has its AI switched off (Controller:setOnOff(false)): it doesn't scan
 -- the sky or think, which is most of what ~500 base-defense units cost while nothing is

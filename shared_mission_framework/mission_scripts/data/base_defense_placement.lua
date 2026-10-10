@@ -5,7 +5,7 @@
 --                becomes its truck-mounted version)
 --   anchors      { [kind] = { weight, min_m, max_m } } — which footprint anchors the
 --                group centre starts from and how far from one it may land. Kinds (see
---                lib/placement.lua): infield, apron, parking, building, runway_side,
+--                tools/placement.lua): infield, apron, parking, building, runway_side,
 --                runway_end (forested fields only, where it is the only kind).
 --                Trees are invisible to the API; open ground is found from the airfield
 --                layout instead.

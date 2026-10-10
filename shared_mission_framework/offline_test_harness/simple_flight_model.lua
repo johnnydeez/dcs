@@ -11,7 +11,7 @@
 --              altitude moving evenly to the next waypoint's (a RADIO altitude: above the
 --              stand-in ground); wingmen trail it WINGMAN_SPACING_M apart
 --   waypoint   on arrival, its tasks as DCS starts them: script commands run (the mission's
---              WAYPOINT / ControlAirFlights.waypoint calls), an Orbit (a ControlledTask's,
+--              WAYPOINT / ControllerDirectFlights.waypoint calls), an Orbit (a ControlledTask's,
 --              until its stop time) flown as a race-track between its two points
 --   landing    at the Land waypoint every jet lands (landing events) and stops on the runway
 --   fuel       falls evenly in the air: full to empty in FUEL_ENDURANCE_S

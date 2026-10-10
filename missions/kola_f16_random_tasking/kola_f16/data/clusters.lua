@@ -9,7 +9,7 @@
 --                  already did, so the front stays contiguous. Clusters are evaluated
 --                  in file order, so list the dependency first.
 --
--- Airbase name strings must match DCS exactly — verify with Log.dumpAirbases().
+-- Airbase name strings must match DCS exactly — verify with WatchWorldAtStart.dumpAirbases().
 
 CLUSTERS = {
 

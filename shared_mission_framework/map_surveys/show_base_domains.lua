@@ -17,7 +17,7 @@
 -- Everything is read from the repository, whose place on this PC comes from
 -- Saved Games\DCS\Scripts\map_surveys\local_paths.lua (MAP_SURVEY_PATHS.repository_folder;
 -- bug 76): the map's data (shared_mission_framework\map_data\<map>\), the shared loader
--- (mission_scripts\lib\spawn_sites.lua), Kola's airspace settings and the campaign's rings.
+-- (mission_scripts\tools\spawn_sites.lua), Kola's airspace settings and the campaign's rings.
 
 -- The rings each base's sites fall in (a mission's own setting; relative to the repository).
 -- Without it no rings are drawn.
@@ -112,7 +112,7 @@ local function run()
         return
     end
     local framework = repo .. "\\shared_mission_framework\\"
-    dofile(framework .. "mission_scripts\\lib\\spawn_sites.lua")
+    dofile(framework .. "mission_scripts\\tools\\spawn_sites.lua")
     local map, err = SpawnSites.open(framework .. "map_data\\" .. MAP:lower() .. "\\")
     if not map then say("no spawn sites for " .. MAP .. ": " .. tostring(err), 60) return end
     if not map.domains then say("no base_domains.lua for " .. MAP .. ": run map_data_tools\\find_base_domains.py", 60) return end

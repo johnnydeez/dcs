@@ -14,7 +14,7 @@
 -- which fields the heavies (bombers, AWACS) fly from. Fighters and attack jets fly from
 -- any held field whose runway and parking fit them (data/aircraft_profiles.lua): in
 -- wartime every usable runway is used (John, 2026-09-27). Runway length is what decides
--- strip vs dispersal (John, 2026-09-27); PlanBaseDefenses warns when a class disagrees
+-- strip vs dispersal (John, 2026-09-27); PlannerPlanBaseDefenses warns when a class disagrees
 -- with the runway DCS reports. Lengths in the comments are DCS's (gather, 2026-09-27).
 
 AIRBASE_CLASS_JET_RUNWAY_M = 1500   -- the shortest min_runway_m of a jet profile (F-16 / F/A-18)

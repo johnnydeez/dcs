@@ -1,5 +1,5 @@
--- Spoken radio calls (consumers/send_radio_calls.lua, announce_flight_activity.lua,
--- track_airfield_traffic.lua; roadmap.md item 7). Plain data, no logic.
+-- Spoken radio calls (inform/radio/radio_calls.lua, inform\radio\flight_calls.lua,
+-- inform\radio\airfield_calls.lua; roadmap.md item 7). Plain data, no logic.
 --
 -- The mission works out the facts of each call and writes them, one JSON line per call, to
 -- calls_file. Outside DCS the radio helper (radio_calls/speak_mission_calls.py) reads that
@@ -13,16 +13,16 @@
 --       calls at once (a hot hostile inside threat_nm);
 --   AI flights: checking in and out with Darkstar (AWACS channel); their mission calls,
 --       pushing, Fox, Magnum, Splash, defending, off target (mission channel), from what
---       they actually do (announce_flight_activity.lua), never from the controller's orders;
+--       they actually do (inform\radio\flight_calls.lua), never from the controller's orders;
 --   AI flights at Blue airfields: traffic calls on that field's own frequency, the way an
---       uncontrolled field works (track_airfield_traffic.lua), heard within airfield_range_nm;
+--       uncontrolled field works (inform\radio\airfield_calls.lua), heard within airfield_range_nm;
 --   Darkstar's orders to AI flights (AWACS channel): the controller's decisions that are
 --       orders to a flight in the air, engage, resume, RTB, land, a scramble's vector
---       (announce_controller_orders.lua, listening to the controller's decisions);
+--       (inform\radio\darkstar_orders.lua, listening to the controller's decisions);
 --       a decision only the pilot could make (fuel, weapons, no shot) is said as the
 --       pilot's report instead, and Darkstar says "copy" (roadmap item 7 step 15);
 --   the pilots' answers to Darkstar's orders (AWACS channel), once the flight is seen
---       following the order (announce_flight_activity.lua); none when it doesn't.
+--       following the order (inform\radio\flight_calls.lua); none when it doesn't.
 
 RADIO_CALLS = {
     enabled     = true,
@@ -30,7 +30,7 @@ RADIO_CALLS = {
 
     -- the player's callsign as spoken when their jet has none: each player is called by
     -- the callsign set on their slot in the mission file, "Python11" said "Python one one"
-    -- (John, 2026-10-07; SendRadioCalls.playerCallsign). "Snake one one" was every
+    -- (John, 2026-10-07; InformRadioRadioCalls.playerCallsign). "Snake one one" was every
     -- player's callsign before that (John, 2026-10-05)
     player_callsign = "Snake one one",
     -- the controller's callsign as spoken, per coalition
@@ -89,7 +89,7 @@ RADIO_CALLS = {
         answer          = { priority = 3, expires_s = 20 },
     },
 
-    -- Darkstar's orders (announce_controller_orders.lua)
+    -- Darkstar's orders (inform\radio\darkstar_orders.lua)
     orders = {
         engage_fold_s         = 90,   -- an engage on the same bandit to the same flight said once in this long
                                       --   (a fight broken off for a SAM ring is called again 30 s later)
@@ -103,7 +103,7 @@ RADIO_CALLS = {
                           out_of_missiles = true },
     },
 
-    -- the pilots' answers to Darkstar's orders (announce_flight_activity.lua): an answer
+    -- the pilots' answers to Darkstar's orders (inform\radio\flight_calls.lua): an answer
     -- once the flight is seen following the order, within that order's time; none after it
     -- (event log: "no answer"); a newer order to the flight replaces one not yet answered
     answers = {
@@ -115,7 +115,7 @@ RADIO_CALLS = {
         home_looks  = 2,      --   this many looks in a row
     },
 
-    -- the watcher (announce_flight_activity.lua)
+    -- the watcher (inform\radio\flight_calls.lua)
     watch_every_s        = 5,      -- flights' positions, fuel and weapons looked at this often
     rtb_heading_deg      = 35,     -- heading home: within this of the bearing to its landing base,
     rtb_closing_km       = 0.5,    --   closing on it by this much since the last look (~100 m/s),
@@ -123,7 +123,7 @@ RADIO_CALLS = {
     bingo_fuel           = 0.15,   -- "bingo": the lead's fuel (internal fraction) this low, and
     bingo_min_home_km    = 60,     --   still this far from its landing base
 
-    -- airfield traffic (track_airfield_traffic.lua)
+    -- airfield traffic (inform\radio\airfield_calls.lua)
     airfield_every_s     = 3,      -- jets near Blue fields looked at this often
     airfield_range_nm    = 40,     -- a field's calls are made only with a player this close
                                    --   (a tower frequency's reach for a jet near the ground)

@@ -1,4 +1,4 @@
--- Kola's radio channels for the spoken calls (the framework's consumers/send_radio_calls.lua;
+-- Kola's radio channels for the spoken calls (the framework's inform/radio/radio_calls.lua;
 -- every other radio setting is shared, data/radio_calls.lua). Each its own frequency, MHz,
 -- as on the F-16's radios (UHF AN/ARC-164, VHF AN/ARC-222), clear of the map's tower
 -- frequencies. The airfields use their real tower frequencies from the map

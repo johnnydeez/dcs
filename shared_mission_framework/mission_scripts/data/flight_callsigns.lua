@@ -1,4 +1,4 @@
--- Radio callsigns for AI flights (lib/flight_callsigns.lua; roadmap.md item 7, design 6).
+-- Radio callsigns for AI flights (tools/flight_callsigns.lua; roadmap.md item 7, design 6).
 -- Plain data, no logic.
 --
 -- Each AI flight gets one callsign when it is planned (a scramble when it is decided) and
@@ -10,7 +10,7 @@
 -- digits, so "Viper one two" is always flight 1, jet 2). Realistic names for now (John,
 -- 2026-10-05); flavour names can come later in the same place.
 -- Human flights get none: a player is called by their jet's callsign from the mission file
--- (SendRadioCalls.playerCallsign), else RADIO_CALLS.player_callsign.
+-- (InformRadioRadioCalls.playerCallsign), else RADIO_CALLS.player_callsign.
 
 FLIGHT_CALLSIGNS = {
     -- a mission type that names its flights whatever they fly

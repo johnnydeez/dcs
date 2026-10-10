@@ -15,7 +15,7 @@
 -- 2,500 m, the E-3A one with 2,300 m (Tbilisi-Lochini; no Blue field reaches 2,500 m in DCS,
 -- so Blue has no B-1B here). Fighters and attack jets fly from any held
 -- field whose runway and parking fit them (data/aircraft_profiles.lua). Runway length is
--- what decides strip vs dispersal; PlanBaseDefenses warns when a class disagrees with the
+-- what decides strip vs dispersal; PlannerPlanBaseDefenses warns when a class disagrees with the
 -- runway DCS reports.
 --
 -- Caucasus (agreed with John, 2026-10-06). Lengths in the comments are DCS's longest runway

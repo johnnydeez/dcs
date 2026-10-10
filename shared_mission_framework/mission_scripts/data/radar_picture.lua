@@ -1,4 +1,4 @@
--- How each coalition's radar picture is kept (consumers/track_radar_picture.lua). Plain
+-- How each coalition's radar picture is kept (watch/radar_picture.lua). Plain
 -- data, no logic.
 --
 -- Every poll_interval_s every sensor is asked once what its radar detects; the sensors
